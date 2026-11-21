@@ -46,15 +46,38 @@ sections:
 
               - id: AgentKitTools-TextFile-SearchTool-Scoped
                 title: >-
-                  The search tool shall restrict the search to a named directory or a file glob when
-                  supplied, and shall refuse a named directory the policy does not permit rather than
-                  searching it silently.
+                  The search tool shall restrict the search to a named directory or file, or a file
+                  glob, when supplied, and shall refuse a named directory or file the policy does not
+                  permit rather than searching it silently.
                 justification: |
-                  Scoping a search keeps a result focused and small, and a refused directory must be
+                  Scoping a search keeps a result focused and small, and a refused location must be
                   reported so the model learns where it may search.
                 tests:
                   - TextFileSearchTool_Search_FilePattern_RestrictsToMatchingFiles
                   - TextFileSearchTool_Search_DirectoryOutsideGrants_ReturnsDenial
+                  - TextFileSearchTool_Search_PathNamesAFileOutsideGrants_ReturnsDenial
+                  - TextFileSearchTool_Search_PathNamesAFileMatchingDenyPattern_ReturnsDenial
+
+              - id: AgentKitTools-TextFile-SearchTool-FilePathSearchesThatFile
+                title: >-
+                  When the path names a file, the search tool shall search that file alone, shall
+                  refuse a supplied file glob the file does not match and a file that is not text,
+                  and shall never answer that a named file holds no match when it did not search it.
+                justification: |
+                  A model reading the tool as grep names a file in path, as grep pattern file does.
+                  Treating that path only as a directory answered "No matches." for a file it never
+                  searched, and a model concluded the file held nothing. Searching the named file
+                  answers the question asked; the file is authorized by the same read decision that
+                  admits each enumerated candidate, so it reaches nothing a directory search could
+                  not. A glob the file does not match, or binary content, would otherwise silently
+                  produce the same false empty answer, so each is refused with the way to recover.
+                tests:
+                  - TextFileSearchTool_Search_PathNamesAFile_SearchesThatFile
+                  - TextFileSearchTool_Search_PathNamesAFile_ReportsPathInCallerDialect
+                  - TextFileSearchTool_Search_PathNamesAFileWithNonMatchingFilePattern_ReturnsDenial
+                  - TextFileSearchTool_Search_PathNamesAFileWithMatchingFilePattern_SearchesIt
+                  - TextFileSearchTool_Search_PathNamesABinaryFile_ReturnsDenial
+                  - TextFileSearchTool_Search_PathNamesAFileWithNoMatch_ReturnsNoMatches
 
               - id: AgentKitTools-TextFile-SearchTool-GrepOutput
                 title: >-

@@ -223,6 +223,204 @@ public class AgentKitAgentsChatClientTests
     }
 
     /// <summary>
+    ///     Proves a host that builds its own agent gets image promotion through the builder
+    ///     extension: a <see cref="ChatClientAgent"/> over <c>client.AsBuilder().UseImagePromotion()</c>
+    ///     delivers a tool-returned image to the provider on a user message, with a placeholder in
+    ///     the tool result.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task AgentKitAgentsChatClient_ImagePromotion_BuilderExtension_PromotesBeneathFunctionInvocation()
+    {
+        // Arrange: a provider that calls an image tool, then answers, behind a host-built agent
+        var image = new DataContent(ImageBytes, "image/png");
+        var tool = AIFunctionFactory.Create(() => image, "image_read", "Reads an image.");
+        var provider = new RecordingChatClient()
+            .Queue(RecordingChatClient.Answer(
+                [new ChatMessage(ChatRole.Assistant, [new FunctionCallContent("call-1", "image_read")])],
+                inputTokens: 10))
+            .Queue("a chart", inputTokens: 20);
+        var agent = new ChatClientAgent(
+            provider.AsBuilder().UseImagePromotion().Build(),
+            instructions: "You read images.",
+            tools: [tool]);
+
+        // Act: one run, in which the agent's own function-invocation loop calls the tool
+        var response = await agent.RunAsync("What is in the image?", cancellationToken: TestContext.Current.CancellationToken);
+
+        // Assert: the answer came back, and the provider saw the image on a user message and only a
+        // placeholder in the tool result
+        Assert.Equal("a chart", response.Text);
+        var second = provider.Requests[1].Messages;
+        var result = second.SelectMany(message => message.Contents).OfType<FunctionResultContent>().Single();
+        Assert.StartsWith("[Image promoted", Assert.IsType<string>(result.Result), StringComparison.Ordinal);
+        Assert.Contains(
+            second.Where(message => message.Role == ChatRole.User).SelectMany(message => message.Contents),
+            content => ReferenceEquals(content, image));
+    }
+
+    /// <summary>
+    ///     Proves AgentKit tools reach a host-built agent through the context provider and run: the
+    ///     provider's tools are offered on the request and the agent's loop invokes one of them.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task AgentKitAgentsChatClient_ContextProvider_ToolsReachTheProviderAndRun()
+    {
+        // Arrange: a tool-less agent whose tools come from packs through the context provider, and a
+        // provider that calls one of them
+        var client = new RecordingChatClient()
+            .Queue(ToolPackContextProviderTests.Call("call-1", "report_echo"))
+            .Queue("the tool said echo", 1);
+        var agent = ToolPackContextProviderTests.Agent(
+            client,
+            new ToolPackContextProvider(ToolPackContextProviderTests.Policy(), [new ToolPackContextProviderTests.ReportPack()]));
+
+        // Act: one run
+        var response = await agent.RunAsync("use the tool", cancellationToken: TestContext.Current.CancellationToken);
+
+        // Assert: the tools were offered, the call ran, and its result reached the provider
+        Assert.Equal("the tool said echo", response.Text);
+        Assert.Contains(client.Requests[0].Options!.Tools!, tool => tool.Name == "report_echo");
+        Assert.Equal("echo", ToolPackContextProviderTests.ResultOf(client.Requests[1], "call-1"));
+    }
+
+    /// <summary>
+    ///     Proves conversations composed through the context provider are isolated: a retained
+    ///     output's reference from one conversation is unknown in another.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task AgentKitAgentsChatClient_ContextProvider_ConversationsAreIsolated()
+    {
+        // Arrange: one agent, two conversations; the first retains a report
+        var client = new RecordingChatClient()
+            .Queue(ToolPackContextProviderTests.Call("call-1", "report_build"))
+            .Queue("retained", 1)
+            .Queue(ToolPackContextProviderTests.Call("call-2", ToolOutputReadTool.ToolName, new() { ["id"] = "output-1" }))
+            .Queue("unknown", 1);
+        var agent = ToolPackContextProviderTests.Agent(client, ToolPackContextProviderTests.RetainingProvider());
+        var first = await agent.CreateSessionAsync(TestContext.Current.CancellationToken);
+        var second = await agent.CreateSessionAsync(TestContext.Current.CancellationToken);
+
+        // Act: retain in the first, read in the second
+        await agent.RunAsync("build", first, cancellationToken: TestContext.Current.CancellationToken);
+        await agent.RunAsync("read", second, cancellationToken: TestContext.Current.CancellationToken);
+
+        // Assert: the second conversation never saw the first's output
+        Assert.Contains("never retained", ToolPackContextProviderTests.ResultOf(client.Requests[3], "call-2"), StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves a conversation's retained outputs survive the agent persisting and reloading it.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task AgentKitAgentsChatClient_ContextProvider_DeserializedSession_PagesAnEarlierOutput()
+    {
+        // Arrange: a conversation that retains a report
+        var client = new RecordingChatClient()
+            .Queue(ToolPackContextProviderTests.Call("call-1", "report_build"))
+            .Queue("retained", 1)
+            .Queue(ToolPackContextProviderTests.Call(
+                "call-2",
+                ToolOutputSearchTool.ToolName,
+                new() { ["id"] = "output-1", ["pattern"] = "report row 250" }))
+            .Queue("found", 1);
+        var agent = ToolPackContextProviderTests.Agent(client, ToolPackContextProviderTests.RetainingProvider());
+        var session = await agent.CreateSessionAsync(TestContext.Current.CancellationToken);
+        await agent.RunAsync("build", session, cancellationToken: TestContext.Current.CancellationToken);
+
+        // Act: persist, reload as a new process would, and search the earlier reference
+        var persisted = await agent.SerializeSessionAsync(session, cancellationToken: TestContext.Current.CancellationToken);
+        var reloaded = await agent.DeserializeSessionAsync(persisted, cancellationToken: TestContext.Current.CancellationToken);
+        await agent.RunAsync("search", reloaded, cancellationToken: TestContext.Current.CancellationToken);
+
+        // Assert: the search ran against the restored output
+        Assert.Contains("250:report row 250", ToolPackContextProviderTests.ResultOf(client.Requests[3], "call-2"), StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves AgentKit's chat reducer plugs into the Agent Framework's in-memory history provider
+    ///     and reduces the stored history through the summarizer.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task AgentKitAgentsChatClient_ChatReducer_InMemoryHistoryProvider_ReducesStoredHistory()
+    {
+        // Arrange: an agent whose history provider reduces before retrieval through AgentKit's reducer
+        var summarizing = RecordingChatClient.Answering("The vault code is 4417-BRAVO.", inputTokens: 5);
+        var history = new InMemoryChatHistoryProvider(new InMemoryChatHistoryProviderOptions
+        {
+            ChatReducer = new AgentKitChatReducer(new ChatClientSummarizer(summarizing), thresholdCharacters: 200, verbatimTurns: 1),
+            ReducerTriggerEvent = InMemoryChatHistoryProviderOptions.ChatReducerTriggerEvent.BeforeMessagesRetrieval
+        });
+        var agent = new ChatClientAgent(
+            RecordingChatClient.Answering(new string('x', 150), inputTokens: 1),
+            new ChatClientAgentOptions { Name = "reducing", ChatHistoryProvider = history });
+        var session = await agent.CreateSessionAsync(TestContext.Current.CancellationToken);
+
+        // Act: four turns, each answered at length
+        foreach (var message in new[] { "Remember 4417-BRAVO.", "Topic one.", "Topic two.", "What was the code?" })
+        {
+            await agent.RunAsync(message, session, cancellationToken: TestContext.Current.CancellationToken);
+        }
+
+        // Assert: the summarizer consolidated, and the stored history holds one record
+        var stored = history.GetMessages(session);
+        Assert.NotEmpty(summarizing.Requests);
+        Assert.Single(stored, message => message.Text.StartsWith(AgentKitChatReducer.RecordHeader, StringComparison.Ordinal));
+        Assert.Contains("4417-BRAVO", stored.First(message => message.Text.StartsWith(AgentKitChatReducer.RecordHeader, StringComparison.Ordinal)).Text, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves, at the HTTP wire, that over OllamaSharp a promoted image leaves no bytes in the tool
+    ///     message: the tool message is a short placeholder and the image travels once, in the
+    ///     following user message's images.
+    /// </summary>
+    /// <remarks>
+    ///     OllamaSharp serializes a tool result's image as base64 text in the tool message; without the
+    ///     placeholder a 316 KB image became a 421,629-character tool message. The real OllamaSharp
+    ///     chat client runs here over a capturing handler, so the request body asserted on is exactly
+    ///     what an Ollama server would receive.
+    /// </remarks>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task AgentKitAgentsChatClient_ImagePromotion_OverOllamaSharp_ToolMessageCarriesNoImageBytes()
+    {
+        // Arrange: a 300 KB image tool, an OllamaSharp client over a handler that answers first with a
+        // call to the tool and then with text, and a host-built agent with image promotion installed
+        var image = new DataContent(new byte[300_000], "image/png");
+        var tool = AIFunctionFactory.Create(() => image, "image_read", "Reads an image.");
+        var handler = new CapturingHttpHandler()
+            .Respond("""{"model":"m","created_at":"2026-01-01T00:00:00Z","message":{"role":"assistant","content":"","tool_calls":[{"function":{"name":"image_read","arguments":{}}}]},"done":true,"done_reason":"stop","prompt_eval_count":10,"eval_count":1}""")
+            .Respond("""{"model":"m","created_at":"2026-01-01T00:00:01Z","message":{"role":"assistant","content":"7319"},"done":true,"done_reason":"stop","prompt_eval_count":20,"eval_count":1}""");
+        using var http = new HttpClient(handler) { BaseAddress = new Uri("http://localhost:11434") };
+        using var ollama = new OllamaSharp.OllamaApiClient(http, "m");
+        var agent = new ChatClientAgent(
+            ((IChatClient)ollama).AsBuilder().UseImagePromotion().Build(),
+            instructions: "Read images.",
+            tools: [tool]);
+
+        // Act: one run, in which the agent calls the tool and sends its result back
+        var response = await agent.RunAsync("What number is in the image?", cancellationToken: TestContext.Current.CancellationToken);
+
+        // Assert: the second request's tool message is a short placeholder with no base64, and the
+        // following user message carries the image once
+        Assert.Equal("7319", response.Text);
+        using var body = System.Text.Json.JsonDocument.Parse(handler.RequestBodies[1]);
+        var messages = body.RootElement.GetProperty("messages").EnumerateArray().ToList();
+        var toolIndex = messages.FindIndex(message => message.GetProperty("role").GetString() == "tool");
+        var toolContent = messages[toolIndex].GetProperty("content").GetString()!;
+        Assert.True(toolContent.Length < 300, $"The tool message was {toolContent.Length} characters.");
+        Assert.DoesNotContain("base64", toolContent, StringComparison.Ordinal);
+        Assert.Contains("image/png", toolContent, StringComparison.Ordinal);
+        var promoted = messages[toolIndex + 1];
+        Assert.Equal("user", promoted.GetProperty("role").GetString());
+        Assert.Equal(1, promoted.GetProperty("images").GetArrayLength());
+    }
+
+    /// <summary>
     ///     Finds the result a request carried back for one tool call.
     /// </summary>
     /// <param name="request">The recorded request.</param>

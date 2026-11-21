@@ -27,7 +27,8 @@ namespace DemaConsulting.AgentKit.Agents.ChatClient;
 ///     <para>
 ///     This factory is a thin adapter: beyond validation and the unconditional decorator, its only
 ///     job is to construct a <see cref="ChatClientAgent"/>. It holds no state and shares no code
-///     with the Copilot adapter.
+///     with the Copilot adapter. A host that builds its own agent or pipeline installs the same
+///     decorator through <see cref="UseImagePromotion"/>.
 ///     </para>
 /// </remarks>
 public static class ChatClientAgentFactory
@@ -110,6 +111,88 @@ public static class ChatClientAgentFactory
             instructions: instructions,
             name: name,
             tools: [.. tools.Cast<AITool>()]);
+    }
+
+    /// <summary>
+    ///     Installs AgentKit Core's <see cref="ImagePromotingChatClient"/> in a chat client pipeline a
+    ///     host builds itself, so a tool-returned image reaches the model on a provider whose tool
+    ///     response channel cannot carry one.
+    /// </summary>
+    /// <remarks>
+    ///     <para>
+    ///     <b>When it is needed.</b> Required when the provider adapter cannot deliver an image a
+    ///     tool returned: with Ollama through OllamaSharp, a tool-result image is serialized as
+    ///     base64 text into the tool message and the model never sees pixels, so the decorator moves
+    ///     the image onto a following user message and leaves a short placeholder in the tool result.
+    ///     Not needed with the GitHub Copilot SDK, which delivers tool-result images to the model
+    ///     natively; AgentKit's Copilot adapter does not install it.
+    ///     </para>
+    ///     <para>
+    ///     <b>Where it must sit.</b> Beneath the function-invocation loop, where the conversation
+    ///     already holds the tool results. For a host-built <see cref="ChatClientAgent"/>, which adds
+    ///     its own function-invocation loop above the client it is given, build
+    ///     <c>client.AsBuilder().UseImagePromotion().Build()</c> and pass that to the agent. For a raw
+    ///     pipeline, call it after <c>UseFunctionInvocation()</c>:
+    ///     <c>client.AsBuilder().UseFunctionInvocation().UseImagePromotion().Build()</c>. Placed above
+    ///     the loop it would only ever see the request before any tool ran, so that placement is
+    ///     refused when the pipeline is built rather than left to fail silently.
+    ///     </para>
+    ///     <para>
+    ///     <see cref="Create"/> installs the decorator itself; this extension is for a pipeline the
+    ///     host assembles. A host that takes no dependency on this package can install the same
+    ///     decorator with <c>builder.Use(inner =&gt; new ImagePromotingChatClient(inner))</c>.
+    ///     </para>
+    /// </remarks>
+    /// <param name="builder">The pipeline being built. Must not be <see langword="null"/>.</param>
+    /// <returns>The same builder, for chaining.</returns>
+    /// <exception cref="ArgumentNullException">
+    ///     <paramref name="builder"/> is <see langword="null"/>.
+    /// </exception>
+    /// <exception cref="InvalidOperationException">
+    ///     Thrown by <see cref="ChatClientBuilder.Build(IServiceProvider?)"/> when the client beneath
+    ///     the decorator already contains a <see cref="FunctionInvokingChatClient"/> — that is, when
+    ///     <c>UseImagePromotion()</c> was called before <c>UseFunctionInvocation()</c>.
+    /// </exception>
+    /// <example>
+    ///     <para>
+    ///     Installing image promotion in a pipeline the host builds, for a host-built agent and for
+    ///     a raw chat client.
+    ///     </para>
+    ///     <code>
+    ///     public AIAgent CreateAgent(IChatClient client, IList&lt;AITool&gt; tools)
+    ///     {
+    ///         // ChatClientAgent adds its function-invocation loop above the client it is given,
+    ///         // so image promotion sits beneath that loop.
+    ///         IChatClient promoting = client.AsBuilder().UseImagePromotion().Build();
+    ///         return new ChatClientAgent(promoting, instructions: "You read images.", tools: tools);
+    ///     }
+    ///
+    ///     public IChatClient CreatePipeline(IChatClient client) =>
+    ///         client.AsBuilder()
+    ///             .UseFunctionInvocation()
+    ///             .UseImagePromotion()
+    ///             .Build();
+    ///     </code>
+    /// </example>
+    public static ChatClientBuilder UseImagePromotion(this ChatClientBuilder builder)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+
+        return builder.Use(inner =>
+        {
+            // The pipeline is composed outermost first, so this factory receives everything beneath
+            // the decorator. A function-invocation loop down there means the decorator would sit
+            // above it and never see a tool result.
+            if (inner.GetService(typeof(FunctionInvokingChatClient)) is not null)
+            {
+                throw new InvalidOperationException(
+                    "Image promotion must sit beneath function invocation: call UseFunctionInvocation() "
+                    + "before UseImagePromotion(), or pass the built client to a ChatClientAgent, which "
+                    + "adds function invocation above it.");
+            }
+
+            return WrapWithImagePromotion(inner);
+        });
     }
 
     /// <summary>

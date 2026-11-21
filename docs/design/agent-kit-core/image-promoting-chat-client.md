@@ -24,6 +24,15 @@ onto the channel every provider honors is therefore sufficient, and no re-encodi
 captioning of the image is involved. With the decorator installed, the same model described the
 tool-returned image correctly.
 
+**The image leaves the tool result.** Promotion alone is not enough when the provider adapter
+flattens what it cannot carry into text. OllamaSharp serializes image content found in a function
+result into the tool message as a base64 data URI, so without further action the image travels
+twice — once usable, on the user message, and once as text. A 316 KB image produced a
+421,629-character tool message that truncated the context window and lost the user's question.
+The decorator therefore forwards the tool result with each promoted image replaced by a short
+placeholder naming its media type and size, so the tool message stays small whatever the size of
+the image.
+
 The unit is opt-in. A host whose provider already delivers images from tool results installs
 nothing and pays nothing; a host targeting a provider that does not wraps its chat client once.
 Core supplies no agent loop of its own into which the decorator could be installed automatically,
@@ -40,6 +49,7 @@ constants:
 | Member | Type | Description |
 | --- | --- | --- |
 | `PromotionNotice` | `const string` | The fixed text introducing a promoted image. |
+| `PlaceholderFormat` | `const string` | The text left in a tool result in place of a promoted image. |
 | `ImageMediaType` | `const string` | The top-level media type identifying content to promote. |
 
 The inner client is held by the base `DelegatingChatClient` and is never replaced.
@@ -47,10 +57,15 @@ The inner client is held by the base `DelegatingChatClient` and is never replace
 Invariants:
 
 - Every message the decorator receives appears in the forwarded conversation, in the order it was
-  received.
+  received; a tool message carrying a promoted image appears as a copy with that image replaced.
 - A promoted message is inserted immediately after the tool result it was derived from.
 - The content instances on a promoted message are the same instances the tool result carried;
   nothing is copied or re-encoded.
+- No forwarded tool result carries a promoted image; each is replaced by
+  `[Image promoted to the following user message: {media type}, {bytes} bytes.]`, with the byte
+  count formatted with invariant-culture group separators. A rewritten tool message and a
+  rewritten function result carry no raw representation.
+- The caller's messages, their content lists and their function results are never modified.
 
 ### Key Methods
 
@@ -82,25 +97,50 @@ Private helper producing the rewritten conversation.
 
 **Algorithm:**
 
-1. Add each message to the result in the order received.
-2. Skip any message whose role is not `Tool`; only a tool message can carry a function result,
-   and only a function result can carry content the provider is about to discard.
-3. Collect the image content of every `FunctionResultContent` in that message.
-4. When none was found, add nothing — a text-only result needs no announcement.
-5. Otherwise append a `User` message holding the fixed announcement followed by the same content
-   instances.
+1. Forward any message whose role is not `Tool` as the same instance; only a tool message can
+   carry a function result, and only a function result can carry content the provider is about to
+   discard or flatten into text.
+2. For a tool message, rebuild its content list, replacing each `FunctionResultContent` with the
+   result of `ReplaceImages` and collecting the images found.
+3. When none was found, forward the original message — a text-only result needs no announcement
+   and no copy.
+4. Otherwise forward a clone of the message whose `Contents` is the rebuilt list (a clone shares
+   the original's list, so a new one is assigned rather than edited) and whose `RawRepresentation`
+   is cleared, because the original's provider-native form may still hold the image bytes; then
+   append a `User` message holding the fixed announcement followed by the same image instances.
 
-**Postconditions:** message order is preserved and no original message is dropped or altered.
+**Postconditions:** message order is preserved, no original message is dropped, and no message,
+content list or function result the caller holds is altered.
 
 **Throws:** `ArgumentNullException` when `messages` is null.
 
-#### ExtractImages(FunctionResultContent result)
+#### ReplaceImages(FunctionResultContent result, List&lt;DataContent&gt; images)
 
 Private helper reading the image content a function result carries, in either of the two shapes a
-guarded tool produces: a `DataContent` on its own, or a sequence of `AIContent` in which the
-image follows a caption. Non-image content is deliberately left where it is — a document a
-provider accepts in a tool result should not be duplicated onto a user message, and one it does
-not accept is not made readable by moving it.
+guarded tool produces, and returning the result to forward:
+
+- a `DataContent` image on its own becomes a copy whose result is the placeholder string;
+- a sequence of `AIContent` becomes a copy whose result is a new list with every part in its
+  original order, each image part replaced by a `TextContent` placeholder;
+- any other shape, or a sequence holding no image, is returned as the same instance.
+
+Non-image content is deliberately left where it is — a document a provider accepts in a tool
+result should not be duplicated onto a user message, and one it does not accept is not made
+readable by moving it. The images found are appended to `images` in the order they appear.
+
+#### Placeholder(DataContent image)
+
+Private helper formatting `PlaceholderFormat` with the image's media type and byte count, using
+the invariant culture so the text does not vary with the host's locale.
+
+#### CopyWithResult(FunctionResultContent original, object value)
+
+Private helper creating a `FunctionResultContent` with the original's call identifier and the
+replacement value, copying the exception, annotations and additional properties so that a provider
+adapter or telemetry reading them sees what the original carried. The raw representation is
+deliberately not copied: it is the provider-native form of the original result and may still hold
+the image bytes, so an adapter that prefers a raw object over the result value would resend
+exactly what the placeholder removed.
 
 ### Error Handling
 
@@ -130,8 +170,14 @@ conversation it would be read as belonging to whichever turn happened to be last
 
 **The announcement is fixed text and adds no host detail.** It names the tool as the source so the
 transcript reads sensibly, and interpolates nothing — not the tool name, not the file, not the
-media type. The transcript leaves this process, so the same discipline the denial messages keep
-applies here.
+media type. The placeholder left in the tool result interpolates only the media type and the byte
+count, both values the image itself carries. The transcript leaves this process, so the same
+discipline the denial messages keep applies here.
+
+**The caller's history is never edited.** The history a host or the function-invocation loop
+holds is replayed on every request and may be persisted, so it must keep recording what the tool
+returned. Editing it in place would also destroy the image the next request needs to promote
+again.
 
 **A text-only exchange must cost nothing.** A decorator a host can leave installed for every
 conversation is one it will leave installed; a decorator that appends an announcement saying no
@@ -139,9 +185,11 @@ image was attached is one it will remove.
 
 **No new dependency.** `DelegatingChatClient`, `DataContent.HasTopLevelMediaType` and
 `FunctionResultContent` all come from `Microsoft.Extensions.AI.Abstractions`, which Core already
-takes. A registration extension for the chat client builder was considered and **rejected**: that
-builder lives in `Microsoft.Extensions.AI` rather than in the abstractions package, so offering
-the convenience would cost Core a second runtime dependency that every consumer would inherit.
+takes. A registration extension for the chat client builder was considered for Core and
+**rejected**: that builder lives in `Microsoft.Extensions.AI` rather than in the abstractions package,
+so offering the convenience here would cost Core a second runtime dependency that every consumer
+would inherit. The extension, `UseImagePromotion()`, lives instead in AgentKitAgentsChatClient, which
+already receives that library through the Agent Framework; see *ChatClientAgentFactory Unit Design*.
 
 **The library writes nothing to the console.** The exploratory version of this code printed a line
 each time it promoted an image, which was useful while the behavior was being established and is

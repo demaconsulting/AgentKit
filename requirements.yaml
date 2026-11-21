@@ -25,6 +25,8 @@ includes:
   - docs/reqstream/agent-kit-core/tool-output-options.yaml
   - docs/reqstream/agent-kit-core/tool-output-store.yaml
   - docs/reqstream/agent-kit-core/tool-output-spill.yaml
+  - docs/reqstream/agent-kit-core/tool-output-retention.yaml
+  - docs/reqstream/agent-kit-core/agent-kit-chat-reducer.yaml
   - docs/reqstream/agent-kit-core/tool-output-read-tool.yaml
   - docs/reqstream/agent-kit-core/tool-output-search-tool.yaml
   - docs/reqstream/agent-kit-core/agent-session.yaml
@@ -94,6 +96,7 @@ includes:
   - docs/reqstream/agent-kit-agents-chat-client/chat-client-provider-session-factory.yaml
   - docs/reqstream/agent-kit-agents-chat-client/prompt-size-recording-chat-client.yaml
   - docs/reqstream/agent-kit-agents-chat-client/chat-client-summarizer.yaml
+  - docs/reqstream/agent-kit-agents-chat-client/tool-pack-context-provider.yaml
   - docs/reqstream/agent-kit-agents-chat-client/platform-requirements.yaml
   - docs/reqstream/agent-kit-agents-copilot.yaml
   - docs/reqstream/agent-kit-agents-copilot/copilot-agent.yaml

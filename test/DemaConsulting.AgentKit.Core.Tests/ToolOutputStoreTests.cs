@@ -357,4 +357,74 @@ public class ToolOutputStoreTests
         Assert.Equal(ids.Length, ids.Distinct(StringComparer.Ordinal).Count());
         Assert.All(ids, id => Assert.Equal(ToolOutputLookup.Found, store.Find(id, out _)));
     }
+
+    /// <summary>
+    ///     Proves a snapshot restored into a new store keeps every identifier, its lines and the
+    ///     order of eviction, and numbering continues after the last identifier issued.
+    /// </summary>
+    [Fact]
+    public void ToolOutputStore_Snapshot_Restore_PreservesIdsAndOrder()
+    {
+        // Arrange: a store that retained three outputs and evicted the first
+        var original = new ToolOutputStore(new ToolOutputOptions(maxRetainedOutputs: 2));
+        original.Add("one");
+        original.Add("two\nlines");
+        original.Add("three");
+        var entries = original.Snapshot(out var lastIssued);
+
+        // Act: restore into a new store and retain one more output
+        var restored = new ToolOutputStore(new ToolOutputOptions(maxRetainedOutputs: 2));
+        restored.Restore(
+            entries.Select(entry => (long.Parse(entry.Id["output-".Length..], System.Globalization.CultureInfo.InvariantCulture), entry.Lines, entry.Wrapped)),
+            lastIssued);
+        var next = restored.Add("four");
+
+        // Assert: the snapshot listed the two held outputs oldest first under the issued counter,
+        // the restored store answers them, and the next output is numbered after the last one issued
+        Assert.Equal(3, lastIssued);
+        Assert.Equal(["output-2", "output-3"], entries.Select(entry => entry.Id));
+        Assert.Equal("output-4", next!.Id);
+        Assert.Equal(ToolOutputLookup.Evicted, restored.Find("output-1", out _));
+        Assert.Equal(ToolOutputLookup.Evicted, restored.Find("output-2", out _));
+        Assert.Equal(ToolOutputLookup.Found, restored.Find("output-3", out var three));
+        Assert.Equal(["three"], three!.Lines);
+    }
+
+    /// <summary>
+    ///     Proves a store that already retains output cannot be restored over.
+    /// </summary>
+    [Fact]
+    public void ToolOutputStore_Restore_NonEmptyStore_ThrowsInvalidOperationException()
+    {
+        // Arrange: a store that has retained an output
+        var store = new ToolOutputStore(ToolOutputOptions.Default);
+        store.Add("held");
+
+        // Act / Assert: restoring would interleave two histories under one counter
+        Assert.Throws<InvalidOperationException>(() => store.Restore([], 0));
+    }
+
+    /// <summary>
+    ///     Proves a store whose counter is exhausted refuses another output rather than wrapping to a
+    ///     negative identifier, and evicts nothing in refusing.
+    /// </summary>
+    [Fact]
+    public void ToolOutputStore_Add_CounterExhausted_ThrowsAndEvictsNothing()
+    {
+        // Arrange: a store keeping one output, restored with its counter at the end of the range
+        var store = new ToolOutputStore(new ToolOutputOptions(maxRetainedOutputs: 1));
+        store.Restore(
+            new (long Number, IReadOnlyList<string> Lines, bool Wrapped)[] { (long.MaxValue, new[] { "held" }, false) },
+            long.MaxValue);
+
+        // Act: retaining another output would need an identifier past the end of the range
+        var exception = Record.Exception(() => store.Add("next"));
+
+        // Assert: refused, the held output was not evicted, and the counter did not move
+        Assert.IsType<InvalidOperationException>(exception);
+        Assert.Equal(ToolOutputLookup.Found, store.Find("output-9223372036854775807", out var held));
+        Assert.Equal(["held"], held!.Lines);
+        store.Snapshot(out var lastIssued);
+        Assert.Equal(long.MaxValue, lastIssued);
+    }
 }

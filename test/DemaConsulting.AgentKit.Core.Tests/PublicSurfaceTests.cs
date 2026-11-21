@@ -30,6 +30,7 @@ public class PublicSurfaceTests
         string[] expected =
         [
             "AccessLevel",
+            "AgentKitChatReducer",
             "AgentSessionOptions",
             "AgentSessionResponse",
             "CompactingAgentSession",
@@ -53,10 +54,13 @@ public class PublicSurfaceTests
             "ProviderSessionSeed",
             "ProviderTurn",
             "RealPathResolver",
+            "RetainedToolOutput",
             "ToolLimits",
             "ToolName",
             "ToolOutputOptions",
             "ToolOutputReadTool",
+            "ToolOutputRetention",
+            "ToolOutputRetentionSnapshot",
             "ToolOutputSearchTool",
             "ToolOutputSpill",
             "ToolPackBuilder",

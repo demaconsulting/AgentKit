@@ -250,11 +250,21 @@ Composes a retaining parent with the Agent family at the 1,000-character retenti
 parent's `agent_run` result is a preview, the last line reads back exactly, and the child was
 handed its admitted tool followed by the two readers.
 
+### Path Denials: No Family Discloses a Host Absolute Path
+
+**Test**: `AgentKitTools_PathDenials_DiscloseNoHostAbsolutePath`
+
+Composes the text file, file and image families over a read-only working directory and asks
+`text_file_read`, `text_file_search`, `file_list` and `image_read` each for a location beside it,
+reached with `../outside`. Asserts every result is a `PathNotPermitted` denial that names the
+working directory as `. (read-only)` and contains neither the working directory's absolute location
+nor the temporary base directory.
+
 ## Acceptance Criteria
 
-A system-level test run passes when the scenarios above pass without error or exception beyond
-those explicitly asserted. Any unexpected exception, a non-empty tool list from an empty
-composition, a family that does not contribute its tools when attached, a family contributed to a
-host that did not declare the capability it requires, a delegated agent's writes appearing in its
-parent's task list, an oversized listing, search, outline or delegated answer neither refused nor retained,
-or a failure to compose through the AgentKitCore pack contract constitutes a failure.
+A system-level test run passes when the scenarios above pass without error or exception beyond those explicitly
+asserted. Any unexpected exception, a non-empty tool list from an empty composition, a family that does not contribute
+its tools when attached, a family contributed to a host that did not declare the capability it requires, a delegated
+agent's writes appearing in its parent's task list, an oversized listing, search, outline or delegated answer neither
+refused nor retained, a path denial disclosing a host absolute path, or a failure to compose through the AgentKitCore
+pack contract constitutes a failure.

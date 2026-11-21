@@ -1039,8 +1039,7 @@ public class ImageAutoCropToolTests
         // Assert: refused by the policy, which names the writable location with its level
         var text = Assert.IsType<string>(result);
         Assert.Contains("Denied (PathNotPermitted)", text, StringComparison.Ordinal);
-        Assert.Contains(fixture.Outside, text, StringComparison.Ordinal);
-        Assert.Contains("(read-write)", text, StringComparison.Ordinal);
+        Assert.Contains("  - ../outside (read-write)", text, StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -1802,7 +1801,7 @@ public class ImageAutoCropToolTests
         // Assert: the permitted location is named, with the level it carries
         var text = Assert.IsType<string>(result);
         Assert.Contains("Denied (PathNotPermitted)", text, StringComparison.Ordinal);
-        Assert.Contains(fixture.Root, text, StringComparison.Ordinal);
+        Assert.Contains("  - . (", text, StringComparison.Ordinal);
     }
 
     /// <summary>

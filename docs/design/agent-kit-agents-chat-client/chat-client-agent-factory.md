@@ -15,6 +15,15 @@ silently. The factory absorbs that concern so an application never has to know i
 the supplied client in Core's `ImagePromotingChatClient` before constructing the agent, on every
 path, with no option to omit it.
 
+A host that builds its own agent or pipeline — composing AgentKit's tools into its own
+`ChatClientAgent`, or a raw `IChatClient` pipeline — bypasses `Create`. The factory therefore also
+publishes `UseImagePromotion`, a `ChatClientBuilder` extension that installs the same decorator in a
+pipeline the host builds. It lives here rather than in Core because `ChatClientBuilder` belongs to
+`Microsoft.Extensions.AI`, which this package receives through `Microsoft.Agents.AI` and which Core
+does not reference: placing it in Core would add that library and its own dependencies to the contract
+package. A host that references only Core can install the decorator with
+`builder.Use(inner => new ImagePromotingChatClient(inner))`.
+
 The class is static and holds no state.
 
 ### Key Methods
@@ -39,6 +48,31 @@ client beneath it, remain the host's to manage.
 
 **Throws:** `ArgumentNullException` when `client` or `tools` is null, or a tool is null;
 `ArgumentException` when `tools` is empty or two tools share a name.
+
+#### UseImagePromotion(this ChatClientBuilder builder)
+
+Public extension installing the decorator in a host-built pipeline.
+
+**Algorithm:**
+
+1. Reject a null `builder`.
+2. Register a factory with `builder.Use`. `ChatClientBuilder` composes outermost first, so the factory
+   receives the client beneath the decorator's position.
+3. When that client answers a service lookup for `FunctionInvokingChatClient`, the decorator would sit
+   above the function-invocation loop and never see a tool result, so throw
+   `InvalidOperationException` naming the correct order. This happens when the host calls `Build()`.
+4. Otherwise wrap the client through `WrapWithImagePromotion`.
+
+**Placement:** `client.AsBuilder().UseImagePromotion().Build()` for a `ChatClientAgent`, which adds
+its function-invocation loop above the client it is given; `.UseFunctionInvocation().UseImagePromotion()`
+for a raw pipeline.
+
+**When it is needed:** required where the adapter cannot deliver a tool-result image — Ollama through
+OllamaSharp, which serializes it as base64 text in the tool message; not needed on the GitHub Copilot
+SDK, which delivers tool-result images natively.
+
+**Throws:** `ArgumentNullException` for a null `builder`; `InvalidOperationException` from `Build()`
+for a decorator placed above function invocation.
 
 #### WrapWithImagePromotion(IChatClient client)
 
@@ -82,6 +116,8 @@ duplicate the framework it adapts.
 | Null `tools`, or a null tool entry | `ArgumentNullException` propagates |
 | Empty `tools` | `ArgumentException` propagates |
 | Two tools sharing a name | `ArgumentException` propagates |
+| Null `builder` to `UseImagePromotion` | `ArgumentNullException` propagates |
+| Decorator placed above function invocation | `InvalidOperationException` when the pipeline is built |
 
 Every rejected condition is a defect in the composing application, surfaced where the host wrote it
 rather than at the first conversation.
@@ -90,11 +126,14 @@ rather than at the first conversation.
 
 - **AgentKitCore** — supplies `ImagePromotingChatClient`; see *ImagePromotingChatClient Unit
   Design*.
-- **Microsoft.Agents.AI** — supplies `AIAgent` and `ChatClientAgent`; see *Microsoft.Agents.AI
-  Design*.
+- **Microsoft.Agents.AI** — supplies `AIAgent` and `ChatClientAgent`, and brings
+  `Microsoft.Extensions.AI`'s `ChatClientBuilder` and `FunctionInvokingChatClient`; see
+  *Microsoft.Agents.AI Design*.
 - **Microsoft.Extensions.AI.Abstractions** — supplies `IChatClient`, `AIFunction`, and `AITool`.
 
 ### Callers
 
 `ChatClientAgentFactory.Create` is a public API entry point. An application calls it once to obtain
-an agent for a provider reached through an `IChatClient`. Within this system nothing else calls it.
+an agent for a provider reached through an `IChatClient`. `UseImagePromotion` is a public API entry
+point a host calls while building its own pipeline. Within this system `ChatClientProviderSessionFactory`
+calls `WrapWithImagePromotion`; nothing else calls the factory.

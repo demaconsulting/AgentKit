@@ -42,6 +42,8 @@ constituent software items, specifically:
   by opaque references and bounded by count and size
 - **ToolOutputSpill (Unit)** — Opt-in composition of retention into a tool list: an oversized output
   is retained and replaced by a bounded preview and a reference
+- **ToolOutputRetention (Unit)** — One conversation's retention handle: wraps tools added at any
+  time into one store, publishes the reader tools, and exports and restores the retained outputs
 - **ToolOutputReadTool (Unit)** — Publishes the `tool_output_read` tool, which pages through a
   retained output by line number
 - **ToolOutputSearchTool (Unit)** — Publishes the `tool_output_search` tool, which finds a pattern
@@ -77,6 +79,9 @@ constituent software items, specifically:
   be exercised end to end without a live model
 - **CompactingAgentSession (Unit)** — The implementation that sequences turns, usage reads,
   rotations and provider-session disposal
+- **AgentKitChatReducer (Unit)** — A chat reducer for a host that owns its chat history,
+  consolidating older messages through the summarizer while keeping the system messages and a
+  verbatim tail
 - **AgentKitTools (System)** — A general-purpose capability package of guarded tool families
   built on the AgentKitCore contract, organized as one subsystem per tool family
 - **TextFile (Subsystem)** — The text file tool family: policy-governed searching, reading,
@@ -163,6 +168,9 @@ constituent software items, specifically:
   across a tool-calling turn
 - **ChatClientSummarizer (Unit)** — Consolidates history through an `IChatClient` of the
   application's choosing, out of the session being compacted
+- **ToolPackContextProvider (Unit)** — Contributes AgentKit tools and instructions to every run of a
+  host-built `ChatClientAgent`, composed once per conversation, with each conversation's retention
+  persisted in its session
 - **AgentKitAgentsCopilot (System)** — Builds a Microsoft Agent Framework agent of its own from a
   GitHub Copilot `CopilotClient`, suppressing the runtime's built-in tools by deriving a
   source-qualified session allow-list from the supplied tools, and carries an AgentKit session over

@@ -15,6 +15,11 @@ produce — a raw record, a number, a byte array, an unserializable graph — ar
 hand-built `FixedFunction`, optionally carrying its own serializer options. Results are asserted by
 their observable text, never by inspecting the store.
 
+`Apply` is built on `ToolOutputRetention`, which is used as a real dependency too. The scenarios
+were kept unchanged when `Apply` was rebuilt on it, so they are the regression evidence that a
+composition retains, previews and refuses exactly as before, with the same exceptions; the
+retention's own behavior is verified in *ToolOutputRetention Unit Verification Design*.
+
 Unit tests reside in `ToolOutputSpillTests.cs` within the `DemaConsulting.AgentKit.Core.Tests`
 project.
 

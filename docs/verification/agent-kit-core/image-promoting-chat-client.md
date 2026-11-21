@@ -43,14 +43,92 @@ Unit tests reside in `ImagePromotingChatClientTests.cs`, with the fake client in
 
 ### Acceptance Criteria
 
-A unit test run passes when all nine scenarios below pass without error or exception beyond those
-explicitly asserted. Any image that fails to reach a user message, any content instance that is
-copied rather than carried, any message dropped or reordered, any message added for a text-only
-tool result or for content that is not an image, any promoted message that does not land
-immediately after the tool result it came from, and any difference between the streaming and
-non-streaming paths constitutes a failure.
+A unit test run passes when all seventeen scenarios below pass without error or exception beyond those explicitly
+asserted. Any image that fails to reach a user message, any content instance that is copied rather than carried, any
+message dropped or reordered, any message added for a text-only tool result or for content that is not an image, any
+promoted message that does not land immediately after the tool result it came from, any image content left in a
+forwarded tool result or in a raw representation forwarded with it, any change to the caller's messages, and any
+difference between the streaming and non-streaming paths constitutes a failure.
 
 ### Test Scenarios
+
+#### AgentKitCore-ImagePromotingChatClient-ToolResultCarriesNoImageBytes: The Tool Result Carries a Placeholder
+
+**Test**:
+`ImagePromotingChatClient_GetResponseAsync_ToolResultWithImage_ToolMessageCarriesPlaceholderNotImage`
+
+Asserts the tool message the wrapped client received holds a single function result with the
+original call identifier whose result is exactly the placeholder text naming `image/png` and the
+byte count, and that no `DataContent` remains in it. This is the wire-level view: what the inner
+client receives is what a provider adapter serializes.
+
+#### AgentKitCore-ImagePromotingChatClient-ToolResultCarriesNoImageBytes: A Large Image Leaves a Small Tool Message
+
+**Test**: `ImagePromotingChatClient_GetResponseAsync_LargeImageToolResult_ForwardedToolMessageIsSmall`
+
+A 300,000-byte image. Asserts the forwarded tool result text is under 200 characters and names
+`300,000 bytes`, while the promoted user message carries the same image instance with all its
+bytes. This pins the defect the placeholder fixes: a tool message whose size grew with the image.
+
+#### AgentKitCore-ImagePromotingChatClient-ToolResultCarriesNoImageBytes: A Caption Is Kept and the Image Replaced
+
+**Test**:
+`ImagePromotingChatClient_GetResponseAsync_ToolResultWithCaptionAndImage_CaptionKeptImageReplaced`
+
+The caption-then-image shape. Asserts the forwarded result lists the same caption instance first
+and a placeholder naming `image/jpeg` second, with no `DataContent` left.
+
+#### AgentKitCore-ImagePromotingChatClient-ToolResultCarriesNoImageBytes: The Streaming Path Leaves the Same Placeholder
+
+**Test**:
+`ImagePromotingChatClient_GetStreamingResponseAsync_ToolResultWithImage_ToolMessageCarriesPlaceholder`
+
+Asserts the streamed request's tool result is the placeholder, as on the non-streaming path.
+
+#### AgentKitCore-ImagePromotingChatClient-ToolResultCarriesNoImageBytes: Two Images in One Result Are Each Replaced in Place
+
+**Test**:
+`ImagePromotingChatClient_GetResponseAsync_ToolResultWithTwoImagesInList_EachReplacedInPlaceAndBothPromotedInOrder`
+
+A content list interleaving text with a 4-byte `image/png` and a 6-byte `image/jpeg`. Asserts the
+forwarded result keeps the same four positions: both text instances where they were, and each
+image replaced by its own placeholder naming its media type and size, with no `DataContent` left.
+Asserts the one promoted user message carries the announcement followed by both image instances in
+the order they appeared. Also linked to `AgentKitCore-ImagePromotingChatClient-PromoteImages`.
+
+#### AgentKitCore-ImagePromotingChatClient-ToolResultCarriesNoImageBytes: Parallel Image Results Are Each Replaced
+
+**Test**:
+`ImagePromotingChatClient_GetResponseAsync_ToolMessageWithParallelImageResults_EveryResultReplacedAndCallerUntouched`
+
+One tool message holding two function results, as a function-invocation loop produces for parallel
+calls: a lone image under `call-1` and a caption-then-image list under `call-2`. Asserts the
+forwarded copy keeps both call identifiers in order, that the first result is the `image/png`
+placeholder and the second is the same caption followed by the `image/jpeg` placeholder, that no
+`DataContent` remains in any result, and that one promoted user message carries both images in
+order. Also asserts the caller's tool message still holds the same contents list, the same two
+result instances and the same image and part-list instances, so this scenario is also linked to
+`AgentKitCore-ImagePromotingChatClient-CallerMessagesUnchanged`.
+
+#### AgentKitCore-ImagePromotingChatClient-ToolResultCarriesNoImageBytes: A Rewritten Copy Carries No Raw Representation
+
+**Test**:
+`ImagePromotingChatClient_GetResponseAsync_ToolMessageWithRawRepresentation_ForwardedCopyCarriesNone`
+
+An image tool message and its function result, and a text-only tool message, each carrying a
+stand-in provider-native raw representation. Asserts the forwarded image tool message and its
+rewritten function result have no raw representation and keep the call identifier, that the
+text-only message is forwarded as the same instance with its raw representation intact, and that
+the caller's message and result still hold their original raw representations. An adapter that
+prefers a raw object over the contents would otherwise resend the bytes the placeholder removed.
+
+#### AgentKitCore-ImagePromotingChatClient-CallerMessagesUnchanged: The Caller's Messages Are Not Modified
+
+**Test**: `ImagePromotingChatClient_GetResponseAsync_CallerMessages_AreNotModified`
+
+Asserts that after forwarding, the caller's list still holds one message whose content is the same
+function result instance still carrying the same image, and that the wrapped client received a
+different message instance.
 
 #### AgentKitCore-ImagePromotingChatClient-PromoteImages: An Image Result Adds a User Message Carrying the Same Content
 

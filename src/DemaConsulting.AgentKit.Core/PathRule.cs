@@ -430,22 +430,61 @@ public sealed class PathRule
 
     /// <summary>
     ///     Produces a short human- and model-readable description of this grant, naming its
-    ///     location and access level, for enumeration in a denial message.
+    ///     location relative to the working directory and its access level, for enumeration in a
+    ///     denial message.
     /// </summary>
     /// <remarks>
+    ///     <para>
     ///     Used only to build the "permitted locations" list a denial enumerates, so that a
     ///     refused request is answered with the complete, truthful map of what is actually
-    ///     permitted. The location is the resolved real root, or the word <c>anywhere</c> for an
-    ///     unrestricted grant, followed by the access level. Deny patterns are omitted because
-    ///     they narrow a location rather than name one, and listing them would make the map
-    ///     harder to read without telling the model where it may go instead.
+    ///     permitted. Deny patterns are omitted because they narrow a location rather than name
+    ///     one, and listing them would make the map harder to read without telling the model where
+    ///     it may go instead.
+    ///     </para>
+    ///     <para>
+    ///     The location is stated relative to the working directory — <c>.</c> for the working
+    ///     directory itself, <c>session</c> or <c>../session</c> otherwise, always with forward
+    ///     slashes — because that is how a model addresses it: a relative request is joined to the
+    ///     working directory and normalized before containment is judged, so every relative form
+    ///     here is directly usable. Stating it this way keeps the host's absolute layout out of the
+    ///     transcript, which leaves this process. Only a root with no relative form at all, such as
+    ///     one on another volume, is stated absolutely, because otherwise the map would be
+    ///     incomplete. An unrestricted grant is described as <c>anywhere</c>.
+    ///     </para>
     /// </remarks>
-    /// <returns>A description such as <c>C:\work (read-only)</c> or <c>anywhere (read-write)</c>.</returns>
-    internal string Describe()
+    /// <param name="workingDirectory">
+    ///     The policy's resolved working directory, against which the location is expressed.
+    /// </param>
+    /// <returns>
+    ///     A description such as <c>. (read-only)</c>, <c>../session (read-write)</c> or
+    ///     <c>anywhere (read-write)</c>.
+    /// </returns>
+    internal string Describe(string workingDirectory)
     {
         var level = Access == AccessLevel.ReadWrite ? "read-write" : "read-only";
-        var location = Root ?? "anywhere";
-        return $"{location} ({level})";
+        return $"{DescribeLocation(workingDirectory)} ({level})";
+    }
+
+    /// <summary>
+    ///     Expresses this grant's location relative to a working directory, falling back to the
+    ///     absolute root only when no relative form exists.
+    /// </summary>
+    /// <param name="workingDirectory">The resolved working directory.</param>
+    /// <returns>The location as a model would address it.</returns>
+    private string DescribeLocation(string workingDirectory)
+    {
+        // An unrooted grant has no location to relativize.
+        if (Root is null)
+        {
+            return "anywhere";
+        }
+
+        // A root on a different volume yields a rooted result: there is no relative spelling, so
+        // the absolute root is the only truthful description.
+        var relative = Path.GetRelativePath(workingDirectory, Root);
+        return Path.IsPathRooted(relative)
+            ? Root
+            : relative.Replace(Path.DirectorySeparatorChar, '/');
     }
 
     /// <summary>

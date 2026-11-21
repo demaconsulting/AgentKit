@@ -32,7 +32,7 @@ Unit tests reside in `PathRuleTests.cs` within the `DemaConsulting.AgentKit.Core
 
 ### Acceptance Criteria
 
-A unit test run passes when all seventeen scenarios below pass without error or unexpected
+A unit test run passes when all nineteen scenarios below pass without error or unexpected
 exception.
 Any permitted location that should have been refused, any refused location that should have been
 permitted, any access level not carried exactly as requested, an access level added or removed from
@@ -156,12 +156,29 @@ never in fact be looser than the operator believed.
 
 **Test**: `PathRule_Describe_RootedGrant_NamesLocationAndLevel`
 
-Constructs a read-only grant and asserts `Describe()` includes the resolved root and the
-`(read-only)` access label a denial will enumerate.
+Constructs a read-only grant over a `session` folder beneath a working directory and asserts
+`Describe(workingDirectory)` returns exactly `session (read-only)` and does not contain the
+absolute root.
+
+#### AgentKitCore-PathRule-Describe: The Working Directory and a Sibling Are Described Relatively
+
+**Test**: `PathRule_Describe_WorkingDirectoryAndSibling_AreRelative`
+
+Asserts a grant over the working directory itself is described as `. (read-write)` and a grant
+beside it as `../outside (read-only)`, with forward slashes on every platform.
+
+#### AgentKitCore-PathRule-Describe: A Root on Another Volume Is Described Absolutely
+
+**Test**: `PathRule_Describe_RootOnAnotherVolume_IsAbsolute` (Windows only)
+
+A grant on drive `Z:` described against a working directory on drive `Y:` has no relative form, so
+`Describe` returns the absolute `Z:\data (read-only)` and the map stays complete. The scenario is
+skipped on platforms without drive letters, and the requirement links it with a `windows@` source
+filter.
 
 #### AgentKitCore-PathRule-Describe: An Unrestricted Grant Says Anywhere With Its Access Level
 
 **Test**: `PathRule_Describe_UnrestrictedGrant_SaysAnywhere`
 
-Constructs an unrestricted read-write grant and asserts `Describe()` returns
+Constructs an unrestricted read-write grant and asserts `Describe(workingDirectory)` returns
 `anywhere (read-write)`, proving an unbounded grant still discloses its permission level.

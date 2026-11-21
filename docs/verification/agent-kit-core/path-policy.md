@@ -46,12 +46,12 @@ Unit tests reside in `PathPolicyTests.cs` within the `DemaConsulting.AgentKit.Co
 
 ### Acceptance Criteria
 
-A unit test run passes when all fifty-five scenarios below pass without error or exception beyond
-those explicitly asserted. Any escaping path that is permitted, any excluded file that
-appears in a listing, any relative request resolved against the process working directory, any
-missing working directory accepted, any null grant accepted, any empty grant set permitting access,
-any read-only grant authorizing a write, any denial that fails to echo and enumerate as specified,
-or any exception escaping a refusal constitutes a failure.
+A unit test run passes when all fifty-nine scenarios below pass without error or exception beyond those explicitly
+asserted. Any escaping path that is permitted, any excluded file that appears in a listing, any relative request
+resolved against the process working directory, any missing working directory accepted, any null grant accepted, any
+empty grant set permitting access, any read-only grant authorizing a write, any denial that fails to echo and enumerate
+as specified, any denial stating a host absolute path the request did not supply, or any exception escaping a refusal
+constitutes a failure.
 
 ### Test Scenarios
 
@@ -360,9 +360,11 @@ name an existing path, eliminating the silent wrong-target case.
 
 **Test**: `PathPolicy_TryResolveRead_RelativeDenial_EchoesInterpretsAndEnumerates`
 
-Asserts the new denial order for a relative escape: `Requested: "..."` echoes the input verbatim,
-`Interpreted as:` states the absolute location produced by the working directory, and permitted
-locations are listed with access levels.
+Asserts the denial order for a relative escape: `Requested: "..."` echoes the input verbatim,
+`Interpreted as: ../outside/secret.txt (relative to the working directory)` states the
+interpretation relative to the working directory, and the permitted locations are listed under
+`Permitted locations (relative to the working directory):` with access levels, the working
+directory itself as `. (read-only)`.
 
 #### AgentKitCore-PathPolicy-DenialDisclosesAndEnumerates: Absolute Denial Has No Interpretation Clause
 
@@ -376,8 +378,8 @@ claim an interpretation occurred.
 **Test**: `PathPolicy_TryResolveRead_BareSegmentUnderEmptyGrants_ProducesTheWorkedExample`
 
 Pins the app-folder anchor example. A `file_list("work")`-style request under an ungranted anchor
-echoes `work`, interprets it beneath the working directory, and states that no locations are
-permitted.
+echoes `work`, states the interpretation `work (relative to the working directory)`, and states that
+no locations are permitted.
 
 #### AgentKitCore-PathPolicy-DenialDisclosesAndEnumerates: Omitted Denial Echoes a Stand-In
 
@@ -391,33 +393,31 @@ interpretation clause.
 
 **Test**: `PathPolicy_TryResolveRead_RelativeParentTraversalDenial_InterpretedPathIsNormalized`
 
-A `../outside.md` request that escapes the anchor is denied, and the `Interpreted as:` line reports
-a canonical location: the parent segment is collapsed, so the reported interpretation carries no
-`..`.
+A `../outside.md` request that escapes the anchor is denied, and the `Interpreted as:` line is
+exactly `Interpreted as: ../outside.md (relative to the working directory)`: the place the request
+names, relative to the working directory.
 
 #### AgentKitCore-PathPolicy-DenialDisclosesAndEnumerates: Dot-Slash Denial Normalizes the Interpreted Path
 
 **Test**: `PathPolicy_TryResolveRead_DotSlashDenial_InterpretedPathIsNormalized`
 
-A `./../outside.md` request is denied, and the reported interpretation collapses both the `.` and
-the `..` segments, so neither a `..` nor a same-directory `.` navigation survives in the
-`Interpreted as:` line.
+A `./../outside.md` request is denied, and the reported interpretation collapses the `./`
+navigation, leaving exactly `../outside.md` — only the one `..` that leaves the working directory.
 
 #### AgentKitCore-PathPolicy-DenialDisclosesAndEnumerates: Nested Traversal Denial Normalizes the Interpreted Path
 
 **Test**: `PathPolicy_TryResolveRead_NestedTraversalDenial_InterpretedPathIsNormalized`
 
-A nested `a/../../b/outside.md` request is denied, and the `Interpreted as:` line equals the
-lexically normalized location `Path.GetFullPath(Path.Combine(workingDirectory, request))`, with no
-`..` remaining.
+A nested `a/../../b/outside.md` request is denied, and the `Interpreted as:` line states exactly
+`../b/outside.md`: the lexically normalized location expressed relative to the working directory,
+with the `a/..` navigation collapsed.
 
 #### AgentKitCore-PathPolicy-DenialDisclosesAndEnumerates: Plain Relative Denial Reports the Interpretation Verbatim
 
 **Test**: `PathPolicy_TryResolveRead_PlainRelativeDenial_InterpretedPathReportedVerbatim`
 
-The no-regression pin: a plain relative name needing no normalization is still reported as the
-working-directory-combined location exactly as before, confirming normalization did not alter the
-no-op case.
+The no-regression pin: a plain relative name needing no normalization is reported as itself,
+`work (relative to the working directory)`, confirming normalization does not alter the no-op case.
 
 #### AgentKitCore-PathPolicy-DenialDisclosesAndEnumerates: Interpreted-Path Normalization Failure Still Denies and Discloses
 
@@ -425,7 +425,8 @@ no-op case.
 
 The robustness pin for the non-throwing contract. A relative request whose interpretation cannot be
 normalized (an embedded null after a parent segment) still returns a denial rather than throwing,
-still echoes the requested text, and still enumerates the permitted location.
+still echoes the requested text, still enumerates the permitted location as `. (read-only)`, and
+never states the working directory absolutely.
 
 #### AgentKitCore-PathPolicy-DenialDisclosesAndEnumerates: Alias to a Read-Only Grant Omits the Interpretation Clause
 
@@ -434,6 +435,37 @@ still echoes the requested text, and still enumerates the permitted location.
 A write aliased to a read-only grant is denied because it is read-only, and the denial omits the
 `Interpreted as:` line entirely, because the alias branch performs no working-directory
 interpretation.
+
+#### AgentKitCore-PathPolicy-DenialDisclosesAndEnumerates: A Relative Denial Never States the Working Directory Absolutely
+
+**Test**: `PathPolicy_TryResolveRead_RelativeDenial_NeverStatesTheWorkingDirectoryAbsolutely`
+
+A refused relative request under a granted working directory and a granted sibling. Asserts neither
+the working directory's absolute location, the sibling grant's absolute location, nor the temporary
+base directory appears in the denial, compared case-insensitively.
+
+#### AgentKitCore-PathPolicy-DenialDisclosesAndEnumerates: Grants Are Described Relative to the Working Directory
+
+**Test**: `PathPolicy_TryResolveRead_Denial_DescribesGrantsRelativeToTheWorkingDirectory`
+
+Grants over the working directory, a folder inside it and a folder beside it. Asserts the denial
+lists `. (read-only)`, `session (read-write)` and `../outside/session (read-write)`.
+
+#### AgentKitCore-PathPolicy-DenialDisclosesAndEnumerates: A Relative Grant Description Is Addressable
+
+**Test**: `PathPolicy_TryResolveRead_RelativeGrantDescription_IsAddressable`
+
+Proves the relative map is usable: a denial under an ungranted working directory lists
+`../outside (read-only)`, and a read of `../outside/notes.txt` — the spelling the map suggests — is
+permitted and reaches the file.
+
+#### AgentKitCore-PathPolicy-DenialDisclosesAndEnumerates: An Absolute Denial Echoes Only the Request
+
+**Test**: `PathPolicy_TryResolveRead_AbsoluteDenial_EchoesOnlyTheRequest`
+
+An absolute request outside the working directory. Asserts the request is echoed verbatim — the one
+absolute path, which the model supplied — the working directory's absolute location does not
+appear, and the working directory is listed as `. (read-write)`.
 
 #### AgentKitCore-PathPolicy-EnumerationFiltered: Permitted Files Are Listed
 

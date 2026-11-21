@@ -98,3 +98,5 @@ the level before any consolidation is requested.
 
 Applications implement `ISummarizer`. `RotationEngine` calls it during rotation, once for the
 material aging out of the verbatim tail and again for each cascade that consolidates a full tier.
+`AgentKitChatReducer` calls it once per reduction of a host-owned history, with `ConsolidationPrompt`
+supplying the aggressiveness clause for its configured level.

@@ -238,6 +238,17 @@ jobs:
           --configuration Release
           --property:Version=${{ inputs.version }}
 
+      # The opt-in live Ollama suite is likewise outside AgentKit.slnx and needs a reachable Ollama
+      # server, so it never runs here. Compiling it keeps an internal change that breaks it from
+      # passing the merge gate; no test runs and no server is contacted.
+      - name: Compile Live ChatClient Suite
+        if: matrix.os == 'ubuntu-latest'
+        run: >
+          dotnet build
+          test/DemaConsulting.AgentKit.Agents.ChatClient.LiveTests/DemaConsulting.AgentKit.Agents.ChatClient.LiveTests.csproj
+          --configuration Release
+          --property:Version=${{ inputs.version }}
+
       # === UPLOAD ARTIFACTS ===
       # This section uploads all generated artifacts for use by downstream jobs.
       # Downstream projects: Add any additional artifact uploads here.

@@ -83,6 +83,11 @@ sections:
         children:
           - AgentKitAgentsChatClient-AgentConstruction-FromChatClientAndTools
           - AgentKitAgentsChatClient-ImagePromotion-AlwaysInstalled
+          - AgentKitAgentsChatClient-ImagePromotion-HostBuiltPipeline
+          - AgentKitAgentsChatClient-ImagePromotion-NoImageBytesOnTheWire
+          - AgentKitAgentsChatClient-ContextProvider-ToolsPerConversation
+          - AgentKitAgentsChatClient-ContextProvider-RetentionSurvivesSessionSerialization
+          - AgentKitAgentsChatClient-HistoryReducer-PlugsIntoTheAgentFramework
           - AgentKitAgentsChatClient-SessionAdapter-CarriesACoreSession
           - AgentKitAgentsChatClient-SessionAdapter-OccupancyFromTheProvider
           - AgentKitAgentsChatClient-Consolidation-ThroughASeparateChatClient
@@ -145,3 +150,36 @@ sections:
           - AgentKitAgentsOllama_ContextSizing_EveryRequestAsksTheServerForTheStatedWindow
           - OllamaContextWindow_ReadAsync_ModelLoaded_ReportsTheLengthTheServerEnforces
           - AgentKitAgentsChatClient_Session_RotatesOnTheProvidersUsage_AndSeedsTheReplacement
+          - AgentKitAgentsChatClient_ImagePromotion_OverOllamaSharp_ToolMessageCarriesNoImageBytes
+
+      - id: AgentKit-Tools-AnyAgentRuntime
+        title: >-
+          AgentKit's tools shall be usable as plain Microsoft.Extensions.AI functions in an agent
+          runtime AgentKit did not build — a Microsoft Agent Framework chat-client agent or a raw
+          IChatClient pipeline — with their result ceilings, per-conversation retention of large
+          outputs, image delivery and history consolidation available there.
+        tags: [system]
+        justification: |
+          An application author may already own the agent loop: an Agent Framework agent built by
+          hand, or a chat-client pipeline with function invocation. AgentKit's tools are AIFunctions,
+          so they run there unchanged, but the controls around them had been reachable only through
+          AgentKit's own factories and sessions: a foreign tool beside them was unbounded, retention
+          lived and died with one tool list and was lost when the runtime persisted a conversation,
+          a tool-returned image never reached an Ollama model, and the consolidation prompt was
+          usable only inside AgentKit's session engine. Each control must be available as a building
+          block the author's own runtime accepts.
+        children:
+          - AgentKitCore-ForeignTools-BoundedByLimits
+          - AgentKitCore-ToolOutput-PerConversationRetention
+          - AgentKitCore-Compaction-HostOwnedHistoryReducer
+          - AgentKitAgentsChatClient-ImagePromotion-HostBuiltPipeline
+          - AgentKitAgentsChatClient-ContextProvider-ToolsPerConversation
+          - AgentKitAgentsChatClient-ContextProvider-RetentionSurvivesSessionSerialization
+          - AgentKitAgentsChatClient-HistoryReducer-PlugsIntoTheAgentFramework
+        tests:
+          - AgentKitCore_SystemForeignTool_GuardedOversizedResult_IsRefused
+          - AgentKitCore_SystemToolOutput_RestoredRetention_AnswersAnEarlierReference
+          - AgentKitAgentsChatClient_ContextProvider_ToolsReachTheProviderAndRun
+          - AgentKitAgentsChatClient_ContextProvider_DeserializedSession_PagesAnEarlierOutput
+          - AgentKitAgentsChatClient_ImagePromotion_BuilderExtension_PromotesBeneathFunctionInvocation
+          - AgentKitAgentsChatClient_ChatReducer_InMemoryHistoryProvider_ReducesStoredHistory

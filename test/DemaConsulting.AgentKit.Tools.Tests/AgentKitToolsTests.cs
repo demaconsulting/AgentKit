@@ -599,6 +599,52 @@ public class AgentKitToolsTests
     }
 
     /// <summary>
+    ///     Proves that a path tool's denial discloses no host absolute path: the refusal from every
+    ///     path-taking family names the permitted location relative to the working directory, and
+    ///     neither the working directory nor the temporary base it sits in appears.
+    /// </summary>
+    /// <remarks>
+    ///     Every path-taking tool passes the access policy's denial through unchanged, so one
+    ///     scenario across the families is the system-level evidence that a refusal never adds a
+    ///     host location the model was not already given.
+    /// </remarks>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task AgentKitTools_PathDenials_DiscloseNoHostAbsolutePath()
+    {
+        // Arrange: a read-only workspace with every path-taking family that reads a single path
+        using var fixture = new TextFile.TempDirectoryFixture();
+        TextFile.TempDirectoryFixture.WriteFile(fixture.Outside, "x.png", "not really an image");
+        var policy = new PathPolicy(fixture.Root, [PathRule.ReadOnly(fixture.Root)]);
+        var tools = new ToolPackBuilder(policy)
+            .WithHostCapabilities(HostCapabilities.Vision)
+            .Add(new TextFilePack())
+            .Add(new FilePack())
+            .Add(new ImagePack())
+            .Build();
+
+        // Act: each tool is asked for a location outside the grant, the way a model escapes
+        var denials = new[]
+        {
+            await Invoke(tools, TextFileReadTool.ToolName, new() { ["path"] = "../outside/x.png" }),
+            await Invoke(tools, TextFileSearchTool.ToolName, new() { ["pattern"] = "x", ["path"] = "../outside" }),
+            await Invoke(tools, FileListTool.ToolName, new() { ["directory"] = "../outside" }),
+            await Invoke(tools, ImageReadTool.ToolName, new() { ["path"] = "../outside/x.png" })
+        };
+
+        // Assert: each is a path denial naming the grant relatively, with no host absolute path
+        var workingDirectory = RealPathResolver.Resolve(fixture.Root);
+        var temporaryBase = Path.GetTempPath().TrimEnd('\\', '/');
+        Assert.All(denials, denial =>
+        {
+            Assert.StartsWith("Denied (PathNotPermitted)", denial, StringComparison.Ordinal);
+            Assert.Contains("  - . (read-only)", denial, StringComparison.Ordinal);
+            Assert.DoesNotContain(workingDirectory, denial, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain(temporaryBase, denial, StringComparison.OrdinalIgnoreCase);
+        });
+    }
+
+    /// <summary>
     ///     Invokes the named tool from a composed list and returns its text result.
     /// </summary>
     /// <param name="tools">The composed list.</param>

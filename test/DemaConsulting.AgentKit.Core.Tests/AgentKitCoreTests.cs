@@ -110,9 +110,8 @@ public class AgentKitCoreTests
     ///     confined model learns where it may work.
     /// </summary>
     /// <remarks>
-    ///     The host-path-disclosure rule the earlier redaction tests enforced has been deliberately
-    ///     dropped: telling a confined model the map of where it may go is worth more than concealing
-    ///     paths it is already confined to.
+    ///     The map is stated relative to the working directory, the form in which a model addresses
+    ///     it, so it is complete and usable without stating where the host keeps it.
     /// </remarks>
     [Fact]
     public void AgentKitCore_SystemPathPolicy_DenialMessage_DisclosesPermittedLocations()
@@ -128,8 +127,7 @@ public class AgentKitCoreTests
         // Assert: the request is echoed and the permitted location is enumerated with its level
         Assert.NotNull(denialMessage);
         Assert.Contains(requested, denialMessage, StringComparison.Ordinal);
-        Assert.Contains(policy.WorkingDirectory, denialMessage, StringComparison.Ordinal);
-        Assert.Contains("(read-write)", denialMessage, StringComparison.Ordinal);
+        Assert.Contains("  - . (read-write)", denialMessage, StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -170,8 +168,42 @@ public class AgentKitCoreTests
         // Assert: the denial echoes the input, states the interpretation, and names the location
         Assert.NotNull(denialMessage);
         Assert.Contains("Requested: \"../outside/elsewhere.txt\"", denialMessage, StringComparison.Ordinal);
-        Assert.Contains("Interpreted as:", denialMessage, StringComparison.Ordinal);
-        Assert.Contains(policy.WorkingDirectory, denialMessage, StringComparison.Ordinal);
+        Assert.Contains(
+            "Interpreted as: ../outside/elsewhere.txt (relative to the working directory)",
+            denialMessage,
+            StringComparison.Ordinal);
+        Assert.Contains("  - . (read-write)", denialMessage, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves that a denial the system produces for a relative request discloses no host
+    ///     absolute path: neither the working directory nor any granted location is stated
+    ///     absolutely.
+    /// </summary>
+    /// <remarks>
+    ///     A denial joins the transcript, which leaves this process. Relative requests are joined to
+    ///     the working directory and normalized before containment is judged, so the relative map is
+    ///     fully addressable and the host's absolute layout adds nothing the model needs.
+    /// </remarks>
+    [Fact]
+    public void AgentKitCore_SystemPathPolicy_DenialMessage_DisclosesNoHostAbsolutePath()
+    {
+        // Arrange: a working directory granted read-only and a sibling granted read-write
+        using var fixture = new TempDirectoryFixture();
+        Directory.CreateDirectory(fixture.Outside);
+        var policy = new PathPolicy(
+            fixture.Root,
+            [PathRule.ReadOnly(fixture.Root), PathRule.ReadWrite(fixture.Outside)]);
+
+        // Act: a relative write the read-only grant refuses
+        policy.TryResolveWrite("notes.txt", out _, out var denialMessage);
+
+        // Assert: the map is complete and relative, and no absolute host location appears
+        Assert.NotNull(denialMessage);
+        Assert.Contains("  - . (read-only)", denialMessage, StringComparison.Ordinal);
+        Assert.Contains("  - ../outside (read-write)", denialMessage, StringComparison.Ordinal);
+        Assert.DoesNotContain(policy.WorkingDirectory, denialMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(Path.GetTempPath().TrimEnd('\\', '/'), denialMessage, StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>
@@ -204,6 +236,67 @@ public class AgentKitCoreTests
         Assert.Equal(3, provider.ReceivedMessages.Count);
         Assert.Equal(ChatRole.User, provider.ReceivedMessages[2].Role);
         Assert.Same(image, Assert.IsType<DataContent>(provider.ReceivedMessages[2].Contents[1]));
+    }
+
+    /// <summary>
+    ///     Proves that a promoted image leaves only a placeholder in the tool result the provider
+    ///     receives, so the image is sent once and cannot flood the context as text.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task AgentKitCore_SystemImagePromotion_PromotedImage_LeavesOnlyAPlaceholderInTheToolResult()
+    {
+        // Arrange: a conversation whose tool result carries a large image after a caption
+        var image = new DataContent(new byte[250_000], "image/png");
+        var toolResult = new List<AIContent> { new TextContent("A screenshot."), image };
+        using var provider = new ScriptedChatClient();
+        using var client = new ImagePromotingChatClient(provider);
+        var messages = new List<ChatMessage>
+        {
+            new(ChatRole.User, "What does the screenshot show?"),
+            new(ChatRole.Tool, [new FunctionResultContent("call-1", toolResult)])
+        };
+
+        // Act: send the conversation as a function-invocation loop would
+        await client.GetResponseAsync(
+            messages,
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        // Assert: the tool result keeps the caption and a short placeholder, and no image content
+        var forwarded = Assert.IsType<FunctionResultContent>(Assert.Single(provider.ReceivedMessages[1].Contents));
+        var parts = Assert.IsAssignableFrom<IEnumerable<AIContent>>(forwarded.Result).ToList();
+        Assert.DoesNotContain(parts, part => part is DataContent);
+        var placeholder = Assert.IsType<TextContent>(parts[1]).Text;
+        Assert.Contains("image/png", placeholder, StringComparison.Ordinal);
+        Assert.True(placeholder.Length < 200, $"Placeholder was {placeholder.Length} characters.");
+        Assert.Same(image, Assert.IsType<DataContent>(provider.ReceivedMessages[2].Contents[1]));
+    }
+
+    /// <summary>
+    ///     Proves that an application can bound a tool the library did not build by the library's
+    ///     ceilings, so an oversized result from it is refused rather than reaching the provider.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task AgentKitCore_SystemForeignTool_GuardedOversizedResult_IsRefused()
+    {
+        // Arrange: a tool built with the plain function factory, returning 300 structured rows,
+        // bounded by a 1,500-character result ceiling
+        var report = AIFunctionFactory.Create(
+            (int rows) => Enumerable.Range(1, rows).Select(n => new { row = n, square = n * n }),
+            "report_rows",
+            "Returns one row per number with its square.");
+        var bounded = report.AsGuarded(new ToolLimits(maxResultCharacters: 1_500));
+
+        // Act: invoke both as a runtime would
+        var arguments = new AIFunctionArguments { ["rows"] = 300 };
+        var unbounded = await report.InvokeAsync(arguments, TestContext.Current.CancellationToken);
+        var guarded = await bounded.InvokeAsync(arguments, TestContext.Current.CancellationToken);
+
+        // Assert: unwrapped, the result is far beyond the ceiling; bounded, it is refused
+        Assert.True(Assert.IsType<System.Text.Json.JsonElement>(unbounded).GetRawText().Length > 1_500);
+        Assert.StartsWith("Denied (ResourceTooLarge)", Assert.IsType<string>(guarded), StringComparison.Ordinal);
+        Assert.Equal(report.Name, bounded.Name);
     }
 
     /// <summary>
@@ -408,6 +501,105 @@ public class AgentKitCoreTests
         // Act & Assert: ambiguous tool names are refused where the application composed them
         Assert.Throws<ArgumentException>(
             () => builder.Add(new StubToolPack("text_file", tools: [])));
+    }
+
+    /// <summary>
+    ///     Proves that a retention handle an application owns covers tools wrapped into it at
+    ///     different times, so every reference is paged through one pair of readers.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task AgentKitCore_SystemToolOutput_RetentionHandle_PagesOutputsOfToolsWrappedSeparately()
+    {
+        // Arrange: one retention for a conversation, a tool wrapped at the start and a foreign tool
+        // added later
+        var retention = new ToolOutputRetention(new ToolLimits(maxResultCharacters: 2_000));
+        var early = retention.Wrap(LargeReportTool());
+        var late = retention.Wrap(AIFunctionFactory.Create(
+            () => string.Join("\n", Enumerable.Range(1, 500).Select(n => "late " + n)),
+            "late_report",
+            "A report added later."));
+        List<AIFunction> tools = [early, late, .. retention.ReaderTools];
+
+        // Act: both tools retain, and the readers page each reference
+        await InvokeAsync(tools, "report_build");
+        await InvokeAsync(tools, "late_report");
+        var first = Assert.IsType<string>(await InvokeAsync(tools, ToolOutputReadTool.ToolName, new()
+        {
+            ["id"] = "output-1",
+            ["startLine"] = 1,
+            ["lineCount"] = 1,
+        }));
+        var second = Assert.IsType<string>(await InvokeAsync(tools, ToolOutputReadTool.ToolName, new()
+        {
+            ["id"] = "output-2",
+            ["startLine"] = 500,
+            ["lineCount"] = 1,
+        }));
+
+        // Assert: one sequence of references, readable whichever tool issued it
+        Assert.StartsWith("output-1 lines 1-1 of 5000", first, StringComparison.Ordinal);
+        Assert.Equal("output-2 lines 500-500 of 500\n500| late 500", second);
+    }
+
+    /// <summary>
+    ///     Proves that a retention exported with a conversation and restored later answers a
+    ///     reference the model was given before the restore.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task AgentKitCore_SystemToolOutput_RestoredRetention_AnswersAnEarlierReference()
+    {
+        // Arrange: a retention that retained a report, persisted as JSON as a host would
+        var limits = new ToolLimits(maxResultCharacters: 2_000);
+        var retention = new ToolOutputRetention(limits);
+        await InvokeAsync([retention.Wrap(LargeReportTool())], "report_build");
+        var json = System.Text.Json.JsonSerializer.Serialize(retention.Export(), ToolOutputRetentionSnapshot.JsonTypeInfo);
+
+        // Act: reload it and read the earlier reference
+        var snapshot = System.Text.Json.JsonSerializer.Deserialize(json, ToolOutputRetentionSnapshot.JsonTypeInfo)!;
+        var restored = ToolOutputRetention.Restore(snapshot, limits);
+        var page = Assert.IsType<string>(await InvokeAsync([.. restored.ReaderTools], ToolOutputReadTool.ToolName, new()
+        {
+            ["id"] = "output-1",
+            ["startLine"] = 5000,
+            ["lineCount"] = 1,
+        }));
+
+        // Assert: the same content the reference named before the restore
+        Assert.StartsWith("output-1 lines 5000-5000 of 5000", page, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves that a host-owned history over the threshold is consolidated through the injected
+    ///     summarizer into one record, keeping the system message and the most recent turns verbatim.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task AgentKitCore_SystemChatReducer_OverThresholdHistory_IsConsolidatedKeepingTheTail()
+    {
+        // Arrange: a reducer over a deterministic summarizer, and a long history with a system message
+        var summarizer = new FakeSummarizer(request => "The vault code is 4417-BRAVO.");
+        IChatReducer reducer = new AgentKitChatReducer(summarizer, thresholdCharacters: 200, verbatimTurns: 1);
+        var system = new ChatMessage(ChatRole.System, "You are concise.");
+        List<ChatMessage> history = [system, new(ChatRole.User, "Remember: the vault code is 4417-BRAVO.")];
+        history.Add(new ChatMessage(ChatRole.Assistant, "Noted."));
+        for (var turn = 1; turn <= 4; turn++)
+        {
+            history.Add(new ChatMessage(ChatRole.User, "Tell me about topic " + turn + "."));
+            history.Add(new ChatMessage(ChatRole.Assistant, new string('x', 100)));
+        }
+
+        // Act: reduce, as a chat history provider would before retrieval
+        var reduced = (await reducer.ReduceAsync(history, TestContext.Current.CancellationToken)).ToList();
+
+        // Assert: system, one record holding the fact, then the last turn; and the material held the fact
+        Assert.Equal(4, reduced.Count);
+        Assert.Same(system, reduced[0]);
+        Assert.Contains("4417-BRAVO", reduced[1].Text, StringComparison.Ordinal);
+        Assert.Same(history[^2], reduced[2]);
+        Assert.Same(history[^1], reduced[3]);
+        Assert.Contains("4417-BRAVO", Assert.Single(summarizer.Requests).Material, StringComparison.Ordinal);
     }
 
     /// <summary>

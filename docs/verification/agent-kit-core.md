@@ -115,9 +115,17 @@ with no location and a non-empty reason.
 **Test**: `AgentKitCore_SystemPathPolicy_DenialMessage_DisclosesPermittedLocations`
 
 Verifies that a denial tells a confined model the truthful map of where it may work. Requests a
-path outside the permitted location and asserts the message echoes the requested path, names the
-permitted location, and marks its access level — the host-path-disclosure rule the earlier
-redaction requirement enforced having been deliberately dropped.
+path outside the permitted location and asserts the message echoes the requested path and names the
+permitted location relative to the working directory, as `. (read-write)`, with its access level.
+
+### Path Policy: A Denial Message Discloses No Host Absolute Path
+
+**Test**: `AgentKitCore_SystemPathPolicy_DenialMessage_DisclosesNoHostAbsolutePath`
+
+Verifies that a denial for a relative request keeps the host's layout out of the transcript.
+Configures a read-only working directory and a read-write sibling, attempts a relative write, and
+asserts the denial lists `. (read-only)` and `../outside (read-write)` while containing neither the
+working directory's absolute location nor the temporary base directory.
 
 ### Path Policy: A Relative Path From a Model Resolves Against the Working Directory
 
@@ -147,6 +155,49 @@ a guarded tool produces, sends the conversation through the decorator as a funct
 loop would, and asserts the client behind it received the image on a following user message, as
 the same content instance. Confirms a host can make image delivery independent of whether its
 provider carries images out of tool results.
+
+### Image Delivery: A Promoted Image Leaves Only a Placeholder in the Tool Result
+
+**Test**: `AgentKitCore_SystemImagePromotion_PromotedImage_LeavesOnlyAPlaceholderInTheToolResult`
+
+Verifies that the image is delivered once. Sends a caption-then-image tool result carrying a
+250,000-byte image and asserts the tool result the client behind the decorator received keeps the
+caption followed by a placeholder under 200 characters naming the media type, carries no image
+content, and that the image itself arrived on the following user message.
+
+### Foreign Tools: A Bounded Foreign Tool's Oversized Result Is Refused
+
+**Test**: `AgentKitCore_SystemForeignTool_GuardedOversizedResult_IsRefused`
+
+Verifies that an application can bound a tool the library did not build. A 300-row report tool
+built with the plain function factory is invoked unwrapped — its JSON result exceeds 1,500
+characters — and bounded by a 1,500-character ceiling through `AsGuarded`, which returns a
+`ResourceTooLarge` refusal while keeping the tool's name.
+
+### Large Tool Outputs: A Retention Handle Pages Outputs of Tools Wrapped Separately
+
+**Test**: `AgentKitCore_SystemToolOutput_RetentionHandle_PagesOutputsOfToolsWrappedSeparately`
+
+Verifies the per-conversation handle. One `ToolOutputRetention` wraps a guarded report tool and,
+separately, a foreign tool added later; both retain, their references are numbered `output-1` and
+`output-2` in one sequence, and the readers page each.
+
+### Large Tool Outputs: A Restored Retention Answers an Earlier Reference
+
+**Test**: `AgentKitCore_SystemToolOutput_RestoredRetention_AnswersAnEarlierReference`
+
+Verifies persistence. A retention that retained a 5,000-line report is exported, serialized to JSON
+through the published contract, deserialized and restored; the restored readers page line 5,000 of
+`output-1`.
+
+### Chat Reducer: An Over-Threshold History Is Consolidated Keeping the Tail
+
+**Test**: `AgentKitCore_SystemChatReducer_OverThresholdHistory_IsConsolidatedKeepingTheTail`
+
+Verifies the host-owned history reducer through the `IChatReducer` contract. A system message, a turn
+establishing a vault code and four long turns exceed a 200-character threshold with one turn kept;
+the result is the same system message, one record carrying the code, and the last turn as the same
+instances, and the material handed to the deterministic summarizer held the code.
 
 ### Path Policy: Construction Without a Working Directory Is Rejected
 

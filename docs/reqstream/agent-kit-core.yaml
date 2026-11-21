@@ -124,25 +124,35 @@ sections:
       - id: AgentKitCore-PathAccess-DenialDisclosure
         title: >-
           The library shall state in a denial the request it received, the location it interpreted
-          a relative request as, and the permitted locations with their access levels, so a
-          confined model learns where it may work instead of guessing.
-        tags: [system]
+          a relative request as, and the permitted locations with their access levels, stating
+          locations relative to the working directory, so a confined model learns where it may work
+          instead of guessing without the denial disclosing a host absolute path the model did not
+          supply, except a permitted location that has no relative form.
+        tags: [system, security]
         justification: |
           A denial that only refuses is useless to the agent receiving it: told nothing but "no",
-          a model re-submits variations of the same path until it abandons the task. The earlier
-          rule that redacted host locations from a denial is deliberately dropped, because telling
-          a confined model the truthful map of where it may work is worth more than concealing
-          paths it is already confined to. A denial therefore echoes the request, states the
-          interpretation when and only when a relative request was interpreted so a silent
-          wrong-target cannot pass unnoticed, and enumerates the permitted locations with their
-          levels. Each grant contributes its own description to that enumeration. A denial states
-          facts and prescribes no remedy.
+          a model re-submits variations of the same path until it abandons the task. A denial
+          therefore echoes the request, states the interpretation when and only when a relative
+          request was interpreted so a silent wrong-target cannot pass unnoticed, and enumerates
+          the permitted locations with their levels. Each grant contributes its own description to
+          that enumeration. A denial states facts and prescribes no remedy.
+
+          An earlier version stated the interpretation and every permitted location as host
+          absolute paths, on the reasoning that the map was worth more than concealment. That is
+          reversed: the transcript a denial joins leaves the host, and an absolute path discloses
+          the host's directory layout and user name while adding nothing the model can use, because
+          a relative request is joined to the working directory and normalized before containment
+          is judged, so the relative map is complete and directly addressable. The working
+          directory is stated as ".", a location beside it as "../name". Only a grant with no
+          relative form at all, such as one on another volume, is named absolutely, because
+          otherwise the map would be incomplete.
         children:
           - AgentKitCore-PathPolicy-DenialDisclosesAndEnumerates
           - AgentKitCore-PathRule-Describe
         tests:
           - AgentKitCore_SystemPathPolicy_DenialMessage_DisclosesPermittedLocations
           - AgentKitCore_SystemPathPolicy_DenialMessage_StatesHowToRecover
+          - AgentKitCore_SystemPathPolicy_DenialMessage_DisclosesNoHostAbsolutePath
 
       - id: AgentKitCore-PathAccess-GuardedConstruction
         title: >-
@@ -227,9 +237,13 @@ sections:
           never received. A control exchange placing the same bytes on a user message was
           described correctly by the same model, so the limitation is one of channel rather than
           capability. A host must therefore be able to make image delivery independent of which
-          provider it chose.
+          provider it chose. The image must be delivered once: a provider adapter that flattens a
+          tool-result image into the tool message as base64 text would otherwise flood the context
+          window, so the delivered tool result carries a short placeholder in its place.
         children:
           - AgentKitCore-ImagePromotingChatClient-PromoteImages
+          - AgentKitCore-ImagePromotingChatClient-ToolResultCarriesNoImageBytes
+          - AgentKitCore-ImagePromotingChatClient-CallerMessagesUnchanged
           - AgentKitCore-ImagePromotingChatClient-AnnouncesAttachment
           - AgentKitCore-ImagePromotingChatClient-TextResultUnchanged
           - AgentKitCore-ImagePromotingChatClient-MessageOrderPreserved
@@ -237,6 +251,59 @@ sections:
           - AgentKitCore-ImagePromotingChatClient-RequiresInnerClient
         tests:
           - AgentKitCore_SystemImagePromotion_ToolImageResult_ReachesTheProviderOnAUserMessage
+          - AgentKitCore_SystemImagePromotion_PromotedImage_LeavesOnlyAPlaceholderInTheToolResult
+
+      - id: AgentKitCore-ForeignTools-BoundedByLimits
+        title: >-
+          The library shall let an application bound a tool it did not build by the library's
+          result-character and binary-byte ceilings, so an oversized result from that tool is
+          refused, or retained when retention is composed, instead of reaching the provider.
+        tags: [system, security]
+        justification: |
+          An application commonly hands an agent tools it wrote itself or took from another library
+          alongside the library's own. Without a way to bound them, the ceilings protect only part of
+          the tool list: a 300-row report tool built with the plain function factory returned 6,350
+          characters against a 1,500-character limit, unchecked. The bound must work on any function,
+          in any agent runtime, without changing what the provider sees of the tool.
+        children:
+          - AgentKitCore-GuardedToolFactory-AsGuardedBoundsText
+          - AgentKitCore-GuardedToolFactory-AsGuardedBoundsBinary
+          - AgentKitCore-GuardedToolFactory-AsGuardedSerializesStructured
+          - AgentKitCore-GuardedToolFactory-AsGuardedPreservesMetadata
+          - AgentKitCore-GuardedToolFactory-AsGuardedDefersToRetention
+          - AgentKitCore-GuardedToolFactory-AsGuardedRejectsMissingArguments
+        tests:
+          - AgentKitCore_SystemForeignTool_GuardedOversizedResult_IsRefused
+
+      - id: AgentKitCore-Compaction-HostOwnedHistoryReducer
+        title: >-
+          The library shall let a host that owns its chat history reduce it through the library's
+          consolidation, consolidating older messages through the injected summarizer and
+          consolidation prompt into one record while keeping system messages and the most recent
+          whole turns verbatim.
+        tags: [system]
+        justification: |
+          Not every host adopts the library's session engine: an agent framework's chat-client
+          agent, or a raw chat-client pipeline, owns its history and offers a reducer hook instead.
+          Such a host still needs a long conversation to fit its context window without losing named
+          facts, decisions and outstanding work, which is what the library's consolidation prompt
+          preserves. The reducer is a reduced-fidelity option — one record, one fixed level, no
+          rotation, character estimates rather than provider-reported usage — and the session engine
+          remains the full-fidelity option and the only one where the runtime owns the history.
+        children:
+          - AgentKitCore-AgentKitChatReducer-UnderThresholdUnchanged
+          - AgentKitCore-AgentKitChatReducer-KeepsSystemAndVerbatimTail
+          - AgentKitCore-AgentKitChatReducer-ToolPairsIndivisible
+          - AgentKitCore-AgentKitChatReducer-ConsolidatesThroughSummarizer
+          - AgentKitCore-AgentKitChatReducer-FoldsPreviousRecord
+          - AgentKitCore-AgentKitChatReducer-RecognizesOnlyItsOwnRecords
+          - AgentKitCore-AgentKitChatReducer-BlankRecordKeepsHistory
+          - AgentKitCore-AgentKitChatReducer-NoImageBytesInMaterial
+          - AgentKitCore-AgentKitChatReducer-RejectsInvalidArguments
+          - AgentKitCore-AgentKitChatReducer-HonorsCancellation
+          - AgentKit-OTS-MicrosoftExtensionsAIAbstractions-ChatReducer
+        tests:
+          - AgentKitCore_SystemChatReducer_OverThresholdHistory_IsConsolidatedKeepingTheTail
 
       - id: AgentKitCore-ToolResult-RefusalIsAResult
         title: >-
@@ -414,6 +481,35 @@ sections:
           - AgentKitCore_SystemToolOutput_ReferenceSurvivesSessionRotation
           - AgentKitCore_SystemToolOutput_Readers_AcceptNoPath
           - AgentKitCore_SystemToolOutput_WithoutRetention_OversizedOutputIsRefusedAsBefore
+
+      - id: AgentKitCore-ToolOutput-PerConversationRetention
+        title: >-
+          The library shall let an application own the retention of large tool outputs for one
+          conversation as a single handle that covers tools added at different times, publishes the
+          reader tools once, and exports and restores its retained outputs so references survive the
+          conversation being persisted.
+        tags: [system]
+        justification: |
+          Retention composed into a tool list lives and dies with that list, so a tool added to a
+          conversation later could only be covered by recomposing — losing every reference — and an
+          agent runtime that serializes and reloads a conversation lost them all as well. An
+          application that owns its agent loop, or injects tools into a runtime per conversation,
+          needs the retention as an object it keeps with the conversation.
+        children:
+          - AgentKitCore-ToolOutputRetention-SharedAcrossWraps
+          - AgentKitCore-ToolOutputRetention-ReaderToolsPublished
+          - AgentKitCore-ToolOutputRetention-MinimumResultCeiling
+          - AgentKitCore-ToolOutputRetention-RejectsInvalidTools
+          - AgentKitCore-ToolOutputRetention-ExportRestore
+          - AgentKitCore-ToolOutputRetention-NumberingContinuesAfterRestore
+          - AgentKitCore-ToolOutputRetention-RestoreAppliesCurrentCeilings
+          - AgentKitCore-ToolOutputRetention-RestoreRejectsMalformedSnapshot
+          - AgentKitCore-ToolOutputRetention-SnapshotOwnsItsData
+          - AgentKitCore-ToolOutputRetention-Isolated
+          - AgentKitCore-ToolOutputStore-SnapshotRestore
+        tests:
+          - AgentKitCore_SystemToolOutput_RetentionHandle_PagesOutputsOfToolsWrappedSeparately
+          - AgentKitCore_SystemToolOutput_RestoredRetention_AnswersAnEarlierReference
 
       - id: AgentKitCore-ToolOutput-BoundedRetention
         title: >-

@@ -12,6 +12,12 @@ Both are properties a tool author can forget, and the first fails silently when 
 Making construction the single supported path means these properties are widened deliberately or
 not at all.
 
+The unit also bounds tools it did not build. `AsGuarded` puts the result-character and binary-byte
+ceilings of a `ToolLimits` around any `AIFunction` — one an application wrote with
+`AIFunctionFactory`, or one from another library — because the library's own tools enforce their
+ceilings internally and a foreign tool's oversized result otherwise reached the provider unbounded:
+a 300-row report returned 6,350 characters against a 1,500-character limit.
+
 The class is static and stateless and is therefore safe for concurrent use.
 
 ### Result Delivery — Why the Guard Exists and Must Not Be Removed
@@ -84,8 +90,21 @@ The internal `GuardedFunction` it returns derives from `DelegatingAIFunction` an
 | --- | --- | --- |
 | `InnerFunction` | `AIFunction` | The function the underlying factory built (inherited). |
 | `_spill` | `SpillAttachment?` | The composition's retention, or `null` when none is composed. |
+| `_limits` | `ToolLimits?` | Ceilings enforced on every result, or `null` for a self-bounding tool. |
 
-Instances are immutable; `WithSpill` returns a new wrapper over the same inner function.
+Instances are immutable; `WithSpill` and `WithLimits` return a new wrapper over the same inner
+function, each keeping what the other set.
+
+The internal static `ResultMeasure` class holds the measurements the result ceilings and retention
+share, so a result is judged identically wherever it is bounded:
+
+- `Normalize(result, options)` enumerates a single-pass sequence of content once into a list, and
+  serializes a value that is not text, JSON, content or the oversized marker to a `JsonElement`
+  through `SerializeStructured`. It is idempotent.
+- `BinaryBytes(result)` totals the bytes of every `DataContent` in a single content or a list.
+- `TryGetText(result, out text, out delivered)` returns, for a string, a JSON element, text content
+  or a list made only of text content, the text and the characters its own representation occupies;
+  a JSON string is measured by its JSON text and carried decoded.
 
 ### Key Methods
 
@@ -160,10 +179,37 @@ the same source the underlying factory would have used.
 helper never throws for a shape reason; an exception the serializer raises for a value it cannot
 handle propagates.
 
+#### AsGuarded(this AIFunction function, ToolLimits limits)
+
+Public extension that bounds any function by `limits`.
+
+**Preconditions:** `function` and `limits` are non-null.
+
+**Algorithm:** a `GuardedFunction` is re-wrapped through `WithLimits`, so re-bounding replaces the
+ceilings rather than stacking a second wrapper whose tighter ceilings would still apply beneath;
+any other function is wrapped in a new `GuardedFunction` carrying `limits` and no retention.
+
+**Postconditions:** the returned function carries the name, description, schemas, serializer
+options, underlying method and additional properties of `function` and answers service lookups
+through it, so a wrapped `ApprovalRequiredAIFunction` is still discovered by `GetService`. Nothing
+about the name is validated: a foreign function keeps the name it has.
+
+**Only the result is bounded.** `MaxResultCharacters` and `MaxBinaryBytes` are enforced;
+`MaxReadBytes`, `MaxAgentDepth`, `MaxImagePixels` and `MaxDeleteEntries` govern how a tool does its
+work, which a wrapper around an opaque function cannot observe, and are documented as not
+applicable.
+
+**Throws:** `ArgumentNullException` for a null `function` or `limits`.
+
 #### GuardedFunction.InvokeCoreAsync(AIFunctionArguments arguments, CancellationToken cancellationToken)
 
 Invokes the inner function and resolves its result for delivery:
 
+- **Ceilings carried:** the result is first normalized by `ResultMeasure.Normalize`, with the
+  function's serializer options, and a result whose `DataContent` bytes total more than
+  `MaxBinaryBytes` is refused as `ResourceTooLarge`:
+  `The output of '{name}' carries {N} bytes of binary content, which exceeds the {M}-byte limit.`
+  This applies with or without retention, because retention keeps text only.
 - **No retention composed:** an `OversizedResult` marker from `ToolResult.Oversized` is replaced by
   exactly `ToolResult.Denied(DenialReason.ResourceTooLarge, marker.DenialMessage)` — the text the
   tool returned before the marker existed — and every other result passes through untouched. A
@@ -175,6 +221,10 @@ Invokes the inner function and resolves its result for delivery:
   parts in the same order — and returns anything else, a list or an array included, as it arrived.
   A value the serializer cannot handle fails the invocation with the serializer's exception, as it
   would from this factory; see *ToolOutputSpill Unit Design*.
+- **Ceilings carried, no retention:** a result whose `ResultMeasure.TryGetText` measure exceeds
+  `MaxResultCharacters` is refused as `ResourceTooLarge`:
+  `The output of '{name}' is {N} characters, which exceeds the {M}-character result limit.` Every
+  other result is delivered as normalized.
 
 **The wrapper is transparent.** `DelegatingAIFunction` forwards the name, the description, the
 parameter and return schemas, the serializer options, the underlying method, the additional
@@ -186,7 +236,12 @@ consumer observes except the result handling above.
 
 Returns a new `GuardedFunction` over the same inner function carrying the supplied retention. A
 new instance rather than a mutation, so a tool already handed to a provider or held in another
-composition keeps the behavior it was composed with. Called only by `ToolOutputSpill.Apply`.
+composition keeps the behavior it was composed with. Ceilings the instance carries are kept.
+
+#### GuardedFunction.WithLimits(ToolLimits limits)
+
+Returns a new `GuardedFunction` over the same inner function carrying the supplied ceilings and any
+retention this instance carried. Called only by `AsGuarded`.
 
 ### Error Handling
 
@@ -196,6 +251,9 @@ composition keeps the behavior it was composed with. Called only by `ToolOutputS
 | Null or empty `description` | `ArgumentNullException` / `ArgumentException` |
 | `name` violating the naming convention | `ArgumentException` propagates |
 | Null `serializerOptions` | Not an error; the factory default is used |
+| Null `function` or `limits` to `AsGuarded` | `ArgumentNullException` propagates |
+| A bounded result over a ceiling | Returned as a `ResourceTooLarge` refusal, never thrown |
+| A bounded structured result the serializer cannot handle | The serializer's exception propagates |
 
 Nothing is handled locally. Every condition above is a construction-time programming error
 discovered by the developer writing the tool, so each is surfaced immediately.
@@ -227,12 +285,14 @@ tests and irrelevant to the case this library is in.
   constructors, but the guard exists precisely because of the shapes they produce.
 - **ToolOutputSpill** — the `SpillAttachment` a wrapper hands results to when retention is
   composed; see *ToolOutputSpill Unit Design*.
+- **ToolLimits** — the ceilings `AsGuarded` enforces; see *ToolLimits Unit Design*.
 - **Microsoft.Extensions.AI.Abstractions** — supplies `AIFunction`, `AIFunctionFactory`,
-  `AIFunctionFactoryOptions`, `DelegatingAIFunction`, `AIContent` and
+  `AIFunctionFactoryOptions`, `DelegatingAIFunction`, `AIContent`, `DataContent` and
   `AIJsonUtilities.DefaultOptions`.
 
 ### Callers
 
-`GuardedToolFactory` is a public API entry point: a pack author calls it to build every tool.
+`GuardedToolFactory` is a public API entry point: a pack author calls `Create` to build every tool,
+and an application calls `AsGuarded` to bound a tool it did not build.
 Within this system `ToolOutputReadTool` and `ToolOutputSearchTool` build their tools through it,
 and `ToolOutputSpill` re-wraps the functions it returns.

@@ -57,9 +57,9 @@ internal sealed record ToolOutputEntry(string Id, IReadOnlyList<string> Lines, l
 /// </summary>
 /// <remarks>
 ///     <para>
-///     <b>The store belongs to exactly one composition.</b> One instance is allocated per
-///     <see cref="ToolOutputSpill.Apply"/> call and shared only by the tools that call produced:
-///     the wrapped tools that write to it and the two readers that read from it. It is internal and
+///     <b>The store belongs to exactly one retention.</b> One instance is allocated per
+///     <see cref="ToolOutputRetention"/> — and so per <see cref="ToolOutputSpill.Apply"/> call — and
+///     shared only by the tools that retention wraps and its two readers. It is internal and
 ///     no public type accepts one, so a delegated agent composed separately gets a separate store,
 ///     and nothing a model supplies can name another composition's outputs.
 ///     </para>
@@ -117,6 +117,16 @@ internal sealed class ToolOutputStore
     ///     whole would let a refusal grow without bound.
     /// </remarks>
     internal const int MaxEchoedIdCharacters = 64;
+
+    /// <summary>
+    ///     The largest counter a store may be restored with.
+    /// </summary>
+    /// <remarks>
+    ///     Half the range of <see cref="long"/> leaves room for more than 4.6 × 10^18 further
+    ///     identifiers, far more than any conversation retains, so a store restored from an accepted
+    ///     snapshot never exhausts its counter.
+    /// </remarks>
+    internal const long MaxRestorableCounter = long.MaxValue / 2;
 
     /// <summary>
     ///     The writer options used to indent structured data for paging.
@@ -204,6 +214,9 @@ internal sealed class ToolOutputStore
     /// <exception cref="ArgumentNullException">
     ///     Thrown when <paramref name="text"/> is <see langword="null"/>.
     /// </exception>
+    /// <exception cref="InvalidOperationException">
+    ///     Thrown when the store has already issued the largest identifier it can.
+    /// </exception>
     public ToolOutputEntry? Add(string text)
     {
         ArgumentNullException.ThrowIfNull(text);
@@ -224,6 +237,15 @@ internal sealed class ToolOutputStore
 
         lock (_gate)
         {
+            // Checked before anything is evicted, so a store that cannot issue another identifier
+            // refuses without losing an output; wrapping would issue a negative identifier no reader
+            // resolves. A restored counter is bounded by MaxRestorableCounter, so only a defect
+            // reaches this.
+            if (_issued == long.MaxValue)
+            {
+                throw new InvalidOperationException("The store has issued every identifier it can.");
+            }
+
             // Evict oldest first until the new entry fits both ceilings. The per-output ceiling is
             // no larger than the store's, so this always terminates with room for the new entry.
             while (_order.Count > 0
@@ -278,6 +300,105 @@ internal sealed class ToolOutputStore
             // Identifiers are issued in order, so an absent one at or below the last issued was
             // retained once and has been evicted; one above it was never issued.
             return number <= _issued ? ToolOutputLookup.Evicted : ToolOutputLookup.Unknown;
+        }
+    }
+
+    /// <summary>
+    ///     Captures the store's retained entries and its identifier counter, for export.
+    /// </summary>
+    /// <remarks>
+    ///     Taken under the lock, so the snapshot is one consistent moment: the entries are listed
+    ///     oldest first, exactly as eviction would order them, and the counter is the last
+    ///     identifier issued, which a restored store must never issue again.
+    /// </remarks>
+    /// <param name="lastIssued">On return, the numeric identifier most recently issued.</param>
+    /// <returns>The retained entries, oldest first.</returns>
+    public IReadOnlyList<ToolOutputEntry> Snapshot(out long lastIssued)
+    {
+        lock (_gate)
+        {
+            lastIssued = _issued;
+            return [.. _order.Select(number => _entries[number])];
+        }
+    }
+
+    /// <summary>
+    ///     Fills an empty store with previously exported entries, applying this store's ceilings.
+    /// </summary>
+    /// <remarks>
+    ///     <para>
+    ///     Each entry is re-measured from its lines, so the charge against the ceilings is this
+    ///     store's own figure rather than one the caller supplied. An entry larger than the
+    ///     per-output ceiling is dropped, and the oldest entries are evicted until both the count
+    ///     and character ceilings hold — the same outcome as if the outputs had been retained under
+    ///     the current ceilings from the start.
+    ///     </para>
+    ///     <para>
+    ///     The counter is set to the larger of <paramref name="lastIssued"/> and the highest entry
+    ///     number, so numbering continues after every identifier the exported store ever issued and
+    ///     an old reference still in a conversation's history can never be re-issued to different
+    ///     content; a dropped entry is answered as evicted.
+    ///     </para>
+    /// </remarks>
+    /// <param name="entries">
+    ///     The entries to restore with their numeric identifiers, in ascending order of number,
+    ///     with no duplicate number and every line already normalized. Must not be null.
+    /// </param>
+    /// <param name="lastIssued">
+    ///     The exported store's last issued number; zero or greater, and no greater than
+    ///     <see cref="MaxRestorableCounter"/> for a store expected to keep numbering.
+    /// </param>
+    /// <exception cref="ArgumentNullException">
+    ///     Thrown when <paramref name="entries"/> is <see langword="null"/>.
+    /// </exception>
+    /// <exception cref="InvalidOperationException">
+    ///     Thrown when the store already holds an entry or has issued an identifier.
+    /// </exception>
+    public void Restore(IEnumerable<(long Number, IReadOnlyList<string> Lines, bool Wrapped)> entries, long lastIssued)
+    {
+        ArgumentNullException.ThrowIfNull(entries);
+
+        lock (_gate)
+        {
+            // Restoring over live entries would interleave two histories under one counter.
+            if (_issued != 0 || _entries.Count != 0)
+            {
+                throw new InvalidOperationException("A store can be restored only before it retains anything.");
+            }
+
+            var highest = 0L;
+            foreach (var (number, lines, wrapped) in entries)
+            {
+                highest = Math.Max(highest, number);
+
+                // The charge is the normalized length: every line plus one break between lines.
+                var characters = lines.Sum(line => (long)line.Length) + lines.Count - 1;
+                if (characters > _options.MaxOutputCharacters)
+                {
+                    continue;
+                }
+
+                // Evict oldest first until the entry fits, exactly as a live addition would.
+                while (_order.Count > 0
+                       && (_order.Count + 1 > _options.MaxRetainedOutputs
+                           || _retainedCharacters + characters > _options.MaxRetainedCharacters))
+                {
+                    var oldest = _order.Dequeue();
+                    _retainedCharacters -= _entries[oldest].Characters;
+                    _entries.Remove(oldest);
+                }
+
+                var entry = new ToolOutputEntry(
+                    IdPrefix + number.ToString(CultureInfo.InvariantCulture),
+                    [.. lines],
+                    characters,
+                    wrapped);
+                _entries.Add(number, entry);
+                _order.Enqueue(number);
+                _retainedCharacters += characters;
+            }
+
+            _issued = Math.Max(lastIssued, highest);
         }
     }
 
@@ -518,7 +639,7 @@ internal sealed class ToolOutputStore
     /// <param name="id">The identifier to parse. May be null.</param>
     /// <param name="number">On success, the numeric part; otherwise zero.</param>
     /// <returns><see langword="true"/> when the identifier is well formed.</returns>
-    private static bool TryParse(string? id, out long number)
+    internal static bool TryParse(string? id, out long number)
     {
         number = 0;
         var trimmed = id?.Trim();

@@ -17,6 +17,11 @@
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
     <EnableNETAnalyzers>true</EnableNETAnalyzers>
     <AnalysisLevel>latest</AnalysisLevel>
+
+    <!-- The Agent Framework marks the constructor of an AI context provider's invocation context as
+         for evaluation only. In production only an agent run constructs it; one test constructs it to
+         stand in for an agent the context provider must refuse, so the diagnostic is acknowledged here. -->
+    <NoWarn>$(NoWarn);MAAI001</NoWarn>
   </PropertyGroup>
 
   <!-- Implicit Usings -->
@@ -43,6 +48,10 @@
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="5.9.0" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.11.0" />
     <PackageReference Include="Microsoft.Testing.Extensions.TrxReport" Version="2.5.2" />
+    <!-- OllamaSharp: test-only, the version the Ollama adapter pins. The system test that proves a
+         promoted image leaves no bytes in the tool message runs the real OllamaSharp chat client over
+         a capturing HTTP handler, because the defect is in how that library serializes a tool result. -->
+    <PackageReference Include="OllamaSharp" Version="5.5.2" />
     <PackageReference Include="xunit.v3" Version="4.0.3" />
     <PackageReference Include="xunit.runner.visualstudio" Version="4.0.1">
       <PrivateAssets>all</PrivateAssets>

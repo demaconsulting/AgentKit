@@ -20,6 +20,7 @@ input-files:
   - docs/verification/agent-kit-core/tool-output-options.md
   - docs/verification/agent-kit-core/tool-output-store.md
   - docs/verification/agent-kit-core/tool-output-spill.md
+  - docs/verification/agent-kit-core/tool-output-retention.md
   - docs/verification/agent-kit-core/tool-output-read-tool.md
   - docs/verification/agent-kit-core/tool-output-search-tool.md
   - docs/verification/agent-kit-core/agent-session.md
@@ -32,6 +33,7 @@ input-files:
   - docs/verification/agent-kit-core/provider-session.md
   - docs/verification/agent-kit-core/in-memory-provider-session.md
   - docs/verification/agent-kit-core/compacting-agent-session.md
+  - docs/verification/agent-kit-core/agent-kit-chat-reducer.md
   - docs/verification/agent-kit-tools.md
   - docs/verification/agent-kit-tools/image.md
   - docs/verification/agent-kit-tools/image/image-auto-crop-tool.md
@@ -87,6 +89,7 @@ input-files:
   - docs/verification/agent-kit-agents-chat-client/chat-client-provider-session-factory.md
   - docs/verification/agent-kit-agents-chat-client/prompt-size-recording-chat-client.md
   - docs/verification/agent-kit-agents-chat-client/chat-client-summarizer.md
+  - docs/verification/agent-kit-agents-chat-client/tool-pack-context-provider.md
   - docs/verification/agent-kit-agents-copilot.md
   - docs/verification/agent-kit-agents-copilot/copilot-agent-factory.md
   - docs/verification/agent-kit-agents-copilot/copilot-agent.md

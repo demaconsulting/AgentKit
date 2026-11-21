@@ -290,6 +290,33 @@ reviews:
       - "src/DemaConsulting.AgentKit.Core/ToolOutputStore.cs"  # unit source
       - "test/DemaConsulting.AgentKit.Core.Tests/ToolOutputStoreTests.cs"  # unit tests
 
+  # AgentKitCore-AgentKitChatReducer Review (one per unit)
+  - id: AgentKitCore-AgentKitChatReducer
+    title: Review that AgentKitCore AgentKitChatReducer Implementation is Correct
+    context:
+      - "docs/design/agent-kit-core.md"
+      - "docs/reqstream/agent-kit-core.yaml"
+      - "docs/design/agent-kit-core/summarizer.md"
+    paths:
+      - "docs/reqstream/agent-kit-core/agent-kit-chat-reducer.yaml"  # unit requirements
+      - "docs/design/agent-kit-core/agent-kit-chat-reducer.md"  # unit design
+      - "docs/verification/agent-kit-core/agent-kit-chat-reducer.md"  # unit verification
+      - "src/DemaConsulting.AgentKit.Core/AgentKitChatReducer.cs"  # unit source
+      - "test/DemaConsulting.AgentKit.Core.Tests/AgentKitChatReducerTests.cs"  # unit tests
+
+  # AgentKitCore-ToolOutputRetention Review (one per unit)
+  - id: AgentKitCore-ToolOutputRetention
+    title: Review that AgentKitCore ToolOutputRetention Implementation is Correct
+    context:
+      - "docs/design/agent-kit-core.md"
+      - "docs/reqstream/agent-kit-core.yaml"
+    paths:
+      - "docs/reqstream/agent-kit-core/tool-output-retention.yaml"  # unit requirements
+      - "docs/design/agent-kit-core/tool-output-retention.md"  # unit design
+      - "docs/verification/agent-kit-core/tool-output-retention.md"  # unit verification
+      - "src/DemaConsulting.AgentKit.Core/ToolOutputRetention.cs"  # unit source
+      - "test/DemaConsulting.AgentKit.Core.Tests/ToolOutputRetentionTests.cs"  # unit tests
+
   # AgentKitCore-ToolOutputSpill Review (one per unit)
   - id: AgentKitCore-ToolOutputSpill
     title: Review that AgentKitCore ToolOutputSpill Implementation is Correct
@@ -1237,7 +1264,9 @@ reviews:
       - "docs/verification/introduction.md"                                     # verification introduction
       - "docs/verification/agent-kit-agents-chat-client.md"                     # system verification
       - "test/DemaConsulting.AgentKit.Agents.ChatClient.Tests/AgentKitAgentsChatClientTests.cs"  # integration tests
+      - "test/DemaConsulting.AgentKit.Agents.ChatClient.Tests/CapturingHttpHandler.cs"  # HTTP wire capture double
       - "test/DemaConsulting.AgentKit.Agents.ChatClient.Tests/XmlDocExampleTests.cs"  # documented-example compile tests
+      - "test/DemaConsulting.AgentKit.Agents.ChatClient.LiveTests/**/*.cs"      # opt-in live Ollama suite
 
   # AgentKitAgentsChatClient-Design Review (one per system)
   - id: AgentKitAgentsChatClient-Design
@@ -1284,6 +1313,7 @@ reviews:
       - "src/DemaConsulting.AgentKit.Agents.ChatClient/ChatClientAgentFactory.cs"       # unit source
       - "test/DemaConsulting.AgentKit.Agents.ChatClient.Tests/ChatClientAgentFactoryTests.cs"  # unit tests
       - "test/DemaConsulting.AgentKit.Agents.ChatClient.Tests/ScriptedChatClient.cs"    # scripted chat client test fake
+      - "test/DemaConsulting.AgentKit.Agents.ChatClient.Tests/RecordingChatClient.cs"   # recording chat client fake
 
   # AgentKitAgentsChatClient-ChatClientProviderSession Review (one per unit)
   #
@@ -1343,6 +1373,22 @@ reviews:
       - "docs/verification/agent-kit-agents-chat-client/prompt-size-recording-chat-client.md"  # unit verification
       - "src/DemaConsulting.AgentKit.Agents.ChatClient/PromptSizeRecordingChatClient.cs"       # unit source
       - "test/DemaConsulting.AgentKit.Agents.ChatClient.Tests/PromptSizeRecordingChatClientTests.cs"  # unit tests
+      - "test/DemaConsulting.AgentKit.Agents.ChatClient.Tests/RecordingChatClient.cs"  # recording chat client fake
+
+  # AgentKitAgentsChatClient-ToolPackContextProvider Review (one per unit)
+  - id: AgentKitAgentsChatClient-ToolPackContextProvider
+    title: Review that AgentKitAgentsChatClient ToolPackContextProvider Implementation is Correct
+    context:
+      - "docs/design/agent-kit-agents-chat-client.md"
+      - "docs/reqstream/agent-kit-agents-chat-client.yaml"
+      - "docs/design/agent-kit-core/tool-pack-builder.md"
+      - "docs/design/agent-kit-core/tool-output-retention.md"
+    paths:
+      - "docs/reqstream/agent-kit-agents-chat-client/tool-pack-context-provider.yaml"   # unit requirements
+      - "docs/design/agent-kit-agents-chat-client/tool-pack-context-provider.md"        # unit design
+      - "docs/verification/agent-kit-agents-chat-client/tool-pack-context-provider.md"  # unit verification
+      - "src/DemaConsulting.AgentKit.Agents.ChatClient/ToolPackContextProvider.cs"       # unit source
+      - "test/DemaConsulting.AgentKit.Agents.ChatClient.Tests/ToolPackContextProviderTests.cs"  # unit tests
       - "test/DemaConsulting.AgentKit.Agents.ChatClient.Tests/RecordingChatClient.cs"  # recording chat client fake
 
   # AgentKitAgentsChatClient-ChatClientSummarizer Review (one per unit)
@@ -1717,6 +1763,7 @@ reviews:
       - "docs/reqstream/ots/ollamasharp.yaml"                              # OTS requirements
       - "docs/design/ots/ollamasharp.md"                                   # OTS integration design
       - "docs/verification/ots/ollamasharp.md"                             # OTS verification
+      - "test/DemaConsulting.AgentKit.Agents.ChatClient.LiveTests/**/*.cs"      # opt-in live Ollama suite
 
   # OTS-Pandoc Review (one per OTS item)
   - id: OTS-Pandoc

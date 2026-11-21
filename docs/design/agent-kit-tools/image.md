@@ -282,7 +282,8 @@ during a tool call ends the agent's turn and strands it. A refusal the tool comp
 absent path, a directory, an unsupported type, a ceiling overrun — is fixed text carrying at most an
 integer naming a ceiling and the resolved media type in a caption. A refusal the policy composes — a
 path outside a permitted location — deliberately discloses the request, its interpretation and the
-permitted locations, so a confined model learns where it may work.
+permitted locations, stated relative to the working directory, so a confined model learns where it
+may work without the host's absolute layout being disclosed.
 
 **The ceiling refuses, it does not truncate.** `MaxBinaryBytes` bounds what the tool may return;
 the tool opens the file once, judges its size from that open handle before reading any content, and

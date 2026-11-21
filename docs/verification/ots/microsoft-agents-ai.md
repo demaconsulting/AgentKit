@@ -8,7 +8,8 @@ This document provides the verification evidence for the `Microsoft.Agents.AI` O
 on: `AIAgent`, the provider-neutral agent abstraction, and `ChatClientAgent`, which builds an
 `AIAgent` from an `IChatClient` and a tool list and runs the function-invocation loop above the
 client it is given. It also brings the chat-client extensions carrying `FunctionInvokingChatClient`,
-the loop itself, which the session factory installs above the client an application supplies.
+the loop itself, which the session factory installs above the client an application supplies, and
+`ChatClientBuilder`, through which a host composes a chat client pipeline.
 
 ### Verification Approach
 
@@ -62,6 +63,25 @@ counts added together.
 
 **Requirement coverage**: `AgentKit-OTS-MicrosoftAgentsAI-FunctionInvokingChatClient`.
 
+#### ChatClientAgentFactory_UseImagePromotion_InstallsDecoratorBeneathFunctionInvocation
+
+**Scenario**: A pipeline is built with `UseFunctionInvocation().UseImagePromotion()` over a provider
+scripted to call an image tool.
+
+**Expected**: `ChatClientBuilder` composes the decorator beneath the loop, so the provider's second
+request carries the promoted image.
+
+**Requirement coverage**: `AgentKit-OTS-MicrosoftAgentsAI-ChatClientBuilder`.
+
+#### ChatClientAgentFactory_UseImagePromotion_AboveFunctionInvocation_Throws
+
+**Scenario**: A pipeline is built with `UseImagePromotion().UseFunctionInvocation()`.
+
+**Expected**: `ChatClientBuilder` hands the registered factory the client beneath it, which already
+contains the loop, so building throws.
+
+**Requirement coverage**: `AgentKit-OTS-MicrosoftAgentsAI-ChatClientBuilder`.
+
 ### Requirements Coverage
 
 - **`AgentKit-OTS-MicrosoftAgentsAI-Agent`**:
@@ -72,3 +92,6 @@ counts added together.
 - **`AgentKit-OTS-MicrosoftAgentsAI-FunctionInvokingChatClient`**:
   ChatClientProviderSessionFactory_CreateAsync_SeededTool_IsInvokedAndItsResultReachesTheTranscript,
   PromptSizeRecordingChatClient_GetResponse_BeneathToolInvocation_KeepsTheLastPromptWhileTheTurnReportsTheSum
+- **`AgentKit-OTS-MicrosoftAgentsAI-ChatClientBuilder`**:
+  ChatClientAgentFactory_UseImagePromotion_InstallsDecoratorBeneathFunctionInvocation,
+  ChatClientAgentFactory_UseImagePromotion_AboveFunctionInvocation_Throws

@@ -11,7 +11,7 @@ built from: `AIFunction` and `AIFunctionFactory.Create` for expressing a tool, t
 result-delivery guard, the `AIContent` type hierarchy (`AIContent`, `TextContent`,
 `DataContent`) that carries binary and image results to the provider in a typed form rather than
 as serialized JSON, and `DelegatingAIFunction`, the transparent wrapper every guarded tool is
-returned as.
+returned as. It also supplies `IChatReducer`, the reducer contract `AgentKitChatReducer` implements.
 
 ### Verification Approach
 
@@ -85,6 +85,16 @@ type answers with the wrapper — the forwarding `DelegatingAIFunction` is relie
 
 **Requirement coverage**: `AgentKit-OTS-MicrosoftExtensionsAIAbstractions-DelegatingFunction`.
 
+#### AgentKitCore_SystemChatReducer_OverThresholdHistory_IsConsolidatedKeepingTheTail
+
+**Scenario**: `AgentKitChatReducer` is called through the `IChatReducer` interface with a history over
+its threshold.
+
+**Expected**: The contract carries the history in and the reduced history — system message, record and
+verbatim tail — out.
+
+**Requirement coverage**: `AgentKit-OTS-MicrosoftExtensionsAIAbstractions-ChatReducer`.
+
 ### Requirements Coverage
 
 - **`AgentKit-OTS-MicrosoftExtensionsAIAbstractions-FunctionFactory`**:
@@ -98,3 +108,5 @@ type answers with the wrapper — the forwarding `DelegatingAIFunction` is relie
   AIFunctionFactory_UnguardedObjectReturn_FlattensDataContentToJsonElement
 - **`AgentKit-OTS-MicrosoftExtensionsAIAbstractions-DelegatingFunction`**:
   GuardedToolFactory_Create_ConstructedTool_PreservesEveryPieceOfMetadata
+- **`AgentKit-OTS-MicrosoftExtensionsAIAbstractions-ChatReducer`**:
+  AgentKitCore_SystemChatReducer_OverThresholdHistory_IsConsolidatedKeepingTheTail

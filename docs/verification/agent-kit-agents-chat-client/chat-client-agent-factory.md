@@ -26,9 +26,11 @@ Unit tests reside in `ChatClientAgentFactoryTests.cs`, with the scripted client 
 
 ### Acceptance Criteria
 
-A unit test run passes when all six scenarios below pass without error or exception beyond those
-explicitly asserted. Any wrapped client that is not an `ImagePromotingChatClient`, or any invalid
-argument that is accepted rather than refused, constitutes a failure.
+A unit test run passes when all nine tests below pass without error or exception beyond those
+explicitly asserted. Any wrapped client that is not an `ImagePromotingChatClient`, any invalid
+argument that is accepted rather than refused, any host-built pipeline in which a tool-returned image
+does not reach the inner client on a user message, or any misplaced decorator that is built rather
+than refused, constitutes a failure.
 
 ### Test Scenarios
 
@@ -58,3 +60,23 @@ Four error paths: a null tool list and a null entry are refused with `ArgumentNu
 empty list and two tools sharing a name are refused with `ArgumentException`, the latter naming the
 colliding tool. Together they confirm a malformed tool list is refused where the host wrote it rather
 than discovered from a model's undefined choice later.
+
+#### AgentKitAgentsChatClient-ChatClientAgentFactory-UseImagePromotion: The Builder Extension Promotes Beneath Function Invocation
+
+**Test**: `ChatClientAgentFactory_UseImagePromotion_InstallsDecoratorBeneathFunctionInvocation`
+
+A `RecordingChatClient` scripted to call an image tool and then answer, built into
+`UseFunctionInvocation().UseImagePromotion()`. Asserts the second request the inner client received
+carries the placeholder in the tool result and the same image instance on a user message — the
+decorator sits beneath the loop and acts on the tool result.
+
+**Test**: `ChatClientAgentFactory_UseImagePromotion_NullBuilder_Throws`
+
+A null builder is refused with `ArgumentNullException`.
+
+#### AgentKitAgentsChatClient-ChatClientAgentFactory-UseImagePromotionRefusesAboveFunctionInvocation: A Misplaced Decorator Is Refused
+
+**Test**: `ChatClientAgentFactory_UseImagePromotion_AboveFunctionInvocation_Throws`
+
+`UseImagePromotion().UseFunctionInvocation()` — the decorator above the loop — throws
+`InvalidOperationException` when built, and the message names `UseFunctionInvocation()`.

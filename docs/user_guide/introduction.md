@@ -15,6 +15,7 @@ This user guide covers:
 - What the library provides today, and how each part is used
 - The path policy, tool limits, naming, result and tool pack contracts
 - Opt-in retention of tool outputs too large to return, paged through by reference
+- Using the tools and their controls in an agent runtime the application builds itself
 - The session engine: how a conversation outlives the provider's context window
 - Three runnable samples: consuming the shipped tools (*document assistant*), an agent whose work
   spans turns and compacts its own context (*research assistant*), and writing your own guarded
@@ -188,7 +189,21 @@ A refusal is a returned value, never an exception, so a refused tool call does n
 turn — and no path a caller supplies, including none at all, is reported as an exception. A refusal
 states what was requested, how a relative request was interpreted, and which locations are permitted
 with their access levels, so a confined agent learns where it may work instead of retrying against a
-bare "no".
+bare "no". The interpretation and the permitted locations are stated relative to the working
+directory — the working directory itself as `.`, a sibling folder as `../session` — which is exactly
+how the model can address them, so a refusal never reveals where on the host they live:
+
+```text
+Denied (PathNotPermitted): Denied: outside every permitted location.
+Requested: "../outside/secret.txt"
+Interpreted as: ../outside/secret.txt (relative to the working directory)
+Permitted locations (relative to the working directory):
+  - . (read-only)
+  - ../session (read-write)
+```
+
+Only a granted location with no relative spelling at all, such as one on another drive, is named by
+its absolute path.
 
 > **Transition hazard.** With a single granted working directory, tool output uses the relative
 > dialect — a listing reports bare relative names and the model imitates them. Adding a second
@@ -266,7 +281,8 @@ Without anything further, a result over that ceiling is **refused**, never trunc
 listing or search would silently hide what the model never knew to ask for. That is safe, but it
 loses work: a broad search, a full listing of a large tree, the outline of a long document, or a
 delegated agent's whole report becomes a refusal the model can only answer by guessing how to
-narrow the request. And a custom tool that measures nothing hands its whole output to the provider.
+narrow the request. And a custom tool that measures nothing hands its whole output to the provider,
+unless the application bounds it with `AsGuarded` (see *Bounding a Tool You Did Not Build*).
 
 An application can opt in to **retaining** such outputs instead:
 
@@ -354,10 +370,13 @@ each with its own store and its own two readers. A child whose profile admits no
 tool-less. A child's final answer that is too large for the *parent's* ceiling is retained by the
 parent whenever the parent's composition retains outputs. A host that hands one composed tool list
 to several conversations shares the retained outputs between them, exactly as it would share a task
-list; compose per conversation to keep them apart.
+list; compose per conversation to keep them apart. A host that adds tools to a conversation over
+time, or persists conversations, owns a `ToolOutputRetention` per conversation instead — see
+*Retaining Outputs per Conversation*.
 
 **Without the opt-in nothing changes.** Every refusal is the same text it always was, no reader is
-offered, and a custom tool's oversized result still reaches the provider unbounded. Retention works
+offered, and a custom tool's oversized result still reaches the provider unbounded unless it is bounded
+with `AsGuarded`. Retention works
 the same way on every provider, because it lives in the tools themselves; on GitHub Copilot the
 readers are published, allow-listed and approved like any other supplied tool. A list assembled
 without a builder can be composed the same way with `ToolOutputSpill.Apply(tools, limits)`.
@@ -369,18 +388,46 @@ image a tool returned straight to the model. Others accept images on messages bu
 responses: the content is preserved all the way through the framework and then discarded at the
 wire, after which the model describes a picture it never received and nothing reports an error.
 
-A host targeting such a provider wraps its chat client once:
+`ImagePromotingChatClient` makes delivery independent of the provider. It must sit **beneath** the
+function-invocation loop, so that it observes the conversation after tool results have been
+appended. It then carries any image a tool result holds onto a following user message, announced as
+coming from the tool, and leaves a short placeholder in the tool result in its place —
+`[Image promoted to the following user message: image/png, 316,404 bytes.]` — so the image is sent
+once. A conversation whose tool results carry no image is forwarded unchanged, the caller's own
+messages are never modified, and the wrapper can be left installed.
+
+**When it is needed:**
+
+- **Ollama through OllamaSharp — required.** OllamaSharp writes an image found in a tool result into
+  the tool message as base64 text rather than into the message's `images`, so the model never sees
+  pixels; and the text can flood the window — a 316 KB image became a 421,629-character tool message
+  that truncated the user's question. With the wrapper the tool message is a one-line placeholder and
+  the image arrives where Ollama reads it.
+- **The GitHub Copilot SDK — not needed.** The Copilot runtime delivers a tool's binary result to the
+  model itself; `CopilotAgentFactory` does not install the wrapper and you should not either.
+- **`ChatClientAgentFactory` — already installed.** Every agent and session the ChatClient adapter
+  builds carries it.
+
+**Installing it in a pipeline you build.** The ChatClient adapter package adds a
+`ChatClientBuilder` extension:
 
 ```csharp
-IChatClient client = new ImagePromotingChatClient(providerClient);
+using DemaConsulting.AgentKit.Agents.ChatClient;
+
+// A host-built ChatClientAgent adds its function-invocation loop above the client it is given.
+IChatClient forAgent = providerClient.AsBuilder().UseImagePromotion().Build();
+
+// A raw pipeline: function invocation first, then image promotion beneath it.
+IChatClient pipeline = providerClient.AsBuilder()
+    .UseFunctionInvocation()
+    .UseImagePromotion()
+    .Build();
 ```
 
-The wrapper must sit **beneath** the function-invocation loop, so that it observes the conversation
-after tool results have been appended. It then carries any image a tool result holds onto a
-following user message, announced as coming from the tool, leaving every other message and their
-order untouched. A conversation whose tool results carry no image is forwarded unchanged, so the
-wrapper can be left installed. A host whose provider already delivers images from tool results
-needs nothing.
+Calling `UseImagePromotion()` before `UseFunctionInvocation()` would place the wrapper above the loop,
+where it never sees a tool result; `Build()` refuses that pipeline with an `InvalidOperationException`
+naming the correct order. A host that references only Core can install the wrapper with
+`builder.Use(inner => new ImagePromotingChatClient(inner))`, beneath the loop in the same way.
 
 ## Tool Packs
 
@@ -420,7 +467,7 @@ row.
 
 | Family | Tool | Purpose | Capability | Write grant |
 | --- | --- | --- | --- | --- |
-| Text file | `text_file_search` | Searches permitted text files for a pattern | None | No |
+| Text file | `text_file_search` | Searches permitted text files, or one named file, for a pattern | None | No |
 | Text file | `text_file_read` | Reads a paged, line-numbered file window | None | No |
 | Text file | `text_file_create` | Creates a new text file within the policy | None | Yes |
 | Text file | `text_file_write` | Sets a file's whole content, capturing the old | None | Yes |
@@ -648,7 +695,8 @@ same list and appends `tool_output_read` and `tool_output_search` after every pa
 
 A tool list is provider-neutral, but attaching it to a provider is not. Two adapter packages turn a
 provider into a tool-using Microsoft Agent Framework agent in one call, each absorbing the one thing
-that provider gets wrong.
+that provider gets wrong. An application that builds its own agent or loop uses the tools directly;
+see *Using AgentKit Tools in Any Agent*.
 
 ## Any IChatClient
 
@@ -1030,6 +1078,209 @@ adapter over `GitHub.Copilot.SDK` 1.0.x. Moving to the current release:
 - Replace references to `GitHubCopilotAgent` and `GitHubCopilotAgentSession` with `AIAgent` and
   `CopilotAgentSession`. `SessionId` keeps its meaning, and serialized sessions remain readable.
 - Expect every session's permission mode to be `Manual`, whatever ambient configuration would pick.
+
+# Using AgentKit Tools in Any Agent
+
+Every AgentKit tool is a plain `Microsoft.Extensions.AI` `AIFunction`. An application that already
+owns its agent loop — a Microsoft Agent Framework agent it builds itself, a raw `IChatClient`
+pipeline, or a GitHub Copilot SDK session — can use the tools there unchanged. The controls around the
+tools are available as building blocks that such a runtime accepts: result ceilings for a tool you did
+not build, a retention handle per conversation, a context provider that injects tools per session,
+image promotion for a pipeline you build, and a chat reducer for a history you own.
+
+## Tools Are Plain AIFunctions
+
+Compose the tools exactly as before and hand the list to the runtime:
+
+```csharp
+IReadOnlyList<AIFunction> tools = new ToolPackBuilder(policy)
+    .Add(new TextFilePack())
+    .Add(new FilePack())
+    .WithToolOutputSpill()
+    .Build();
+```
+
+**A Microsoft Agent Framework agent you build.** `ChatClientAgent` takes `IList<AITool>`, so spread
+the list. Install image promotion beneath the agent's own function-invocation loop when the provider
+needs it (Ollama through OllamaSharp does; see *Delivering Images to Any Provider*):
+
+```csharp
+var agent = new ChatClientAgent(
+    ollamaClient.AsBuilder().UseImagePromotion().Build(),
+    instructions: "Paths are relative to the workspace.",
+    tools: [.. tools]);
+```
+
+**A raw `IChatClient` pipeline.** Add function invocation, then image promotion beneath it, and offer
+the tools on each request:
+
+```csharp
+IChatClient client = providerClient.AsBuilder()
+    .UseFunctionInvocation()
+    .UseImagePromotion()
+    .Build();
+
+var response = await client.GetResponseAsync(history, new ChatOptions { Tools = [.. tools] });
+```
+
+**A raw GitHub Copilot SDK session.** `CreateSessionOptions.Tools.Definitions` accepts the functions
+directly. In `CopilotClientMode.Empty` the session must also name every tool it may call in
+`Tools.AvailableTools` as `custom:<name>`, and a manual permission handler must approve them:
+
+```csharp
+var options = new CreateSessionOptions { Model = model };
+options.Tools.Definitions = [.. tools];
+options.Tools.AvailableTools = [.. tools.Select(tool => "custom:" + tool.Name)];
+options.Permissions.Mode = PermissionMode.Manual;
+options.Permissions.OnRequest = (request, _) => Task.FromResult(
+    request is PermissionRequestCustomTool custom && tools.Any(tool => tool.Name == custom.ToolName)
+        ? PermissionDecision.ApproveOnce()
+        : PermissionDecision.Reject("Not an application tool."));
+```
+
+That is enough for the tools to work, but not for the session to be confined: a raw session still
+reaches whatever MCP servers, skills, instructions, hooks, memory and sub-agents the runtime finds, and
+the runtime's environment and data directory are the host's. Prefer `CopilotAgentFactory` (see
+*The GitHub Copilot SDK*), which confines all of them. The Copilot runtime delivers tool-returned
+images itself, so no image promotion is needed there.
+
+## Bounding a Tool You Did Not Build
+
+AgentKit's own tools enforce `ToolLimits` internally. A tool you wrote with `AIFunctionFactory`, or
+took from another library, does not — a 300-row report tool returned 6,350 characters against a
+1,500-character limit. `AsGuarded` puts the same ceilings around any function:
+
+```csharp
+AIFunction report = AIFunctionFactory.Create(
+    (int rows) => Enumerable.Range(1, rows).Select(n => new { row = n, square = n * n }),
+    "report_rows",
+    "Returns one row per number with its square.");
+
+AIFunction bounded = report.AsGuarded(new ToolLimits(maxResultCharacters: 1_500));
+```
+
+The bounded function refuses, as `Denied (ResourceTooLarge)` naming the size and the limit, a result
+whose text exceeds `MaxResultCharacters` or whose binary content exceeds `MaxBinaryBytes`. Structured
+results are measured as the JSON the provider would receive. Everything else about the function — its
+name, description, schema and an approval requirement — passes through unchanged. Only the result is
+bounded: `MaxReadBytes`, `MaxImagePixels`, `MaxAgentDepth` and `MaxDeleteEntries` describe how a tool
+does its work, which a wrapper cannot see. Wrapped by a retention (below), an oversized text result is
+retained for paging instead of refused.
+
+## Retaining Outputs per Conversation
+
+`WithToolOutputSpill` and `ToolOutputSpill.Apply` retain outputs for one tool list. When tools are
+added to a conversation over time, or the conversation is persisted, own the retention instead:
+
+```csharp
+var retention = new ToolOutputRetention(limits);   // one per conversation
+
+List<AITool> agentTools = [.. retention.Wrap(tools), .. retention.ReaderTools];
+
+// Later in the same conversation, a tool added on demand shares the same references.
+agentTools.Add(retention.Wrap(bounded));
+```
+
+`Wrap` covers a tool at any time, and every tool one retention wraps numbers its references in one
+sequence; `ReaderTools` are `tool_output_read` and `tool_output_search` over that retention. To keep
+references valid across a restart, export the retention with the conversation and restore it:
+
+```csharp
+string json = JsonSerializer.Serialize(retention.Export(), ToolOutputRetentionSnapshot.JsonTypeInfo);
+// ... later ...
+var snapshot = JsonSerializer.Deserialize(json, ToolOutputRetentionSnapshot.JsonTypeInfo)!;
+var restored = ToolOutputRetention.Restore(snapshot, limits);
+```
+
+A restored retention answers the same references with the same content, observes the ceilings it is
+restored with — evicting the oldest outputs first if they are smaller — and continues numbering after
+every reference ever issued, so an old reference is never re-issued to different content. A snapshot
+that could not have been exported — a malformed or repeated reference, a reference above its counter,
+a counter too large to continue numbering from, or lines that are not normalized — is rejected with
+`ArgumentException` rather than partly restored,
+and a snapshot keeps its own copy of what it was built from.
+A snapshot holds the full text of the retained outputs, up to 16,777,216 characters by default: it has
+the same privacy class as the chat history and should be stored and sized accordingly.
+
+## Injecting Tools per Session
+
+`ToolPackContextProvider` gives a `ChatClientAgent` you build AgentKit's tools per conversation, with
+no tools on the agent itself:
+
+```csharp
+var provider = new ToolPackContextProvider(
+    policy,
+    [new TextFilePack(), new FilePack(), new TodoPack()],
+    new ToolPackContextProviderOptions
+    {
+        Instructions = "Paths are relative to the workspace.",
+        ToolOutput = ToolOutputOptions.Default
+    });
+
+var agent = new ChatClientAgent(
+    providerClient.AsBuilder().UseImagePromotion().Build(),
+    new ChatClientAgentOptions { Name = "assistant", AIContextProviders = [provider] });
+```
+
+The provider composes the packs once per `AgentSession` — each conversation gets its own retained
+outputs, task list and memory — and contributes them, with the instructions, on every run. A second
+constructor takes any function list instead of packs and bounds each function with `AsGuarded`.
+
+**Retention survives the agent persisting the conversation.** With `ToolOutput` set, the provider
+writes each conversation's retention to the session's state bag after every run, so
+`SerializeSessionAsync` carries it and a session restored with `DeserializeSessionAsync` still reads
+its earlier references. Set `PersistRetainedOutputs = false` to persist only the reference counter: a
+reference made before a reload is then answered "no longer retained", never re-issued. Task lists and
+in-memory memory stores are not persisted; a reloaded conversation starts them empty. A session
+serialized while a run is in flight carries the state of the previous run. One provider serves any
+number of conversations at once, but runs of one session must not overlap, as the Agent Framework
+requires; if they do, the provider still persists the newest retention state. Give each provider its own
+`StateKey` when an agent has two.
+
+**Only `ChatClientAgent` uses contributed tools.** Any other agent would accept the provider and never
+offer the tools to the model, so the provider refuses to run for it. For a Copilot agent, hand the
+tools to `CopilotAgentFactory`; for a loop of your own, use `ToolOutputRetention` directly.
+
+## Reducing a Host-Owned History
+
+A host that owns its history can consolidate it with AgentKit's consolidation prompt through
+`AgentKitChatReducer`, an `IChatReducer`. In the Agent Framework, plug it into the in-memory history
+provider:
+
+```csharp
+var history = new InMemoryChatHistoryProvider(new InMemoryChatHistoryProviderOptions
+{
+    ChatReducer = new AgentKitChatReducer(
+        new ChatClientSummarizer(summarizingClient),
+        thresholdCharacters: 40_000,
+        verbatimTurns: 4),
+    ReducerTriggerEvent = InMemoryChatHistoryProviderOptions.ChatReducerTriggerEvent.BeforeMessagesRetrieval
+});
+
+var agent = new ChatClientAgent(client, new ChatClientAgentOptions { ChatHistoryProvider = history });
+```
+
+Over the threshold, every message older than the last `verbatimTurns` turns is consolidated through the
+summarizer into one assistant message opening with `[Consolidated record of the earlier conversation]`
+on its own first line; system messages and the kept turns are untouched, a tool call is never separated
+from its result, and a previous record is folded into the next. Only a message of exactly that shape is
+treated as a previous record, so an ordinary reply that happens to begin with those words is
+consolidated as what the assistant said. Images are described by type and size, never sent to the
+summarizer.
+
+**It is a reduced-fidelity option.** Compared with `CompactingAgentSession` it loses:
+
+| `CompactingAgentSession` | `AgentKitChatReducer` |
+| --- | --- |
+| Tiered slots, older tiers coarser, a verbatim tier | One record, re-consolidated each time |
+| Compaction level chosen from occupancy, with hysteresis | One fixed level; a reduction can even grow the history |
+| Rotation into a fresh provider session | None; the history is trimmed in place |
+| The provider's own token usage | Characters estimated from the messages |
+| Works on GitHub Copilot, where the runtime owns history | Unavailable there: Copilot has no reducer hook |
+
+Use `CompactingAgentSession` (see *Sessions*) for GitHub Copilot and wherever full fidelity matters;
+use the reducer when your host already owns its history and you want AgentKit's consolidation in the
+hook it has.
 
 # Sessions
 

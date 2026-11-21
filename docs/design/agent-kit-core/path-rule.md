@@ -170,12 +170,26 @@ Patterns are matched against every name in the path, not only the last, so that 
 directory such as `.git` also excludes everything inside it. Matching uses the base class
 library's simple-expression matcher, which keeps the unit free of any package dependency.
 
-#### Describe()
+#### Describe(string workingDirectory)
 
 Internal helper producing the location-and-access text used when `PathPolicy` enumerates
-permitted locations in a denial. A rooted grant is described as its resolved real root followed by
-its access level, for example `C:\work (read-only)`. An unrestricted grant is described as
+permitted locations in a denial. A rooted grant is described relative to the policy's working
+directory by `DescribeLocation`, followed by its access level: `. (read-only)` for the working
+directory itself, `session (read-write)` for a folder beneath it, `../session (read-write)` for one
+beside it, always with forward slashes. An unrestricted grant is described as
 `anywhere (read-write)` or `anywhere (read-only)`.
+
+The relative form is the one a model uses to address the location — `PathPolicy` joins a relative
+request to the working directory and normalizes it before judging containment — so the map stays
+complete and usable without stating the host's absolute layout in a transcript that leaves the
+host. `Path.GetRelativePath` returns a rooted path when no relative form exists (a root on another
+volume); only then is the absolute root stated, for example `Z:\data (read-only)`.
+
+#### DescribeLocation(string workingDirectory)
+
+Private helper computing the location part of `Describe`: `anywhere` for an unrooted grant,
+otherwise `Path.GetRelativePath(workingDirectory, Root)` with forward slashes, or `Root` itself when
+that result is rooted. It is purely lexical and never touches the file system.
 
 Deny patterns are omitted from this short description because they narrow a location rather than
 name one, and listing them would make the permission map harder to read without telling the model

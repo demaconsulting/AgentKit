@@ -25,6 +25,56 @@ sections:
                 ImagePromotingChatClient_GetResponseAsync_ToolResultWithImage_AddsUserMessageCarryingTheSameDataContent
               - >-
                 ImagePromotingChatClient_GetResponseAsync_ToolResultWithContentList_PromotesOnlyTheImageParts
+              - >-
+                ImagePromotingChatClient_GetResponseAsync_ToolResultWithTwoImagesInList_EachReplacedInPlaceAndBothPromotedInOrder
+
+          - id: AgentKitCore-ImagePromotingChatClient-ToolResultCarriesNoImageBytes
+            title: >-
+              The image-promoting client shall forward a tool result whose promoted images are
+              each replaced by a short placeholder naming the image's media type and size, so that
+              no image content remains in the tool result, including in a provider-native raw
+              representation of it.
+            justification: |
+              A provider adapter that cannot carry an image in a tool response may still
+              serialize it into the tool message as text. OllamaSharp writes such content as a
+              base64 data URI, so a 316 KB image became a 421,629-character tool message that
+              truncated the context window and lost the user's question, even though the image
+              itself had been promoted correctly. The image must be sent once, on the user
+              message, and the tool result must stay small whatever the size of the image. The
+              placeholder keeps the tool result readable as a complete answer that points to the
+              attachment, and names only values the image itself carries. An adapter that prefers
+              a message's provider-native raw form over its contents would otherwise resend the
+              original bytes, so the rewritten copies carry no raw representation.
+            tests:
+              - >-
+                ImagePromotingChatClient_GetResponseAsync_ToolResultWithImage_ToolMessageCarriesPlaceholderNotImage
+              - >-
+                ImagePromotingChatClient_GetResponseAsync_LargeImageToolResult_ForwardedToolMessageIsSmall
+              - >-
+                ImagePromotingChatClient_GetResponseAsync_ToolResultWithCaptionAndImage_CaptionKeptImageReplaced
+              - >-
+                ImagePromotingChatClient_GetStreamingResponseAsync_ToolResultWithImage_ToolMessageCarriesPlaceholder
+              - >-
+                ImagePromotingChatClient_GetResponseAsync_ToolResultWithTwoImagesInList_EachReplacedInPlaceAndBothPromotedInOrder
+              - >-
+                ImagePromotingChatClient_GetResponseAsync_ToolMessageWithParallelImageResults_EveryResultReplacedAndCallerUntouched
+              - >-
+                ImagePromotingChatClient_GetResponseAsync_ToolMessageWithRawRepresentation_ForwardedCopyCarriesNone
+
+          - id: AgentKitCore-ImagePromotingChatClient-CallerMessagesUnchanged
+            title: >-
+              The image-promoting client shall leave the conversation it was handed unmodified,
+              forwarding a rewritten copy of any tool result it changes.
+            justification: |
+              The history a host or a function-invocation loop holds must record what a tool
+              actually returned, because it is persisted, replayed on the next request and may be
+              read by other components. A decorator that edited it in place would make the stored
+              history depend on whether the decorator was installed, and would destroy the image
+              the next request needs to promote again.
+            tests:
+              - ImagePromotingChatClient_GetResponseAsync_CallerMessages_AreNotModified
+              - >-
+                ImagePromotingChatClient_GetResponseAsync_ToolMessageWithParallelImageResults_EveryResultReplacedAndCallerUntouched
 
           - id: AgentKitCore-ImagePromotingChatClient-AnnouncesAttachment
             title: >-
@@ -55,7 +105,8 @@ sections:
           - id: AgentKitCore-ImagePromotingChatClient-MessageOrderPreserved
             title: >-
               The image-promoting client shall forward every message it received, in the order it
-              received them.
+              received them, a tool result carrying a promoted image being forwarded with that
+              image replaced.
             justification: |
               The model reads an exchange in sequence, so a client that reordered or dropped a
               message would change the meaning of the conversation rather than merely its

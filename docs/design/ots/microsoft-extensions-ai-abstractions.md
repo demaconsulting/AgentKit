@@ -23,6 +23,10 @@ NuGet dependency AgentKit Core carries.
   forwards the name, description, schemas, serializer options, underlying method, additional
   properties and service lookup to the inner function while letting the wrapper resolve an
   oversized-output marker and, when retention of large outputs is composed, retain the output
+- `IChatReducer` — the contract `AgentKitChatReducer` implements so a host-owned chat history can be
+  reduced through AgentKit's consolidation in whatever reducer hook the host already has
+- `IChatClient`, `DelegatingChatClient` and `ChatMessage` — the chat abstractions
+  `ImagePromotingChatClient` decorates and `AgentKitChatReducer` reads
 
 ### Integration Pattern
 

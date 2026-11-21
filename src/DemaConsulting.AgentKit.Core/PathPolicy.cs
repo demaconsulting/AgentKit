@@ -59,11 +59,14 @@ namespace DemaConsulting.AgentKit.Core;
 ///     <para>
 ///     <b>Denials state what was asked, how it was interpreted, and what is permitted.</b> A denial
 ///     echoes the caller's input verbatim; when the input was a relative path it also states the
-///     absolute location that input was interpreted as, so a silent wrong-target is impossible to
-///     miss; and it enumerates the granted locations with their access levels, so the model learns
-///     the complete, truthful map of where it may go instead of guessing. A denial deliberately does
-///     disclose host locations: the value of telling a confined model where it may work outweighs
-///     concealing paths it is already confined to.
+///     location that input was interpreted as, normalized and relative to the working directory, so
+///     a silent wrong-target is impossible to miss; and it enumerates the granted locations with
+///     their access levels, relative to the working directory, so the model learns the complete,
+///     truthful map of where it may go instead of guessing. A denial never states the working
+///     directory or a resolved target as a host absolute path: the relative map is fully
+///     addressable, because relative requests are joined to the working directory and normalized
+///     before containment is judged, and the transcript a denial joins leaves this process. Only a
+///     grant with no relative form — one on another volume — is named absolutely.
 ///     </para>
 ///     <para>
 ///     <b>Two questions are answered of the policy as a whole.</b> Most of this type decides
@@ -1007,14 +1010,24 @@ public sealed class PathPolicy
 
     /// <summary>
     ///     Builds a denial message stating what was asked for, how it was interpreted when that
-    ///     happened, and which locations are permitted.
+    ///     happened, and which locations are permitted, without stating any host location the
+    ///     model was not already given.
     /// </summary>
     /// <remarks>
+    ///     <para>
     ///     The three parts appear in order: the requested input echoed verbatim; the interpreted
-    ///     absolute location, present only when a relative request was joined to the working
-    ///     directory, so an interpretation is never reported that did not occur and the
-    ///     interpretation is never reported on its own; and the permitted locations, each with
-    ///     its access level, or a statement that none are permitted.
+    ///     location, present only when a relative request was joined to the working directory, so
+    ///     an interpretation is never reported that did not occur and the interpretation is never
+    ///     reported on its own; and the permitted locations, each with its access level, or a
+    ///     statement that none are permitted.
+    ///     </para>
+    ///     <para>
+    ///     The interpretation and the permitted locations are both stated relative to the working
+    ///     directory, in the form a model addresses them, so the map stays complete and directly
+    ///     usable while the working directory's absolute location and the host's layout never
+    ///     appear in the transcript. A grant with no relative form (another volume) is the one
+    ///     location named absolutely; see <see cref="PathRule.Describe(string)"/>.
+    ///     </para>
     /// </remarks>
     /// <param name="reason">The reason phrase for the denial.</param>
     /// <param name="path">The caller's requested path; may be null.</param>
@@ -1034,10 +1047,14 @@ public sealed class PathPolicy
         var echo = IsAbsence(path) ? "(no path — the working directory)" : $"\"{path}\"";
         builder.Append('\n').Append("Requested: ").Append(echo);
 
-        // (b) What it was interpreted as, only when a relative request was actually interpreted.
+        // (b) What it was interpreted as, only when a relative request was actually interpreted,
+        // expressed relative to the working directory rather than as a host location.
         if (wasRelative)
         {
-            builder.Append('\n').Append("Interpreted as: ").Append(interpretedAbsolute);
+            builder.Append('\n')
+                .Append("Interpreted as: ")
+                .Append(RelativeToWorkingDirectory(interpretedAbsolute, path!))
+                .Append(" (relative to the working directory)");
         }
 
         // (c) What is actually permitted, enumerated with access levels.
@@ -1047,14 +1064,44 @@ public sealed class PathPolicy
         }
         else
         {
-            builder.Append('\n').Append("Permitted locations:");
+            builder.Append('\n').Append("Permitted locations (relative to the working directory):");
             foreach (var grant in _grants)
             {
-                builder.Append('\n').Append("  - ").Append(grant.Describe());
+                builder.Append('\n').Append("  - ").Append(grant.Describe(WorkingDirectory));
             }
         }
 
         return builder.ToString();
+    }
+
+    /// <summary>
+    ///     Expresses the location a relative request was interpreted as relative to the working
+    ///     directory, normalized and with forward slashes.
+    /// </summary>
+    /// <remarks>
+    ///     The interpretation is reported so a silent wrong target is impossible to miss — for
+    ///     example <c>a/../../outside/x</c> is stated as <c>../outside/x</c>. Expressing it relative
+    ///     to the working directory keeps that value without disclosing where the working directory
+    ///     is. The input is caller-controlled, so a value the platform cannot relativize falls back
+    ///     to the request as supplied, keeping the non-throwing contract. This is reached only for a
+    ///     non-rooted request combined with the working directory, so the interpretation always
+    ///     shares the working directory's root and the relative path returned is never rooted; no
+    ///     guard against a rooted result is needed.
+    /// </remarks>
+    /// <param name="interpretedAbsolute">The normalized absolute interpretation.</param>
+    /// <param name="requested">The relative request exactly as supplied.</param>
+    /// <returns>The interpretation relative to the working directory.</returns>
+    private string RelativeToWorkingDirectory(string interpretedAbsolute, string requested)
+    {
+        try
+        {
+            return Path.GetRelativePath(WorkingDirectory, interpretedAbsolute)
+                .Replace(Path.DirectorySeparatorChar, '/');
+        }
+        catch (Exception exception) when (IsResolutionFailure(exception))
+        {
+            return requested.Trim().Replace('\\', '/');
+        }
     }
 
     /// <summary>

@@ -24,15 +24,22 @@ NuGet dependency of the AgentKitAgentsCopilot package only, deliberately kept ou
   the raw runtime event
 - `AgentResponse` and the gathering of a stream of updates into one response, which is how the
   agent's non-streaming run is defined so the two run methods cannot disagree
+- `AIContextProvider` and `AIContext` — the hook `ToolPackContextProvider` in AgentKitAgentsChatClient
+  derives from: it contributes tools and instructions at the start of each run of a
+  `ChatClientAgent` and persists state at its end
+- `AgentSessionStateBag` value round-tripping — the provider writes each conversation's retention
+  snapshot with `SetValue` and reads it back with `TryGetValue` after the session is deserialized
+- `InMemoryChatHistoryProvider` with its `ChatReducer` option — the hook through which a host-built
+  agent reduces its stored history with AgentKit's `AgentKitChatReducer`
 
 ### Integration Pattern
 
-`Microsoft.Agents.AI.Abstractions` is consumed by `CopilotAgent` in AgentKitAgentsCopilot, which
-references it as a **direct** `PackageReference`. The package has no initialization, configuration or
-disposal step: `CopilotAgentFactory` constructs a `CopilotAgent` and returns it as an `AIAgent`, and
-the application drives it through the abstraction's own surface — creating sessions, running, and
-serializing and deserializing sessions. The agent holds no disposable resource and the application
-does not dispose it; the Copilot client beneath it remains the host's to manage.
+`Microsoft.Agents.AI.Abstractions` is consumed by `CopilotAgent` in AgentKitAgentsCopilot, which references it as a
+**direct** `PackageReference`, and by `ToolPackContextProvider` in AgentKitAgentsChatClient, which receives it through
+`Microsoft.Agents.AI`. The package has no initialization, configuration or disposal step: `CopilotAgentFactory`
+constructs a `CopilotAgent` and returns it as an `AIAgent`, and the application drives it through the abstraction's own
+surface — creating sessions, running, and serializing and deserializing sessions. The agent holds no disposable resource
+and the application does not dispose it; the Copilot client beneath it remains the host's to manage.
 
 The serialized form of a `CopilotAgentSession` — a JSON object with a `sessionId` and a `stateBag` — is
 AgentKit's own, written and read by the session type through the abstraction's serialization extension

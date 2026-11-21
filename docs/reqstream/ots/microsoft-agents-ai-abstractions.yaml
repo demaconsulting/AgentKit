@@ -27,3 +27,45 @@ sections:
               - AgentKitAgentsCopilot_Agent_RunsAndStreamsOnTheRuntime
               - CopilotAgent_Run_ReturnsTheStreamedContentAsOneResponse
               - CopilotAgent_SerializeSession_RoundTripsTheSessionIdAndStateBag
+
+          - id: AgentKit-OTS-MicrosoftAgentsAIAbstractions-AIContextProvider
+            title: >-
+              Microsoft.Agents.AI.Abstractions shall provide AIContextProvider, through which a
+              provider contributes tools and instructions to each run of a chat-client agent and is
+              told when the run has ended.
+            justification: |
+              ToolPackContextProvider derives from AIContextProvider: the framework calls it at the
+              start of every run for the tools and instructions to merge into the request, and at the
+              end for any state to keep. AgentKit's tests that run a chat-client agent whose only tools
+              come from the provider, and observe them offered and invoked, prove the hook works.
+            tags: [ots]
+            tests:
+              - AgentKitAgentsChatClient_ContextProvider_ToolsReachTheProviderAndRun
+              - ToolPackContextProvider_Run_ToolsAndInstructionsReachTheChatClient
+
+          - id: AgentKit-OTS-MicrosoftAgentsAIAbstractions-SessionStateBag
+            title: >-
+              Microsoft.Agents.AI.Abstractions shall provide a session state bag whose values are
+              serialized with the session and read back when the session is deserialized.
+            justification: |
+              ToolPackContextProvider keeps each conversation's retained outputs in the session's
+              state bag so they survive the agent persisting the conversation. AgentKit's tests that
+              serialize and deserialize a session through the agent and then read an earlier reference
+              prove the value round-trips.
+            tags: [ots]
+            tests:
+              - AgentKitAgentsChatClient_ContextProvider_DeserializedSession_PagesAnEarlierOutput
+              - ToolPackContextProvider_SerializeDeserializeSession_RetainedOutputPagesAfterRestore
+
+          - id: AgentKit-OTS-MicrosoftAgentsAIAbstractions-ChatHistoryReducerHook
+            title: >-
+              Microsoft.Agents.AI.Abstractions shall provide an in-memory chat history provider that
+              reduces the stored history through a supplied chat reducer.
+            justification: |
+              A host-built chat-client agent owns its history through InMemoryChatHistoryProvider,
+              whose ChatReducer option is where AgentKitChatReducer is plugged in. AgentKit's test
+              that runs an agent over several turns and finds one consolidated record in the stored
+              history proves the hook calls the reducer and keeps its result.
+            tags: [ots]
+            tests:
+              - AgentKitAgentsChatClient_ChatReducer_InMemoryHistoryProvider_ReducesStoredHistory

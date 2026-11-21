@@ -42,6 +42,8 @@ software items, specifically:
   by opaque references and bounded by count and size
 - **ToolOutputSpill (Unit)** — Opt-in composition of retention into a tool list: an oversized output
   is retained and replaced by a bounded preview and a reference
+- **ToolOutputRetention (Unit)** — One conversation's retention handle: wraps tools added at any
+  time into one store, publishes the reader tools, and exports and restores the retained outputs
 - **ToolOutputReadTool (Unit)** — Publishes the `tool_output_read` tool, which pages through a
   retained output by line number
 - **ToolOutputSearchTool (Unit)** — Publishes the `tool_output_search` tool, which finds a pattern
@@ -77,6 +79,9 @@ software items, specifically:
   be exercised end to end without a live model
 - **CompactingAgentSession (Unit)** — The implementation that sequences turns, usage reads,
   rotations and provider-session disposal
+- **AgentKitChatReducer (Unit)** — A chat reducer for a host that owns its chat history,
+  consolidating older messages through the summarizer while keeping the system messages and a
+  verbatim tail
 - **AgentKitTools (System)** — A general-purpose capability package of guarded tool families
   built on the AgentKitCore contract, organized as one subsystem per tool family
 - **TextFile (Subsystem)** — The text file tool family: policy-governed searching, reading,
@@ -163,6 +168,9 @@ software items, specifically:
   across a tool-calling turn
 - **ChatClientSummarizer (Unit)** — Consolidates history through an `IChatClient` of the
   application's choosing, out of the session being compacted
+- **ToolPackContextProvider (Unit)** — Contributes AgentKit tools and instructions to every run of a
+  host-built `ChatClientAgent`, composed once per conversation, with each conversation's retention
+  persisted in its session
 - **AgentKitAgentsCopilot (System)** — Gives a GitHub Copilot `CopilotClient` an agent of AgentKit's
   own — a Microsoft Agent Framework `AIAgent` over confined Copilot sessions, with the runtime's
   built-in tools suppressed by deriving the session allow-list from the supplied tools — and carries
@@ -281,11 +289,12 @@ diagram or the prose below.
 
 ![Software Structure](SoftwareStructureView.svg)
 
-`AgentKitCore` is flat: its twenty units sit directly under the system with no intervening
+`AgentKitCore` is flat: its twenty-seven units sit directly under the system with no intervening
 subsystems. That is now a decision rather than a consequence of smallness, and the system design
-chapter records what those twenty units actually look like: three path-safety units, four
-tool-contract units, two pack-contract units, ten session units, and `ImagePromotingChatClient`,
-which stands apart from all of them.
+chapter records what those twenty-seven units actually look like: three path-safety units, four
+tool-contract units, two pack-contract units, six tool-output units, ten session units, and two
+provider-compatibility units — `ImagePromotingChatClient` and `AgentKitChatReducer` — which stand apart
+from the rest.
 
 No single boundary divides that into coherent halves. A subsystem layer would therefore not draw one
 line but four or five, and each would cost a requirements file, a design document, a verification
@@ -339,9 +348,10 @@ Framework's own `ChatClientAgent`; the Copilot SDK ships no Agent Framework agen
 `AgentKitAgentsCopilot` carries eight units: that agent, its factory, the runtime it starts and owns,
 a provider session, its factory, a summarizer, the observer that
 reads occupancy from the runtime's event stream, and the internal turn channel that makes all of it
-testable without a live runtime. `AgentKitAgentsChatClient` holds five:
-that factory, a provider session, its factory, a summarizer, and the recorder that reads occupancy
-from the last request of a turn. Both are flat, and the two share no code and never reference each
+testable without a live runtime. `AgentKitAgentsChatClient` holds six:
+that factory, a provider session, its factory, a summarizer, the recorder that reads occupancy
+from the last request of a turn, and the context provider that contributes AgentKit tools to a
+host-built agent per conversation. Both are flat, and the two share no code and never reference each
 other.
 
 `AgentKitAgentsOllama` is the fifth system and the odd one out: it builds no agent and carries no
@@ -365,6 +375,7 @@ and descriptions as follows:
 
 ```text
 src/DemaConsulting.AgentKit.Core/
+├── AgentKitChatReducer.cs      — consolidation for a host-owned chat history
 ├── AgentSession.cs             — the session contract and the per-turn response
 ├── AgentSessionOptions.cs      — what an application configures about one session
 ├── CompactingAgentSession.cs   — the implementation that sequences turns and rotations
@@ -387,6 +398,7 @@ src/DemaConsulting.AgentKit.Core/
 ├── ToolName.cs                 — the family-prefix naming convention
 ├── ToolOutputOptions.cs        — preview size and retention ceilings for large outputs
 ├── ToolOutputReadTool.cs       — the tool_output_read tool
+├── ToolOutputRetention.cs      — the per-conversation retention handle and its snapshot
 ├── ToolOutputSearchTool.cs     — the tool_output_search tool
 ├── ToolOutputSpill.cs          — opt-in retention of large outputs, and the preview
 ├── ToolOutputStore.cs          — the per-composition store of retained outputs
@@ -477,7 +489,8 @@ src/DemaConsulting.AgentKit.Agents.ChatClient/
 ├── ChatClientProviderSession.cs           — one Core session over an IChatClient
 ├── ChatClientProviderSessionFactory.cs    — creates those sessions, holding the client, the window and the pipeline
 ├── PromptSizeRecordingChatClient.cs       — records each request's prompt size, beneath the tool-calling loop
-└── ChatClientSummarizer.cs                — consolidates history through an IChatClient
+├── ChatClientSummarizer.cs                — consolidates history through an IChatClient
+└── ToolPackContextProvider.cs             — contributes AgentKit tools per conversation to a ChatClientAgent
 
 src/DemaConsulting.AgentKit.Agents.Copilot/
 ├── CopilotAgent.cs                   — AgentKit's AIAgent over confined Copilot sessions
@@ -536,6 +549,19 @@ test/DemaConsulting.AgentKit.Agents.Copilot.LiveTests/
 
 Its scenarios are supplementary evidence for behaviors this design records as measured against the
 live runtime; see *AgentKitAgentsCopilot System Verification Design*.
+
+The opt-in live suite for the ChatClient system follows the same pattern against a real Ollama
+server, named with its model in the environment:
+
+```text
+test/DemaConsulting.AgentKit.Agents.ChatClient.LiveTests/
+├── OllamaLiveFixture.cs     — the run's settings, log and sandbox of granted and denied files
+├── OllamaLiveTests.cs       — the scenarios, asserted on what OllamaSharp sends on the wire
+├── TestPng.cs               — generates the image the image-promotion scenarios read
+└── WireRecordingHandler.cs  — records every request and applies the run's window and thinking setting
+```
+
+Its scenarios are supplementary evidence; see *AgentKitAgentsChatClient System Verification Design*.
 
 ## Document Conventions
 

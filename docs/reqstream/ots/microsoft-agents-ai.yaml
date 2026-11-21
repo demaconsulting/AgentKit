@@ -53,3 +53,17 @@ sections:
             tests:
               - ChatClientProviderSessionFactory_CreateAsync_SeededTool_IsInvokedAndItsResultReachesTheTranscript
               - PromptSizeRecordingChatClient_GetResponse_BeneathToolInvocation_KeepsTheLastPromptWhileTheTurnReportsTheSum
+          - id: AgentKit-OTS-MicrosoftAgentsAI-ChatClientBuilder
+            title: >-
+              Microsoft.Agents.AI shall bring the Microsoft.Extensions.AI ChatClientBuilder through
+              which a chat client pipeline is composed from decorating clients.
+            justification: |
+              ChatClientBuilder lives in Microsoft.Extensions.AI, which this package receives through
+              Microsoft.Agents.AI rather than referencing directly. Its Use method composes a
+              decorating client into a pipeline, outermost first, and is how a host installs AgentKit's
+              image-promoting decorator in a pipeline it builds. AgentKit's tests that build pipelines
+              through it and observe the composed order prove it composes as required.
+            tags: [ots]
+            tests:
+              - ChatClientAgentFactory_UseImagePromotion_InstallsDecoratorBeneathFunctionInvocation
+              - ChatClientAgentFactory_UseImagePromotion_AboveFunctionInvocation_Throws

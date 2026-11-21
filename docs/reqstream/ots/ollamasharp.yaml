@@ -64,3 +64,17 @@ sections:
             tests:
               - >-
                 OllamaContextSizingChatClient_GetResponseAsync_ThroughTheRealClient_SendsTheContextLengthOnTheWire
+
+          - id: AgentKit-OTS-OllamaSharp-ChatWire
+            title: >-
+              OllamaSharp shall send a tool result's text as the content of the tool message and a
+              user message's image content in that message's images.
+            justification: |
+              Image promotion relies on how OllamaSharp maps chat content to Ollama's chat request:
+              the placeholder left in a tool result must arrive as the tool message's text, and the
+              promoted image must arrive in the following user message's images, the field Ollama
+              reads pixels from. AgentKit's test that runs the real OllamaSharp client over a capturing
+              HTTP handler and inspects the request body proves both.
+            tags: [ots]
+            tests:
+              - AgentKitAgentsChatClient_ImagePromotion_OverOllamaSharp_ToolMessageCarriesNoImageBytes

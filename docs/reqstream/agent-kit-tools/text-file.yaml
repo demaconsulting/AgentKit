@@ -158,6 +158,7 @@ sections:
               - AgentKitTools-TextFile-SearchTool-Matching
               - AgentKitTools-TextFile-SearchTool-MaxMatches
               - AgentKitTools-TextFile-SearchTool-EmptyResult
+              - AgentKitTools-TextFile-SearchTool-FilePathSearchesThatFile
             tests:
               - TextFile_Family_SearchReadEditLoop_WorksByRelativeNames
 
