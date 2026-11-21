@@ -120,9 +120,9 @@ The one direct runtime NuGet dependency is `CanvasNet`, which the image family u
 an image declares about itself and to extract and re-encode a region of one. It is taken directly
 rather than through Core because it serves one family in this package and nothing in Core, and it
 is taken **without** `PrivateAssets` because it is needed at run time by any application that
-attaches that family. It was chosen on the property that it is fully safe managed code carrying no
-native binaries, which is what makes parsing hostile image input consistent with this library's
-thesis; see *CanvasNet Design*.
+attaches that family. It was chosen on the property that its decoders are safe managed code and
+its package carries no native binaries, which is what makes parsing hostile image input consistent
+with this library's thesis; see *CanvasNet Design*.
 
 The memory family consumes a second abstraction from that same package —
 `IEmbeddingGenerator<string, Embedding<float>>` — as a constructor argument the application
@@ -303,8 +303,8 @@ The library is supported on the following operating systems:
 Portability is achieved by restricting the implementation to Base Class Library (BCL) APIs
 available across all target frameworks, to the provider-neutral
 `Microsoft.Extensions.AI.Abstractions` surface reached through AgentKitCore, and to one runtime
-imaging dependency that is itself fully safe managed code carrying no native binaries and that
-targets exactly the frameworks listed above; see *CanvasNet Design*. No platform-specific native
+imaging dependency whose package carries no native binaries, whose decoders are safe managed code
+and that targets every framework listed above; see *CanvasNet Design*. No platform-specific native
 interop, OS-specific APIs, or framework-version-specific features are used.
 
 ### Integration Patterns

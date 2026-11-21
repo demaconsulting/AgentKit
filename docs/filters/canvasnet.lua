@@ -26,16 +26,26 @@ local function split_command(text)
   if #tokens == 0 then fail("CANVASNET_TOOL names no program") end
   return tokens
 end
--- Only a code block with a class, or a local picture that is not a common raster, needs the tool.
-local RASTERS = { png = true, jpg = true, jpeg = true, gif = true, webp = true }
+-- Only what the tool may draw needs it: a code block with one of CLASSES (exact), or a local picture (no URL scheme)
+-- whose name ends in one of SUFFIXES (any letter case). --write-shim fills both from the tool's own tables, so write
+-- the shim again after updating the tool.
+local CLASSES = { "mermaid", "plantuml" }
+local SUFFIXES = { ".svg", ".vl.json", ".vl", ".scad", ".vsdx", ".pptx", ".pdf", ".mmd", ".mermaid", ".puml", ".plantuml", ".pu" }
+local function has_suffix(name)
+  for _, suffix in ipairs(SUFFIXES) do if name:sub(-#suffix) == suffix then return true end end
+  return false
+end
 local function needs_tool(doc)
   local needed = false
   doc:walk({
     Image = function(img)
-      local ext = img.src:lower():match("%.(%w+)$")
-      if not img.src:match("^%a[%w+.-]+:") and not RASTERS[ext or ""] then needed = true end
+      if not img.src:match("^%a[%w+.-]+:") and has_suffix(img.src:lower()) then needed = true end
     end,
-    CodeBlock = function(block) if #block.classes > 0 then needed = true end end,
+    CodeBlock = function(block)
+      for _, class in ipairs(block.classes) do
+        for _, drawn in ipairs(CLASSES) do if class == drawn then needed = true end end
+      end
+    end,
   })
   return needed
 end
@@ -53,13 +63,21 @@ function Pandoc(doc)
   if has_embed and embed then add("--embed-resources") end
   local ran, output = pcall(pandoc.pipe, command[1], args, pandoc.write(doc, "json"))
   if not ran then
-    local _, code = pcall(function() return output.error_code end)
-    if not code then
-      fail("cannot run the canvasnet tool ('" .. table.concat(command, " ") .. "'): " .. tostring(output)
+    -- Only a table with a numeric error_code is a tool that ran and failed; anything else means it did not start
+    local function field(name)
+      local read, value = pcall(function() return output[name] end)
+      if read then return value end
+    end
+    local code = type(output) == "table" and field("error_code") or nil
+    if type(code) ~= "number" then
+      local shown, reason = pcall(tostring, output)
+      fail("cannot run the canvasnet tool ('" .. table.concat(command, " ") .. "'): "
+        .. (shown and reason or "an error that cannot be shown")
         .. ". Pin DemaConsulting.CanvasNet.Tool in .config/dotnet-tools.json (dotnet tool install"
         .. " DemaConsulting.CanvasNet.Tool) or set CANVASNET_TOOL to the command to run.")
     end
-    local decoded, result = pcall(pandoc.json.decode, output.output or "", false)
+    local printed = field("output")
+    local decoded, result = pcall(pandoc.json.decode, type(printed) == "string" and printed or "", false)
     if decoded and type(result) == "table" and type(result.error) == "table" and result.error.message then
       fail(tostring(result.error.message) .. (result.error.hint and (" (" .. tostring(result.error.hint) .. ")") or ""))
     end

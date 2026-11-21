@@ -778,6 +778,59 @@ public class ImageCropToolTests
     }
 
     /// <summary>
+    ///     Proves a PNG whose pixel data inflates far beyond its declared size is refused without
+    ///     the tool ever allocating the inflated data.
+    /// </summary>
+    /// <remarks>
+    ///     The decode budget is decided from the declared dimensions, so it bounds what decoding
+    ///     costs only if the decoder never inflates more than those dimensions imply. This file
+    ///     declares sixteen by sixteen pixels and is well inside the binary ceiling, yet its pixel
+    ///     data inflates to half a gigabyte — every check made before decoding admits it, and only
+    ///     the decoder can stop it.
+    ///     <para>
+    ///     The refusal is observed through the tool, invoked as a runtime invokes it. The
+    ///     allocation is observed on the decode step the tool performs for this file —
+    ///     <see cref="ImageAdmission.TryDecode"/>, called with the same bytes, media type and
+    ///     declared size — because the tool reads the file asynchronously and may resume on a
+    ///     different thread, while the decode step is synchronous and runs entirely on the calling
+    ///     thread. That makes the per-thread allocation counter an exact measure of what refusing
+    ///     the file cost, unaffected by any test running concurrently in the same process. A
+    ///     decoder that inflated first and checked the length afterwards would allocate at least
+    ///     the inflated size; the bound asserted is a quarter of it.
+    ///     </para>
+    /// </remarks>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task ImageCropTool_Crop_PngInflatingBeyondItsDeclaredSize_IsRefusedWithoutInflatingIt()
+    {
+        // Arrange: a permitted PNG declaring 16x16 pixels whose data inflates to 512 MiB
+        const long inflatedBytes = 512L * 1024 * 1024;
+        var data = ImageTestImages.InflatesBeyondDeclaredSizePng(16, 16, inflatedBytes);
+        using var fixture = new TempDirectoryFixture();
+        var file = WriteBytes(fixture.Root, "inflating.png", data);
+        var tool = ImageCropTool.Create(RootedPolicy(fixture.Root));
+
+        // Act: ask the tool for a region of it, then measure the decode step it performed on
+        // this thread alone
+        var result = await InvokeAsync(tool, file, 0, 0, 8, 8);
+        var before = GC.GetAllocatedBytesForCurrentThread();
+        var decoded = ImageAdmission.TryDecode(data, ImageMediaTypes.Png, 16, 16, out var surface, out var denial);
+        var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        surface?.Dispose();
+
+        // Assert: refused as undecodable with the declared size stated, having never inflated it
+        var text = Assert.IsType<string>(result);
+        Assert.Contains("Denied (UnsupportedMediaType)", text, StringComparison.Ordinal);
+        Assert.Contains("16x16 pixels", text, StringComparison.Ordinal);
+        Assert.Contains("could not be decoded", text, StringComparison.Ordinal);
+        Assert.False(decoded);
+        Assert.Contains("could not be decoded", Assert.IsType<string>(denial), StringComparison.Ordinal);
+        Assert.True(
+            allocated < inflatedBytes / 4,
+            $"Refusing the file allocated {allocated} bytes; the data inflates to {inflatedBytes} bytes.");
+    }
+
+    /// <summary>
     ///     Proves an empty file is refused without throwing.
     /// </summary>
     /// <returns>A task that completes when the scenario has been verified.</returns>

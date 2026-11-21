@@ -169,7 +169,9 @@ decoder so the two cannot drift, and `MaxImagePixels` on the policy's limits, wh
 product. **The estimate uses a fixed four bytes per pixel and never the channel count a file
 declares**, because a header reports the file's own encoding — a palette-indexed image declares one
 channel per pixel — while the decoded buffer is always RGBA; an estimate from the declared channels
-would under-count exactly the format a hostile caller would choose by a factor of four. See
+would under-count exactly the format a hostile caller would choose by a factor of four. The budget
+bounds what decoding allocates, and not only the decoded buffer, because the decoder in turn
+bounds its decompression by the declared dimensions; see *CanvasNet Design*. See
 *ImageCropTool Unit Design*, which states the arithmetic in full.
 
 *The region comes back as PNG whatever the source was*, because the encoding alters no pixel — and

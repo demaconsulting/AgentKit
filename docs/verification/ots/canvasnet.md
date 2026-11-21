@@ -8,7 +8,8 @@ This document provides the verification evidence for the `CanvasNet` OTS softwar
 dimensions an image file declares in its header without decoding any pixel data — including for a
 file whose declared dimensions exceed what it will decode — reporting, from the header alone,
 whether a full decode is expected to succeed, decoding PNG and JPEG files into an
-addressable pixel buffer including a PNG whose pixels are stored as palette indices, copying a
+addressable pixel buffer including a PNG whose pixels are stored as palette indices, rejecting PNG
+pixel data that would inflate beyond the declared size without inflating it, copying a
 rectangular sub-region of such a buffer, and
 encoding a buffer back to a form that reproduces every pixel exactly when decoded again.
 
@@ -76,6 +77,20 @@ format decodes into the same addressable buffer.
 
 **Requirement coverage**: `AgentKit-OTS-CanvasNet-Decode`.
 
+#### ImageCropTool_Crop_PngInflatingBeyondItsDeclaredSize_IsRefusedWithoutInflatingIt
+
+**Scenario**: A PNG declaring sixteen by sixteen pixels, a fraction of the binary ceiling in size,
+whose pixel data inflates to half a gigabyte, is offered to the image crop tool, and the decode step
+the tool performs is then repeated on the same bytes while the calling thread's allocation is
+measured — that step is synchronous, so the per-thread counter is unaffected by concurrent tests.
+
+**Expected**: The undecodable refusal naming the declared size, with the decode step having allocated
+less than a quarter of the inflated size — so the decoder rejected the pixel data without inflating it.
+The same scenario run against the 0.1.0 release allocated over a gigabyte and failed, which is
+what shows the scenario observes the bound rather than passing regardless of it.
+
+**Requirement coverage**: `AgentKit-OTS-CanvasNet-BoundedInflate`.
+
 #### ImageCropTool_Crop_ReturnedRegion_CarriesTheSourcePixelsExactly
 
 **Scenario**: A region whose origin is not the image's own is taken from a source built with a
@@ -108,6 +123,8 @@ consuming tool needed no knowledge of the PNG format to say so.
 - **`AgentKit-OTS-CanvasNet-Decode`**:
   ImageCropTool_Crop_PalettizedPng_ReturnsCroppedImageContent,
   ImageCropTool_Crop_PermittedJpeg_ReturnsPngContent
+- **`AgentKit-OTS-CanvasNet-BoundedInflate`**:
+  ImageCropTool_Crop_PngInflatingBeyondItsDeclaredSize_IsRefusedWithoutInflatingIt
 - **`AgentKit-OTS-CanvasNet-Crop`**:
   ImageCropTool_Crop_ReturnedRegion_CarriesTheSourcePixelsExactly
 - **`AgentKit-OTS-CanvasNet-Encode`**:

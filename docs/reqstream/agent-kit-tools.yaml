@@ -237,6 +237,7 @@ sections:
           - AgentKitTools-Image-ObservesPolicyLimits
           - AgentKit-OTS-CanvasNet-HeaderProbe
           - AgentKit-OTS-CanvasNet-Decode
+          - AgentKit-OTS-CanvasNet-BoundedInflate
           - AgentKit-OTS-CanvasNet-Crop
           - AgentKit-OTS-CanvasNet-Encode
           - AgentKit-OTS-CanvasNet-DecodeFeasibility
