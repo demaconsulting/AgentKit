@@ -213,10 +213,10 @@ The Copilot provider needs nothing installed beyond the .NET SDK — installing 
 required. The sample references `Microsoft.Copilot.SDK` directly, so its first build downloads the
 Copilot runtime (about 100 MB, adding about 356 MB to the sample's output), and it authenticates as
 the GitHub user signed in on the machine — through `gh auth login` or a Copilot sign-in — or with a
-token in `GH_TOKEN`. Run it from a shell where `COPILOT_CLI_PATH` is unset: every shell the Copilot
-CLI starts sets that variable, which makes in-process hosting look for the runtime beside the CLI
-instead, and the sample then stops with an error that says so. `Remove-Item Env:COPILOT_CLI_PATH`
-clears it in PowerShell, `unset COPILOT_CLI_PATH` in bash. The corpus is passed to the Copilot agent
+token in `GH_TOKEN`. AgentKit starts the runtime itself, with none of the shell's `COPILOT_`
+variables, so the sample runs from a Copilot CLI shell too. The runtime keeps its state in
+`AgentKit/research-assistant/copilot-runtime` under the user's local application data, a directory AgentKit
+creates and owns. The corpus is passed to the Copilot agent
 and session factories as the sessions' working directory.
 
 Against an Ollama server hosting a tool-calling model and an embedding model:

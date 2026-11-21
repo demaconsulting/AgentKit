@@ -705,50 +705,49 @@ that cannot reach GitHub sets the SDK's own MSBuild properties:
 
 ### Creating the Agent
 
-The host owns the `CopilotClient`: it constructs, starts and disposes it, and nothing AgentKit
-builds ever disposes it. **The client must be in `CopilotClientMode.Empty` on a data directory the
-host owns**, where the runtime keeps its session state. That is a precondition AgentKit cannot
-detect — the SDK offers no way to read a client's mode back — so AgentKit relies on the mode for
-nothing that reaches the model and withholds the runtime's ambient channels from the model on every
-session itself; a server from a source the runtime's discovery does not cover may start, and
-authenticate, during session creation (see below). A
-client that violates the precondition can still bring host-side behavior no session option reaches:
-settings in a shared data directory such as user-level hooks, credential storage in the system
-keychain rather than the data directory, telemetry and runtime file logging, and anything attached
-at client level through plugin directories or extensions:
+**AgentKit starts the Copilot runtime itself.** A host calls `CopilotRuntime.StartAsync` once, hands
+the runtime to the factory, and disposes the runtime when it is finished; nothing AgentKit builds on
+it ever disposes it. There is no way to hand AgentKit a `CopilotClient` of your own: what reaches a
+session depends on the client's mode, its data directory and its runtime's environment as much as on
+the session, and none of those can be read back from a client.
 
 ```csharp
 using DemaConsulting.AgentKit.Agents.Copilot;
-using Microsoft.Copilot;
 
 var dataDirectory = Path.Combine(
-    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "MyApp", "copilot");
+    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "MyApp", "copilot-runtime");
 
-await using var client = new CopilotClient(new CopilotClientOptions
-{
-    Mode = CopilotClientMode.Empty,
-    Runtime = RuntimeConnection.ForInProcess(baseDirectory: dataDirectory),
-    GitHub = new ClientGitHubOptions { UseLoggedInUser = true },
-});
-
-// Starting through the starter turns a runtime that cannot load into an error that says why.
-await CopilotClientStarter.StartAsync(client);
+await using var runtime = await CopilotRuntime.StartAsync(new CopilotRuntimeOptions(dataDirectory));
 
 var agent = CopilotAgentFactory.Create(
-    client,              // the host owns this client
+    runtime,             // the host disposes the runtime; the agent never does
     tools,               // the AIFunction list composed above
     instructions: "You are a document assistant. Use the tools provided.",
     workingDirectory: "/workspace");
 ```
 
-`UseLoggedInUser` authenticates as the signed-in GitHub user, as `gh auth login` or a Copilot
-sign-in left it, and also honors the `COPILOT_GITHUB_TOKEN`, `GH_TOKEN` and `GITHUB_TOKEN`
-environment variables; set `Token` on `ClientGitHubOptions` instead to supply a credential directly.
-The connection is the host's choice: `RuntimeConnection.ForDefault` resolves the SDK's default
-(in-process unless `COPILOT_SDK_DEFAULT_CONNECTION` says `stdio`), and
-`RuntimeConnection.ForSpawnedStdio` runs the runtime as a child process. Starting the client through
-`CopilotClientStarter.StartAsync` is optional; a host that calls `client.StartAsync` itself loses
-only the diagnosis described under *Troubleshooting the Copilot Runtime* below.
+The runtime is always:
+
+- **In Empty mode**, so the SDK supplies none of its coding-agent defaults and keeps credentials in
+  the data directory rather than the system keychain.
+- **A child process** running the runtime `Microsoft.Copilot.SDK` provisioned into the application's
+  output. Its environment is the host's minus every `COPILOT_` and `GITHUB_COPILOT_` variable, apart
+  from `COPILOT_GITHUB_TOKEN`, `COPILOT_GH_HOST`, `COPILOT_SYSTEM_PROXY`, `COPILOT_PROXY_KERBEROS`,
+  `COPILOT_PROXY_KERBEROS_SPN`, `COPILOT_TELEMETRY_DISABLED` and `COPILOT_GITHUB_TELEMETRY_DISABLED`,
+  which carry only credentials, network settings or a switch that turns telemetry off. Everything else
+  — `PATH`, the home and temporary folders, proxy and certificate settings, `GH_TOKEN`,
+  `GITHUB_TOKEN` — passes through.
+- **On a data directory AgentKit owns.** A missing or empty directory is created and marked with a
+  `.agentkit-copilot-runtime` file; a directory AgentKit marked earlier is reused, so conversations
+  survive a restart; any other non-empty directory — a Copilot CLI home, a shared folder, the data
+  directory an earlier release's client used — is refused with an `InvalidOperationException` naming
+  it. Keep the directory private to the application, never point the Copilot CLI at it, and give
+  each runtime running at the same time a directory of its own.
+
+`CopilotRuntimeOptions` takes only the data directory and, optionally, a GitHub token, a log level and
+a logger. With no token the runtime authenticates as the signed-in GitHub user — as `gh auth login`
+or a Copilot sign-in left it — and honors the `COPILOT_GITHUB_TOKEN`, `GH_TOKEN` and `GITHUB_TOKEN`
+environment variables; pass `gitHubToken:` to supply a credential directly.
 
 Copilot arrives as a complete runtime carrying its own tools — shell, fetch, file editing and more.
 The factory suppresses them by deriving the session allow-list from the same tools you supplied, so
@@ -756,38 +755,40 @@ a confined agent is offered only the tools you gave it. Every entry is source-qu
 tool: a bare name would also admit a built-in tool of the same name. The factory also withholds the
 runtime's other channels of injected capability on every session — skills, custom instructions,
 repository hooks, host git operations and commit co-author trailers, extensions, built-in
-sub-agents, memory, experimental features, embedding
-retrieval, and the host environment context the runtime would write into the system prompt. When a
-session is opened, every MCP server the runtime's discovery reports — the built-in GitHub server,
-servers configured in the data directory or the workspace, and servers plugins bring — is disabled
-before the session starts; once it exists, its installed plugins are cleared and any MCP server
-still enabled, such as one from a managed catalog or a signed-in account, is disabled and verified.
-Servers the runtime's MCP discovery returns are named in the session's disabled servers before the
-session exists, so the runtime does not start or authenticate them. The SDK documents that discovery
-as covering the user, workspace, plugin and builtin sources. A server from a source it cannot
-enumerate before creation, such as a managed catalog or a signed-in account, may start, and
-authenticate with the host environment, while the session is created. The factory disables any such
-server before any turn runs, and the session is refused if one stays enabled. This guarantees that
-the model cannot reach an ambient MCP server; it does not prevent one from running. A host that must
-also keep such servers from running supplies a `CopilotClientMode.Empty` client on a clean data
-directory it owns. That removes the sources the directory holds, namely its MCP configuration and
-installed plugins. SDK 2.0.1 does not document that Empty mode or a clean data directory keeps a
-managed-catalog or account server from starting; an account server follows the signed-in account and
-its organization's policy. The client therefore narrows those sources rather than guaranteeing that
-none starts. It does
-**not** install the image-promoting decorator, because the Copilot runtime already delivers a
-tool-returned image to the model.
+sub-agents, memory, experimental features, embedding retrieval, and the host environment context the
+runtime would write into the system prompt. It does **not** install the image-promoting decorator,
+because the Copilot runtime already delivers a tool-returned image to the model.
 
-**The working directory**: in-process hosting has no client-level working directory, so pass
+**What AgentKit guarantees about MCP servers, per source.** On the runtime AgentKit starts, before
+any session exists:
+
+- **The built-in GitHub MCP server** is named disabled, so it is not started or authenticated. Empty
+  mode alone would start it on the first turn.
+- **User-configured servers** cannot exist in a fresh data directory, and any added later are found by
+  the runtime's discovery and disabled before the session is created. Empty mode alone would run them.
+- **Workspace MCP configuration** is not loaded, because configuration discovery is off and the data
+  directory trusts no folder. A workspace server that discovery reports is disabled as well.
+- **Plugins**: none is installed in a fresh data directory, and plugin directories cannot be
+  configured.
+
+These sources are prevented: the opt-in live suite shows that their probe servers never execute.
+Servers from a managed catalog or a signed-in account follow organization policy and the account.
+The SDK cannot enumerate them before a session exists, so one may start, and authenticate, while the
+session is created. AgentKit then disables every server the session's MCP configuration lists, before
+any turn runs, and refuses the session if one stays enabled. This contains such a server; it does not
+prevent it. The session's configuration listing is not complete — it does not report the built-in
+GitHub server even while that server runs — so that check is defense in depth, not proof of absence.
+In every case, no MCP tool is on a session's allow-list.
+
+**The working directory**: AgentKit sets no working directory on the runtime process, so pass
 `workingDirectory:` to the factory — typically the root of the workspace the tools are confined to.
 Omit it and the runtime uses the host process's working directory. It grants nothing: what the agent
 may read or write is decided by the tools' own path policy.
-
 **Choosing the model**: pass `model:` to name the Copilot model backing the session:
 
 ```csharp
 var agent = CopilotAgentFactory.Create(
-    client,
+    runtime,
     tools,
     instructions: "You are a document assistant. Use the tools provided.",
     model: "gpt-5.4-mini");
@@ -823,7 +824,7 @@ var allowed = tools.Select(tool => tool.Name).ToHashSet(StringComparer.Ordinal);
 
 #pragma warning disable MCPSDK001 // the SDK marks the permission-decision types evaluation-only
 var agent = CopilotAgentFactory.Create(
-    client,
+    runtime,
     tools,
     onPermissionRequest: (request, invocation) =>
     {
@@ -905,9 +906,9 @@ var response = await agent.RunAsync(message, session);
 `UriContent` and `HostedFileContent` are not sent, and `AgentRunOptions` is ignored.
 
 **Resuming later**: after every run — successful, failed or canceled — the agent releases the
-runtime session without deleting it, so the conversation stays resumable under the client's data
+runtime session without deleting it, so the conversation stays resumable under the runtime's data
 directory. (A run made without a session has nothing that could resume it, so its runtime session is
-deleted when the run ends.) Serialize the session to keep it, and deserialize it on any agent built over a client with
+deleted when the run ends.) Serialize the session to keep it, and deserialize it on any agent built over a runtime with
 the same data directory, in this process or a later one:
 
 ```csharp
@@ -920,7 +921,7 @@ await agent.RunAsync("Where did we leave off?", resumed);
 // Finished with the conversation: deleting it is the host's decision.
 if (resumed.SessionId is { } sessionId)
 {
-    await client.DeleteSessionAsync(sessionId);
+    await runtime.DeleteSessionAsync(sessionId);
 }
 ```
 
@@ -952,21 +953,20 @@ for answer quality across a long conversation, not to save money.
 
 ### Troubleshooting the Copilot Runtime
 
-- **The client fails to start, and `COPILOT_CLI_PATH` is set.** When that environment variable is
-  set, in-process hosting loads the runtime library from beside that path instead of the runtime
-  the SDK provisioned into the application's output. Every shell the Copilot CLI starts sets it to
-  the CLI's own installation, which does not ship that library. Unset it for the host process —
-  `Remove-Item Env:COPILOT_CLI_PATH` in PowerShell, `unset COPILOT_CLI_PATH` in bash — point it at a
-  runtime that ships the in-process library, or connect with `RuntimeConnection.ForSpawnedStdio` and
-  an environment that omits it. `CopilotClientStarter.StartAsync` includes the runtime's own error in
-  the error it raises, and names the variable, its value and these remedies when that error points
-  at the variable's location; otherwise it reports the variable's value without blaming it, since the
-  variable is set in every Copilot CLI shell whatever the cause of a failure.
-- **The client fails to start, and `COPILOT_CLI_PATH` is not set.** The runtime is missing from the
-  application's output. The most common cause is a host project that does not reference
-  `Microsoft.Copilot.SDK` directly; others are `CopilotSkipCliDownload` set for the host, or a
-  platform the runtime does not support. The runtime is published for `win-x64`, `win-arm64`,
-  `linux-x64`, `linux-arm64`, `linux-musl-x64`, `linux-musl-arm64`, `osx-x64` and `osx-arm64`.
+- **The runtime fails to start.** `CopilotRuntime.StartAsync` raises an `InvalidOperationException`
+  carrying the runtime's own error. Most often the runtime is missing from the application's output:
+  the host project does not reference `Microsoft.Copilot.SDK` directly, `CopilotSkipCliDownload` is
+  set for the host, or the platform is one the runtime does not support — it is published for
+  `win-x64`, `win-arm64`, `linux-x64`, `linux-arm64`, `linux-musl-x64`, `linux-musl-arm64`, `osx-x64`
+  and `osx-arm64`. A Copilot CLI shell's
+  `COPILOT_CLI_PATH` is no longer a cause, because the runtime never receives it. If the runtime
+  starts but cannot authenticate, check that a token is supplied, that `GH_TOKEN` or `GITHUB_TOKEN` is
+  set, or that the GitHub CLI is signed in; of the host's `COPILOT_` variables, only the documented
+  pass-through set reaches the runtime.
+- **`InvalidOperationException`: the data directory "is not empty and was not created by AgentKit".**
+  The directory holds something AgentKit did not put there — a Copilot CLI home, or the data directory
+  an earlier release's client used. Give the runtime a new or empty directory of the application's
+  own.
 - **Build warning or error `MCPSDK001`.** The SDK marks its permission-decision types as being for
   evaluation purposes, and any code that references them — a permission handler of your own — raises
   that diagnostic. Suppress it around the handler, as above, or add it to the project's `NoWarn`.
@@ -974,10 +974,8 @@ for answer quality across a long conversation, not to save money.
   see *Tool Names the Runtime Reserves* above.
 - **`InvalidOperationException`: the runtime "kept the MCP server(s) … enabled".** AgentKit disabled
   an MCP server for the session and the runtime still reported it enabled, so the session was refused
-  rather than handed to the model with the server available. Run the client in
-  `CopilotClientMode.Empty` on a data directory of the application's own that configures no MCP
-  servers, and check for MCP servers provided by a managed catalog or by the signed-in account or
-  its organization. A resumed
+  rather than handed to the model with the server available. Check for MCP servers provided by a
+  managed catalog or by the signed-in account or its organization. A resumed
   conversation that is refused this way is kept, not deleted.
 - **The session is refused while AgentKit disables an MCP server — a `RemoteRpcException` from the
   runtime's disable call, or the "kept … enabled" error above.** The server may be an *owned* MCP
@@ -996,9 +994,16 @@ adapter over `GitHub.Copilot.SDK` 1.0.x. Moving to the current release:
 - Replace `using GitHub.Copilot;` with `using Microsoft.Copilot;`, and `using Microsoft.Copilot.Rpc;`
   where you reference permission decisions.
 - Add a direct `Microsoft.Copilot.SDK` package reference to the host project.
-- Construct the client with `Mode`, a `Runtime` connection carrying a data directory, and
-  `GitHub = new ClientGitHubOptions { … }`. Move a client-level working directory to the
-  `workingDirectory:` parameter of `CopilotAgentFactory.Create` or `CopilotProviderSessionFactory`.
+- Replace the client you constructed with `await CopilotRuntime.StartAsync(new
+  CopilotRuntimeOptions(dataDirectory))`, passing a GitHub token through `gitHubToken:` if you set one
+  on the client, and pass the runtime wherever you passed the client: `CopilotAgentFactory.Create`,
+  `CopilotProviderSessionFactory` and `CopilotSummarizer`. Remove `CopilotClientStarter`; the runtime
+  explains a failed start itself. Dispose the runtime where you disposed the client, and delete a
+  finished conversation with `runtime.DeleteSessionAsync`.
+- Give the runtime a new data directory: the one your client used is not empty and was not created by
+  AgentKit, so it is refused. Conversations kept there are not carried over.
+- Move a client-level working directory to the `workingDirectory:` parameter of
+  `CopilotAgentFactory.Create` or `CopilotProviderSessionFactory`.
 - Replace a `GHCP001` suppression with `MCPSDK001`.
 - Rename any tool of your own that carries a built-in tool's name.
 - Replace references to `GitHubCopilotAgent` and `GitHubCopilotAgentSession` with `AIAgent` and

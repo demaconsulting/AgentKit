@@ -75,10 +75,9 @@ From the repository root, with nothing installed beyond the .NET SDK. On the def
 - Expect the first build to download the Copilot runtime: the sample references
   `Microsoft.Copilot.SDK` directly, so that build fetches it (about 100 MB, adding about 356 MB to the
   sample's output) and later builds reuse it.
-- Run from a shell where `COPILOT_CLI_PATH` is unset. Every shell the Copilot CLI starts sets it, and
-  in-process hosting then looks for the runtime beside the CLI instead and fails to start; the
-  sample's error says so. Clear it with `Remove-Item Env:COPILOT_CLI_PATH` (PowerShell) or
-  `unset COPILOT_CLI_PATH` (bash).
+- Any shell will do, a Copilot CLI shell included: AgentKit starts the runtime with none of the
+  shell's `COPILOT_` variables. The runtime keeps its state in `AgentKit/research-assistant/copilot-runtime`
+  under the user's local application data.
 
 `-c Release` matches what `build.ps1` produces, so the sample starts from binaries that are already
 built; without it `dotnet run` compiles a separate Debug build of the sample and the whole library
