@@ -12,4 +12,8 @@ package AgentKitAgentsCopilot {
             requirementFiles = ("docs/reqstream/agent-kit-agents-copilot/copilot-provider-session-factory.yaml");
         }
     }
+
+    // The factory takes the runtime AgentKit owns, never a host's client, and opens its sessions on
+    // that runtime's client; it never disposes the runtime.
+    dependency CopilotProviderSessionFactory to CopilotRuntime;
 }

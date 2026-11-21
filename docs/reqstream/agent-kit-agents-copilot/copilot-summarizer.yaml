@@ -81,11 +81,11 @@ sections:
               would accumulate for exactly as long as the conversation this exists to prolong — and
               the path a leak hides on is the failure path, not the successful one. A missing request
               is a defect in the engine that composed it. A canceled consolidation costs no session at
-              all, so a canceled rotation leaves nothing behind on the runtime. The client itself is
+              all, so a canceled rotation leaves nothing behind on the runtime. The runtime itself is
               never disposed: it is the host's, and every consolidation shares it.
             tests:
               - CopilotSummarizer_Consolidate_Succeeds_DisposesTheSession
               - CopilotSummarizer_Consolidate_Fails_DisposesTheSession
               - CopilotSummarizer_Consolidate_NullRequest_Throws
               - CopilotSummarizer_Consolidate_Canceled_OpensNothing
-              - CopilotSummarizer_Constructor_NullClient_Throws
+              - CopilotSummarizer_Constructor_NullRuntime_Throws

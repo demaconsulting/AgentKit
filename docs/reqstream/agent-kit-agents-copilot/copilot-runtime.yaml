@@ -1,0 +1,149 @@
+---
+# Software Unit Requirements for CopilotRuntime
+#
+# These requirements describe the design-level behavior of the CopilotRuntime unit: the Copilot
+# runtime AgentKit starts, confines and owns, and the options a host may give it.
+
+sections:
+  - title: AgentKitAgentsCopilot Requirements
+    sections:
+      - title: CopilotRuntime Requirements
+        requirements:
+          - id: AgentKitAgentsCopilot-CopilotRuntime-ForcesEmptyMode
+            title: >-
+              The runtime shall run its Copilot client in Empty mode, whatever options the host
+              supplies.
+            tags: [security]
+            justification: |
+              Empty mode is the SDK's defaulting strategy that supplies none of the coding-agent
+              defaults, keeps credentials in the data directory rather than the system keychain and
+              removes the host environment context. A host cannot select another mode, because no
+              option that selects a mode is expressible.
+            tests:
+              - CopilotRuntime_BuildClientOptions_ForcesEmptyMode
+
+          - id: AgentKitAgentsCopilot-CopilotRuntime-SpawnsTheBundledRuntime
+            title: >-
+              The runtime shall run the Copilot runtime provisioned into the application's output as a
+              child process connected over its standard input and output, and shall offer no way to
+              choose another runtime executable, runtime arguments, in-process hosting, a TCP
+              connection or an external runtime.
+            tags: [security]
+            justification: |
+              A child process is the only hosting whose environment the library can decide: an
+              in-process runtime receives the whole host environment, and an external runtime's mode,
+              data directory and environment are not the library's to set. A foreign runtime binary or
+              arbitrary runtime arguments, such as an approve-all switch or an additional MCP
+              configuration, could widen what reaches the model, so neither is expressible.
+            tests:
+              - CopilotRuntime_BuildClientOptions_SpawnsTheBundledRuntimeOverStdio
+
+          - id: AgentKitAgentsCopilot-CopilotRuntime-WithholdsCopilotEnvironment
+            title: >-
+              The runtime shall start the Copilot runtime with the host's environment minus every
+              variable whose name begins with COPILOT_ or GITHUB_COPILOT_, except a documented set
+              that carries only credentials, network settings or a switch that turns telemetry off.
+            tags: [security]
+            justification: |
+              The Copilot runtime reads hundreds of such variables, among them approve-all switches,
+              directories of instructions, skills, hooks and plugins, provider rerouting and a runtime
+              path override that every Copilot CLI shell sets. Any of them would reach a confined
+              session without the composing application having chosen it, so none passes. The
+              pass-through set lets authentication and proxying keep working; none of its members can
+              add capability to a session. Every other host variable, such as the search path, the
+              home and temporary folders and proxy settings, is kept.
+            tests:
+              - CopilotRuntime_BuildRuntimeEnvironment_RemovesCopilotConfigurationVariables
+              - windows@CopilotRuntime_BuildRuntimeEnvironment_MixedCaseOnWindows_IsRemoved
+              - CopilotRuntime_BuildRuntimeEnvironment_KeepsHostVariablesAndThePassThroughSet
+              - CopilotRuntime_PassThroughVariables_AreTheDocumentedSet
+              - CopilotRuntime_BuildClientOptions_CarriesTheWithheldEnvironment
+
+          - id: AgentKitAgentsCopilot-CopilotRuntime-OwnsACleanDataDirectory
+            title: >-
+              The runtime shall keep its state in a data directory it created, creating and marking
+              a missing or empty directory, reusing a directory it marked earlier, and refusing a path
+              that names a file or a non-empty directory it did not create, before any runtime reads
+              it.
+            tags: [security]
+            justification: |
+              Empty mode alone still runs an MCP server that the data directory configures, and a
+              shared directory, such as a Copilot CLI home, can also hold installed plugins, user
+              hooks and trusted folders. A directory the library created holds none of those to begin
+              with. Reusing a directory the library marked lets conversations persist across restarts.
+              A directory another tool populated is refused rather than inspected, because a list of
+              files to object to would go stale with every runtime release.
+            tests:
+              - CopilotRuntime_PrepareDataDirectory_Missing_IsCreatedAndMarked
+              - CopilotRuntime_PrepareDataDirectory_Empty_IsMarked
+              - CopilotRuntime_PrepareDataDirectory_Marked_IsAcceptedWithRuntimeContent
+              - CopilotRuntime_PrepareDataDirectory_UnmarkedNonEmpty_IsRefused
+              - CopilotRuntime_PrepareDataDirectory_PathIsAFile_IsRefused
+
+          - id: AgentKitAgentsCopilot-CopilotRuntime-OffersOnlyNeutralOptions
+            title: >-
+              The runtime shall accept from the host only a data directory, a GitHub token, a log
+              level and a logger, and shall leave every client-level channel of injected capability
+              unset.
+            tags: [security]
+            justification: |
+              Plugin directories, extensions, installation and model-request handlers, a session
+              filesystem and test options could each hand a confined agent capability its host never
+              reviewed, or move state out of the data directory the library owns. Authentication and
+              host-side diagnostics cannot widen what reaches the model, so they remain the host's to
+              set. A blank token is treated as none, so the signed-in user is used.
+            tests:
+              - CopilotRuntime_BuildClientOptions_LeavesEveryCapabilityChannelUnset
+              - CopilotRuntime_BuildClientOptions_CarriesTokenLogLevelAndLogger
+              - CopilotRuntimeOptions_Constructor_BlankToken_IsNull
+              - CopilotRuntimeOptions_Constructor_RelativeDataDirectory_IsResolvedToAFullPath
+
+          - id: AgentKitAgentsCopilot-CopilotRuntime-ExplainsAMissingRuntime
+            title: >-
+              The runtime shall, when the Copilot runtime fails to start, report the runtime's own
+              error and that, if the runtime was not found, the host application must reference the
+              Copilot SDK directly so the runtime is provisioned, keeping the original failure as the
+              cause.
+            justification: |
+              The SDK provisions its runtime only into a project that references it directly, and the
+              AgentKit library deliberately ships none, so a host that relies on the library's
+              reference alone has no runtime to start. The runtime's own error names a missing file
+              and not the remedy.
+            tests:
+              - CopilotRuntime_StartClient_FailedStart_ExplainsTheMissingRuntimeAndKeepsTheCause
+              - CopilotRuntime_StartClient_Succeeds_DoesNotThrow
+
+          - id: AgentKitAgentsCopilot-CopilotRuntime-PassesCancellationThrough
+            title: >-
+              The runtime shall propagate a canceled start unchanged.
+            justification: |
+              A cancellation is the caller's own decision, not a fault to explain; wrapping it would
+              defeat the caller's handling of cancellation.
+            tests:
+              - CopilotRuntime_StartClient_Canceled_PropagatesUnchanged
+
+          - id: AgentKitAgentsCopilot-CopilotRuntime-LeavesNoRuntimeBehind
+            title: >-
+              The runtime shall release its Copilot client when the start fails or is canceled, and
+              shall release it once when the runtime is disposed, after which it can no longer be used.
+            justification: |
+              A start that fails after the runtime process was launched must not leave that process
+              running with nothing holding it. Whoever started the runtime disposes it, and an
+              agent, provider-session factory or summarizer built on it never does; disposing twice is
+              harmless, and a runtime used after disposal fails rather than reaching a stopped client.
+            tests:
+              - CopilotRuntime_StartOwned_FailedStart_DisposesTheClient
+              - CopilotRuntime_StartOwned_Canceled_DisposesTheClient
+              - CopilotRuntime_StartOwned_Succeeds_ReturnsTheClientUndisposed
+              - CopilotRuntime_DisposeAsync_IsIdempotentAndClientIsThenUnavailable
+
+          - id: AgentKitAgentsCopilot-CopilotRuntime-RejectsInvalidOptions
+            title: >-
+              The runtime shall reject missing options and a missing or blank data directory as
+              programming errors.
+            justification: |
+              A runtime with no data directory could not be confined to one the library owns; the
+              defect is surfaced where the composing application wrote it.
+            tests:
+              - CopilotRuntime_StartAsync_NullOptions_Throws
+              - CopilotRuntimeOptions_Constructor_BlankDataDirectory_Throws

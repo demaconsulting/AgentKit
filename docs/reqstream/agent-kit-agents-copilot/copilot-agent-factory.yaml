@@ -74,8 +74,8 @@ sections:
               Each of these is a channel through which the runtime injects capability or direction
               the composing application never attached and the untrained user cannot adjudicate. A
               confined agent must receive only what its host gave it, so every channel is withheld
-              explicitly on every session the factory builds, so the confinement does not depend on
-              the client's mode, which the SDK offers no way to read back. The host environment
+              explicitly on every session the factory builds, so the confinement does not rest on the
+              runtime's mode alone. The host environment
               context names the working directory, the operating system, the git root, a directory
               listing and the available tools; Empty mode removes it client-side, and the factory
               removes it through the system message's section overrides so it is removed in any mode.
@@ -84,8 +84,9 @@ sections:
               Empty-mode default that the SDK forwards in any other mode only when set, so they are
               set off rather than left to the client's own default. The built-in GitHub MCP server is
               disabled outright rather than merely filtered, because measured against the live
-              runtime it is started and authenticated with the user's GitHub identity for every
-              session even in the runtime's empty mode; every other MCP server, and the session's
+              runtime it is started and authenticated with the user's GitHub identity on a session's
+              first turn even in Empty mode, and the session's MCP listing does not report it, so the
+              post-create seal cannot catch it; every other MCP server, and the session's
               installed plugins, are disabled before any turn runs by the production turn channel,
               which needs the live session to do it.
               Any one channel silently reverting to the permissive value would widen the agent
@@ -98,15 +99,15 @@ sections:
               - CopilotAgentFactory_BuildSessionConfig_ExperimentalModeAndEmbeddingRetrieval_AreOff
               - CopilotAgentFactory_BuildSessionConfig_GitCoauthorTrailers_AreOff
 
-          - id: AgentKitAgentsCopilot-CopilotAgentFactory-RejectsNullClient
+          - id: AgentKitAgentsCopilot-CopilotAgentFactory-RejectsNullRuntime
             title: >-
-              The factory shall reject a missing Copilot client as a programming error.
+              The factory shall reject a missing Copilot runtime as a programming error.
             justification: |
-              An agent with no client to run on cannot be built, so an absent client is a defect in
+              An agent with no runtime to run on cannot be built, so an absent runtime is a defect in
               the composing application surfaced where the host wrote it rather than at the first
               session.
             tests:
-              - CopilotAgentFactory_Create_NullClient_Throws
+              - CopilotAgentFactory_Create_NullRuntime_Throws
 
           - id: AgentKitAgentsCopilot-CopilotAgentFactory-RejectsInvalidToolList
             title: >-
@@ -249,7 +250,7 @@ sections:
               The factory shall give every session a working directory the host names, and shall
               leave the working directory to the runtime when the host names none.
             justification: |
-              In-process hosting has no client-level working directory, so unless the factory offers
+              The library sets no working directory on the runtime process, so unless the factory offers
               the setting a host cannot set one at all without configuring a session by hand, which
               would forfeit the confinement. The working directory grants nothing — what the agent
               may read or write is decided by its tools' own path policy — but it anchors the session

@@ -45,11 +45,13 @@ sections:
           - AgentKitAgentsCopilot-ToolResults-DeliveredInline
           - AgentKitAgentsCopilot-RuntimeStartup-Diagnosable
           - AgentKitAgentsCopilot-ToolOutput-ReadersPublishedAndPermitted
+          - AgentKitAgentsCopilot-Runtime-OwnedAndConfined
           - AgentKit-OTS-MicrosoftCopilotSDK-SessionOptions
           - AgentKit-OTS-MicrosoftCopilotSDK-PermissionRpc
           - AgentKit-OTS-MicrosoftCopilotSDK-SessionLifecycle
           - AgentKit-OTS-MicrosoftCopilotSDK-SessionEvents
           - AgentKit-OTS-MicrosoftCopilotSDK-McpAndPluginControl
+          - AgentKit-OTS-MicrosoftCopilotSDK-EmptyModeSpawnedRuntime
           - AgentKit-OTS-MicrosoftAgentsAIAbstractions-AIAgent
         tests:
           - AgentKitAgentsCopilot_BuildSessionConfig_AvailableToolsDerivedFromSuppliedTools

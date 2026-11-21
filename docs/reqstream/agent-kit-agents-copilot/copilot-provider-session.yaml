@@ -195,9 +195,9 @@ sections:
               dispose the Copilot client, and shall permit repeated release.
             justification: |
               The ownership split is the contract this package already records and must not regress:
-              the host constructs, starts and disposes the client, and every session a rotation
-              creates is AgentKit's. A session that disposed the client would break the next rotation
-              on a client the host still believes it owns. Repeated release is permitted because a
+              the host starts and disposes the Copilot runtime, whose client every session shares, and
+              every session a rotation creates is AgentKit's. A session that disposed the client would
+              break the next rotation on a runtime the host still believes it owns. Repeated release is permitted because a
               rotation and an application's own release may both reach the same session.
             tests:
               - CopilotProviderSession_Dispose_DisposesTheRuntimeSession_AndNotTheClient
