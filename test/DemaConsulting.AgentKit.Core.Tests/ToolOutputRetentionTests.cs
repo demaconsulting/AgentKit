@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using System.Text.Json;
 using Microsoft.Extensions.AI;
 
@@ -286,6 +287,67 @@ public class ToolOutputRetentionTests
             snapshot => Assert.Equal(
                 "snapshot",
                 Assert.Throws<ArgumentException>(() => ToolOutputRetention.Restore(snapshot, Limits)).ParamName));
+    }
+
+    /// <summary>
+    ///     Proves a snapshot keeps its own copy of the outputs it was constructed with, so a later
+    ///     change to the caller's list does not change it.
+    /// </summary>
+    [Fact]
+    public void ToolOutputRetentionSnapshot_Constructor_CallerListChanged_SnapshotUnchanged()
+    {
+        // Arrange: a snapshot built from a list the caller keeps
+        var outputs = new List<RetainedToolOutput> { new("output-1", ["a"], false) };
+        var snapshot = new ToolOutputRetentionSnapshot(1, outputs);
+
+        // Act: the caller changes its list
+        outputs.Add(new RetainedToolOutput("output-2", ["b"], false));
+        outputs.RemoveAt(0);
+
+        // Assert: the snapshot still holds the original output, in a read-only collection
+        Assert.Equal("output-1", Assert.Single(snapshot.Outputs).Id);
+        Assert.IsType<ReadOnlyCollection<RetainedToolOutput>>(snapshot.Outputs);
+    }
+
+    /// <summary>
+    ///     Proves a retained output keeps its own copy of the lines it was constructed with, so a
+    ///     later change to the caller's list changes neither it nor what a restore reads.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task RetainedToolOutput_Constructor_CallerLinesChanged_OutputUnchanged()
+    {
+        // Arrange: an output built from a list the caller keeps
+        var lines = new List<string> { "a", "b" };
+        var output = new RetainedToolOutput("output-1", lines, false);
+
+        // Act: the caller changes its list, then the output is restored and read
+        lines[0] = "changed";
+        lines.Add("c");
+        var restored = ToolOutputRetention.Restore(new ToolOutputRetentionSnapshot(1, [output]), Limits);
+        var page = await InvokeAsync(restored.ReaderTools[0], new() { ["id"] = "output-1" });
+
+        // Assert: the original lines, in a read-only collection, and the reader pages them
+        Assert.Equal(["a", "b"], output.Lines);
+        Assert.IsType<ReadOnlyCollection<string>>(output.Lines);
+        Assert.Equal("output-1 lines 1-2 of 2\n1| a\n2| b", page);
+    }
+
+    /// <summary>
+    ///     Proves a retained output refuses missing lines, whether constructed directly or
+    ///     deserialized from JSON that omits them.
+    /// </summary>
+    [Fact]
+    public void RetainedToolOutput_Constructor_NullLines_ThrowsArgumentNullException()
+    {
+        // Arrange: JSON for a snapshot whose output has no lines
+        const string json = "{\"lastIssued\":1,\"outputs\":[{\"id\":\"output-1\",\"wrapped\":false}]}";
+
+        // Act / Assert: both paths refuse, naming the lines
+        Assert.Equal(
+            "lines",
+            Assert.Throws<ArgumentNullException>(() => new RetainedToolOutput("output-1", null!, false)).ParamName);
+        Assert.Throws<ArgumentNullException>(() => JsonSerializer.Deserialize(json, ToolOutputRetentionSnapshot.JsonTypeInfo));
     }
 
     /// <summary>

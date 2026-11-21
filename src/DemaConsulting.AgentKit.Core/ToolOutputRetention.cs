@@ -233,7 +233,7 @@ public sealed class ToolOutputRetention
         var entries = _store.Snapshot(out var lastIssued);
         return new ToolOutputRetentionSnapshot(
             lastIssued,
-            [.. entries.Select(entry => new RetainedToolOutput(entry.Id, [.. entry.Lines], entry.Wrapped))]);
+            [.. entries.Select(entry => new RetainedToolOutput(entry.Id, entry.Lines, entry.Wrapped))]);
     }
 
     /// <summary>
@@ -249,8 +249,8 @@ public sealed class ToolOutputRetention
     ///     </para>
     ///     <para>
     ///     A snapshot whose references are malformed, repeated or above its counter, whose counter is
-    ///     negative, or whose lines are missing, empty or not normalized (a line holding a line break,
-    ///     or longer than a retained line may be) is rejected rather than partly restored.
+    ///     negative, or whose lines are empty or not normalized (a line that is null, holds a line
+    ///     break, or is longer than a retained line may be) is rejected rather than partly restored.
     ///     </para>
     /// </remarks>
     /// <param name="snapshot">The snapshot to restore. Must not be <see langword="null"/>.</param>
@@ -361,9 +361,9 @@ public sealed class ToolOutputRetention
             }
 
             // Each output must be the normalized lines a reader pages: at least one, none null, none
-            // holding a line break, none longer than a retained line may be.
-            if (output.Lines is null
-                || output.Lines.Count == 0
+            // holding a line break, none longer than a retained line may be. The lines themselves are
+            // never null: the constructor refuses that.
+            if (output.Lines.Count == 0
                 || output.Lines.Any(line => line is null
                                             || line.Length > ToolOutputStore.MaxLineCharacters
                                             || line.AsSpan().IndexOfAny('\r', '\n') >= 0))
@@ -392,7 +392,8 @@ public sealed class ToolOutputRetention
 ///     </para>
 ///     <para>
 ///     The snapshot carries the full text of the retained outputs and belongs to the same privacy
-///     class as the conversation history. Instances are immutable and safe for concurrent use.
+///     class as the conversation history. Instances own read-only copies of the collections they
+///     are constructed with, are immutable, and are safe for concurrent use.
 ///     </para>
 /// </remarks>
 public sealed class ToolOutputRetentionSnapshot
@@ -404,7 +405,10 @@ public sealed class ToolOutputRetentionSnapshot
     ///     The number of the last reference issued, for example 3 after <c>output-3</c>; zero when none
     ///     was issued.
     /// </param>
-    /// <param name="outputs">The retained outputs, oldest first. Must not be <see langword="null"/>.</param>
+    /// <param name="outputs">
+    ///     The retained outputs, oldest first. Must not be <see langword="null"/>. The constructor
+    ///     copies the list; later changes to it are not seen.
+    /// </param>
     /// <exception cref="ArgumentNullException">
     ///     Thrown when <paramref name="outputs"/> is <see langword="null"/>.
     /// </exception>
@@ -413,7 +417,10 @@ public sealed class ToolOutputRetentionSnapshot
     {
         ArgumentNullException.ThrowIfNull(outputs);
         LastIssued = lastIssued;
-        Outputs = outputs;
+
+        // An owned copy, so a caller changing its list cannot change what was exported; a null
+        // entry is kept for Restore to reject.
+        Outputs = Array.AsReadOnly<RetainedToolOutput>([.. outputs]);
     }
 
     /// <summary>
@@ -442,7 +449,8 @@ public sealed class ToolOutputRetentionSnapshot
 ///     One retained output in a <see cref="ToolOutputRetentionSnapshot"/>.
 /// </summary>
 /// <remarks>
-///     Instances are immutable and safe for concurrent use.
+///     Instances own a read-only copy of the lines they are constructed with, are immutable, and are
+///     safe for concurrent use.
 /// </remarks>
 public sealed class RetainedToolOutput
 {
@@ -452,14 +460,23 @@ public sealed class RetainedToolOutput
     /// <param name="id">The reference the output was retained under, for example <c>output-3</c>.</param>
     /// <param name="lines">
     ///     The output as the normalized lines a reader pages: line breaks removed, long lines already
-    ///     wrapped.
+    ///     wrapped. Must not be <see langword="null"/>. The constructor copies the list; later changes
+    ///     to it are not seen.
     /// </param>
     /// <param name="wrapped">Whether any line of the original output was wrapped.</param>
+    /// <exception cref="ArgumentNullException">
+    ///     Thrown when <paramref name="lines"/> is <see langword="null"/>, including when a snapshot
+    ///     being deserialized omits them.
+    /// </exception>
     [JsonConstructor]
     public RetainedToolOutput(string id, IReadOnlyList<string> lines, bool wrapped)
     {
+        ArgumentNullException.ThrowIfNull(lines);
         Id = id;
-        Lines = lines;
+
+        // An owned copy, so a caller changing its list cannot change what was exported or what a
+        // restore reads; a null line is kept for Restore to reject.
+        Lines = Array.AsReadOnly<string>([.. lines]);
         Wrapped = wrapped;
     }
 

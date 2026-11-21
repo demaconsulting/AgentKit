@@ -36,7 +36,10 @@ retained outputs through persistence. `ToolOutputSpill.Apply` — and through it
 `ToolOutputRetentionSnapshot` holds `LastIssued` (`long`, the number of the last reference issued) and
 `Outputs` (`IReadOnlyList<RetainedToolOutput>`, oldest first). `RetainedToolOutput` holds `Id`
 (`string`, for example `output-3`), `Lines` (`IReadOnlyList<string>`, the normalized lines a reader
-pages) and `Wrapped` (`bool`). Both are immutable and carry `[JsonConstructor]` constructors. The
+pages) and `Wrapped` (`bool`). Both are immutable and carry `[JsonConstructor]` constructors; each
+constructor copies its collection into an owned read-only array (`Array.AsReadOnly`), so a later change
+to the caller's list never reaches a snapshot, and `RetainedToolOutput` rejects null lines with
+`ArgumentNullException`, including when deserializing JSON that omits them. The
 internal source-generated `ToolOutputRetentionJsonContext` (camel-case property names) backs the
 public `ToolOutputRetentionSnapshot.JsonTypeInfo`, so a snapshot serializes without reflection and is
 safe under trimming and ahead-of-time compilation.
@@ -68,8 +71,8 @@ checked only within one call: wrapping a tool of an existing name later is the h
 
 #### Export()
 
-Takes `ToolOutputStore.Snapshot` under the store's lock and copies each entry's lines into a new
-`RetainedToolOutput`, so the snapshot is independent of the store.
+Takes `ToolOutputStore.Snapshot` under the store's lock and hands each entry's lines to a new
+`RetainedToolOutput`, whose constructor copies them, so the snapshot is independent of the store.
 
 #### Restore(ToolOutputRetentionSnapshot snapshot, ToolLimits limits, ToolOutputOptions? options)
 
@@ -78,9 +81,10 @@ Takes `ToolOutputStore.Snapshot` under the store's lock and copies each entry's 
    validates them.
 3. Validate the snapshot: a negative `LastIssued`; a null output; an identifier `ToolOutputStore`
    could not have issued, one repeated, or one whose number is above `LastIssued` (a reference never
-   issued); or lines that are null, empty, hold a null line, a line break, or a line longer than
+   issued); or lines that are empty, hold a null line, a line break, or a line longer than
    `ToolOutputStore.MaxLineCharacters` — each an `ArgumentException` naming `snapshot`. Nothing is
-   restored from a rejected snapshot.
+   restored from a rejected snapshot. Null lines never reach this step: `RetainedToolOutput` refuses
+   them.
 4. Order the outputs by number and hand them to `ToolOutputStore.Restore`, which re-measures each,
    drops one above the per-output ceiling, evicts oldest first to the count and character ceilings,
    and sets the counter to `LastIssued`, which validation has made at least the highest number.
@@ -90,6 +94,7 @@ Takes `ToolOutputStore.Snapshot` under the store's lock and copies each entry's 
 | Condition | Handling |
 | --- | --- |
 | Null `limits`, `tool`, `tools` or `snapshot` | `ArgumentNullException` propagates |
+| Null `outputs` or `lines` building a snapshot (directly or by deserializing) | `ArgumentNullException` |
 | Result ceiling below the minimum | `ArgumentException` naming `limits` |
 | Null entry, reserved prefix, over-long name, duplicate in one call | `ArgumentException` |
 | Malformed snapshot | `ArgumentException` naming `snapshot`; nothing restored |

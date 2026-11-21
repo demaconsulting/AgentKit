@@ -108,7 +108,7 @@ sections:
             title: >-
               A retention shall refuse to restore a snapshot with a negative counter, a missing,
               malformed or repeated reference, a reference above the snapshot's counter, or an
-              output whose lines are missing or not normalized.
+              output whose lines are empty or not normalized.
             justification: |
               A snapshot is persisted data that may have been edited or corrupted. Restoring part of
               it would leave references answering content that was never retained, and lines that are
@@ -118,6 +118,21 @@ sections:
             tests:
               - ToolOutputRetention_Restore_MalformedSnapshot_Throws
               - ToolOutputRetention_Restore_ReferenceAboveCounter_Throws
+
+          - id: AgentKitCore-ToolOutputRetention-SnapshotOwnsItsData
+            title: >-
+              A retention snapshot and each retained output shall keep their own read-only copies of
+              the collections they are constructed with, and a retained output shall reject missing
+              lines.
+            justification: |
+              A snapshot is documented as an immutable copy that is independent of the retention.
+              Holding the caller's list would let a later change to it alter what was exported, what
+              a session serializes, or what a restore reads, without going through the retention.
+              An output with no lines at all is not an output and is refused where it is built.
+            tests:
+              - ToolOutputRetentionSnapshot_Constructor_CallerListChanged_SnapshotUnchanged
+              - RetainedToolOutput_Constructor_CallerLinesChanged_OutputUnchanged
+              - RetainedToolOutput_Constructor_NullLines_ThrowsArgumentNullException
 
           - id: AgentKitCore-ToolOutputRetention-Isolated
             title: >-

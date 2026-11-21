@@ -29,11 +29,12 @@ project.
 
 ### Acceptance Criteria
 
-A unit test run passes when all thirteen scenarios below, covering sixteen tests, pass. Any reference not shared across
+A unit test run passes when all sixteen scenarios below, covering nineteen tests, pass. Any reference not shared across
 wraps, any reader instance that changes, any invalid ceiling, tool or list accepted, any restored reference answering
 different content, any reference re-issued after a restore, any snapshot not fitted to the restoring ceilings, any
-malformed snapshot partly restored, any reference above the counter restored, any JSON round trip that alters a
-snapshot, or any reference shared between retentions constitutes a failure.
+malformed snapshot partly restored, any reference above the counter restored, any snapshot or retained output that
+changes when the caller's collection changes, any missing lines accepted, any JSON round trip that alters a snapshot,
+or any reference shared between retentions constitutes a failure.
 
 ### Test Scenarios
 
@@ -127,6 +128,28 @@ holding a break, a line longer than 2,000 characters and a null output each thro
 
 A snapshot with counter 1 holding `output-2`, and one with counter 0 holding `output-1`, each throw
 `ArgumentException` naming `snapshot`, so a reference never issued is never installed.
+
+#### AgentKitCore-ToolOutputRetention-SnapshotOwnsItsData: A Snapshot Ignores Changes to the Caller's List
+
+**Test**: `ToolOutputRetentionSnapshot_Constructor_CallerListChanged_SnapshotUnchanged`
+
+A snapshot is built from a list holding `output-1`; the caller then adds `output-2` and removes
+`output-1`. Asserts the snapshot still holds only `output-1`, in a `ReadOnlyCollection`.
+
+#### AgentKitCore-ToolOutputRetention-SnapshotOwnsItsData: A Retained Output Ignores Changes to the Caller's Lines
+
+**Test**: `RetainedToolOutput_Constructor_CallerLinesChanged_OutputUnchanged`
+
+An output is built from the lines `a` and `b`; the caller then replaces the first and appends a third.
+Asserts the output still holds `a` and `b` in a `ReadOnlyCollection`, and a retention restored from it
+pages exactly those two lines.
+
+#### AgentKitCore-ToolOutputRetention-SnapshotOwnsItsData: Missing Lines Are Refused
+
+**Test**: `RetainedToolOutput_Constructor_NullLines_ThrowsArgumentNullException`
+
+Null lines throw `ArgumentNullException` naming `lines`, and deserializing a snapshot whose output
+omits `lines` throws `ArgumentNullException`.
 
 #### AgentKitCore-ToolOutputRetention-Isolated: Two Retentions Share Nothing
 
