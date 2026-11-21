@@ -156,7 +156,7 @@ The caller (`ToolOutputRetention.Restore`) validates identifiers, lines and the 
 | Malformed, unknown or evicted identifier | `Find` reports the outcome; `Refusal` composes it |
 | `Refusal` asked about `Found` | `ArgumentOutOfRangeException` (a defect in the caller) |
 | `Restore` on a store that has retained output | `InvalidOperationException` (a defect in the caller) |
-| `Add` after the largest identifier was issued | `InvalidOperationException` before anything is evicted (a defect in the caller) |
+| `Add` after the largest identifier was issued | `InvalidOperationException` before any eviction (a defect) |
 
 ### Dependencies
 
