@@ -66,8 +66,9 @@ namespace DemaConsulting.AgentKit.Agents.Copilot;
 ///     run it. Workspace MCP configuration is not loaded, because configuration discovery is off and
 ///     the data directory trusts no folder, and a workspace server that discovery reports is disabled
 ///     as well. No plugin is installed in a fresh data directory, and plugin directories cannot be
-///     configured. These sources are <em>prevented</em>: the opt-in live suite shows that their probe
-///     servers never execute. Servers from a managed catalog or a signed-in account follow
+///     configured. These sources are <em>prevented</em>: the opt-in live suite shows the built-in
+///     server never starting, probe servers in the data directory and in a workspace never executing,
+///     and no plugin installed, while each of those servers does start without its protection. Servers from a managed catalog or a signed-in account follow
 ///     organization policy and the account; the SDK cannot enumerate them before a session exists, so
 ///     one may start, and authenticate, while the session is created. AgentKit then disables every
 ///     server the session's MCP configuration lists, before any turn runs, and refuses the session if
