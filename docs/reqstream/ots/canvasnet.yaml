@@ -63,7 +63,7 @@ sections:
               exhaust a host's memory with an image every check before decoding had admitted.
               AgentKit's own test, which offers the crop tool a PNG declaring sixteen by sixteen
               pixels whose data inflates to half a gigabyte and asserts both the refusal and that
-              the call allocated a small fraction of that size, proves the bound holds; it fails
+              decoding it allocated a small fraction of that size, proves the bound holds; it fails
               against the 0.1.0 release, which allocated over a gigabyte for that file.
             tests:
               - ImageCropTool_Crop_PngInflatingBeyondItsDeclaredSize_IsRefusedWithoutInflatingIt

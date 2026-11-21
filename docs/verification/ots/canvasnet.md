@@ -80,11 +80,12 @@ format decodes into the same addressable buffer.
 #### ImageCropTool_Crop_PngInflatingBeyondItsDeclaredSize_IsRefusedWithoutInflatingIt
 
 **Scenario**: A PNG declaring sixteen by sixteen pixels, a fraction of the binary ceiling in size,
-whose pixel data inflates to half a gigabyte, is offered to the image crop tool while the bytes the
-call allocates are measured.
+whose pixel data inflates to half a gigabyte, is offered to the image crop tool, and the decode step
+the tool performs is then repeated on the same bytes while the calling thread's allocation is
+measured — that step is synchronous, so the per-thread counter is unaffected by concurrent tests.
 
-**Expected**: The undecodable refusal naming the declared size, with the call having allocated less
-than a quarter of the inflated size — so the decoder rejected the pixel data without inflating it.
+**Expected**: The undecodable refusal naming the declared size, with the decode step having allocated
+less than a quarter of the inflated size — so the decoder rejected the pixel data without inflating it.
 The same scenario run against the 0.1.0 release allocated over a gigabyte and failed, which is
 what shows the scenario observes the bound rather than passing regardless of it.
 

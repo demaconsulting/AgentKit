@@ -327,10 +327,12 @@ the declared size, which is what tells the model the file is damaged rather than
 **The decompression bomb every check before decoding admits.** The fixture declares 16 by 16
 pixels and is a fraction of the binary ceiling, yet its pixel data inflates to half a gigabyte of
 zeros. Asserts the refusal is the undecodable one and states the declared size, and asserts the
-call allocated less than a quarter of the inflated size — the observation that the decoder rejected
-the data without inflating it, which is what keeps the header-based decode budget a bound on what
-decoding allocates. Run against CanvasNet 0.1.0 the same call allocated over a gigabyte and the
-scenario failed.
+decode step the tool performs allocated less than a quarter of the inflated size. That step is
+synchronous, so it is measured with the calling thread's own allocation counter, which concurrent
+tests cannot disturb. The bound is the observation that the decoder rejected the data without
+inflating it, which is what keeps the header-based decode budget a bound on what decoding
+allocates. Run against CanvasNet 0.1.0 the same step allocated over a gigabyte and the scenario
+failed.
 
 ##### AgentKitTools-Image-CropTool-RefusesUndecodableContent: An Extension That Lies Is Refused Without a Size
 
