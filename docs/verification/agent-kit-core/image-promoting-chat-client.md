@@ -43,13 +43,12 @@ Unit tests reside in `ImagePromotingChatClientTests.cs`, with the fake client in
 
 ### Acceptance Criteria
 
-A unit test run passes when all seventeen scenarios below pass without error or exception beyond those
-explicitly asserted. Any image that fails to reach a user message, any content instance that is
-copied rather than carried, any message dropped or reordered, any message added for a text-only
-tool result or for content that is not an image, any promoted message that does not land
-immediately after the tool result it came from, any image content left in a forwarded tool result or in a raw representation forwarded with it,
-any change to the caller's messages, and any difference between the streaming and non-streaming
-paths constitutes a failure.
+A unit test run passes when all seventeen scenarios below pass without error or exception beyond those explicitly
+asserted. Any image that fails to reach a user message, any content instance that is copied rather than carried, any
+message dropped or reordered, any message added for a text-only tool result or for content that is not an image, any
+promoted message that does not land immediately after the tool result it came from, any image content left in a
+forwarded tool result or in a raw representation forwarded with it, any change to the caller's messages, and any
+difference between the streaming and non-streaming paths constitutes a failure.
 
 ### Test Scenarios
 
