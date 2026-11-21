@@ -21,7 +21,11 @@ following user message. Core deliberately makes that decorator opt-in and suppli
 install it into. This system is the place that installs it: it wraps the supplied client in the
 decorator on **every** agent it builds and exposes no parameter to disable it. Omission is made
 impossible rather than merely discouraged, because a guard a caller can forget is a guard that will
-be forgotten and whose absence produces no error to notice.
+be forgotten and whose absence produces no error to notice. A host that builds its own agent or raw
+pipeline instead installs the same decorator with one `ChatClientBuilder` call, `UseImagePromotion()`,
+which refuses to build a pipeline that places it above the function-invocation loop. It is required on
+Ollama through OllamaSharp, which writes a tool-result image into the tool message as base64 text, and
+not needed on the GitHub Copilot SDK, which delivers tool-result images natively.
 
 The system is also where Core's session engine meets a stateless provider. Core keeps a long-running
 agent alive by compacting context, and it holds no token arithmetic of its own: it asks the provider
@@ -64,7 +68,8 @@ has to review. The agent factory and the session adapter share a package rather 
 both exist to make one `IChatClient` usable, and neither calls the other.
 
 - **ChatClientAgentFactory (Unit)** — the static factory that validates its arguments, wraps the
-  supplied client in the image-promoting decorator, and builds a `ChatClientAgent`.
+  supplied client in the image-promoting decorator, and builds a `ChatClientAgent`; and the
+  `UseImagePromotion` builder extension that installs the decorator in a pipeline a host builds.
 - **ChatClientProviderSession (Unit)** — one Core session over an `IChatClient`: the seeded message
   list, the conversation resent on every turn, the transcript entries a turn produces, and the
   occupancy reported against a supplied window.

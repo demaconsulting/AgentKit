@@ -83,6 +83,16 @@ extra user message carrying the very same image instance. Paired with the scenar
 confirms an agent built by the factory delivers a tool-returned image to a provider that would
 otherwise drop it.
 
+### Image Promotion: A Host-Built Agent Promotes Through the Builder Extension
+
+**Test**: `AgentKitAgentsChatClient_ImagePromotion_BuilderExtension_PromotesBeneathFunctionInvocation`
+
+Verifies the path for a host that builds its own agent. A `ChatClientAgent` is constructed over
+`client.AsBuilder().UseImagePromotion().Build()` with an image tool, and a recording provider is
+scripted to call the tool and then answer. Asserts the run returns the answer and the provider's second
+request carried only the placeholder in the tool result and the same image instance on a user message
+— the agent's own function-invocation loop sits above the decorator, as the extension requires.
+
 ### Session Adapter: A Core Session Runs Over a Chat Client and Reports the Provider's Occupancy
 
 **Test**: `AgentKitAgentsChatClient_Session_AnswersAndReportsTheProvidersOccupancy`
@@ -117,7 +127,7 @@ output — so retention behaves through this adapter's function-invocation loop 
 
 ## Acceptance Criteria
 
-A system-level test run passes when all six scenarios above pass without error or exception beyond
+A system-level test run passes when all seven scenarios above pass without error or exception beyond
 those explicitly asserted. Any agent that fails to build, any wrong name, any agent built without the
 image-promoting decorator in its client chain, any tool-returned image that fails to reach the
 provider on a user message, any content instance copied rather than carried, any session occupancy

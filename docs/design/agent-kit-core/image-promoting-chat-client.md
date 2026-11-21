@@ -180,9 +180,11 @@ image was attached is one it will remove.
 
 **No new dependency.** `DelegatingChatClient`, `DataContent.HasTopLevelMediaType` and
 `FunctionResultContent` all come from `Microsoft.Extensions.AI.Abstractions`, which Core already
-takes. A registration extension for the chat client builder was considered and **rejected**: that
-builder lives in `Microsoft.Extensions.AI` rather than in the abstractions package, so offering
-the convenience would cost Core a second runtime dependency that every consumer would inherit.
+takes. A registration extension for the chat client builder was considered for Core and
+**rejected**: that builder lives in `Microsoft.Extensions.AI` rather than in the abstractions package,
+so offering the convenience here would cost Core a second runtime dependency that every consumer
+would inherit. The extension, `UseImagePromotion()`, lives instead in AgentKitAgentsChatClient, which
+already receives that library through the Agent Framework; see *ChatClientAgentFactory Unit Design*.
 
 **The library writes nothing to the console.** The exploratory version of this code printed a line
 each time it promoted an image, which was useful while the behavior was being established and is

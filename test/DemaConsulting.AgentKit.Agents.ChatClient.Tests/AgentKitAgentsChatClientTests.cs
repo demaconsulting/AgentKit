@@ -223,6 +223,43 @@ public class AgentKitAgentsChatClientTests
     }
 
     /// <summary>
+    ///     Proves a host that builds its own agent gets image promotion through the builder
+    ///     extension: a <see cref="ChatClientAgent"/> over <c>client.AsBuilder().UseImagePromotion()</c>
+    ///     delivers a tool-returned image to the provider on a user message, with a placeholder in
+    ///     the tool result.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task AgentKitAgentsChatClient_ImagePromotion_BuilderExtension_PromotesBeneathFunctionInvocation()
+    {
+        // Arrange: a provider that calls an image tool, then answers, behind a host-built agent
+        var image = new DataContent(ImageBytes, "image/png");
+        var tool = AIFunctionFactory.Create(() => image, "image_read", "Reads an image.");
+        var provider = new RecordingChatClient()
+            .Queue(RecordingChatClient.Answer(
+                [new ChatMessage(ChatRole.Assistant, [new FunctionCallContent("call-1", "image_read")])],
+                inputTokens: 10))
+            .Queue("a chart", inputTokens: 20);
+        var agent = new ChatClientAgent(
+            provider.AsBuilder().UseImagePromotion().Build(),
+            instructions: "You read images.",
+            tools: [tool]);
+
+        // Act: one run, in which the agent's own function-invocation loop calls the tool
+        var response = await agent.RunAsync("What is in the image?", cancellationToken: TestContext.Current.CancellationToken);
+
+        // Assert: the answer came back, and the provider saw the image on a user message and only a
+        // placeholder in the tool result
+        Assert.Equal("a chart", response.Text);
+        var second = provider.Requests[1].Messages;
+        var result = second.SelectMany(message => message.Contents).OfType<FunctionResultContent>().Single();
+        Assert.StartsWith("[Image promoted", Assert.IsType<string>(result.Result), StringComparison.Ordinal);
+        Assert.Contains(
+            second.Where(message => message.Role == ChatRole.User).SelectMany(message => message.Contents),
+            content => ReferenceEquals(content, image));
+    }
+
+    /// <summary>
     ///     Finds the result a request carried back for one tool call.
     /// </summary>
     /// <param name="request">The recorded request.</param>

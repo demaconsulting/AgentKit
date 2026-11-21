@@ -83,6 +83,7 @@ sections:
         children:
           - AgentKitAgentsChatClient-AgentConstruction-FromChatClientAndTools
           - AgentKitAgentsChatClient-ImagePromotion-AlwaysInstalled
+          - AgentKitAgentsChatClient-ImagePromotion-HostBuiltPipeline
           - AgentKitAgentsChatClient-SessionAdapter-CarriesACoreSession
           - AgentKitAgentsChatClient-SessionAdapter-OccupancyFromTheProvider
           - AgentKitAgentsChatClient-Consolidation-ThroughASeparateChatClient

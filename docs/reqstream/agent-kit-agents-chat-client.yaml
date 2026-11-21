@@ -52,6 +52,25 @@ sections:
           - AgentKitAgentsChatClient_Create_InstallsImagePromotingDecoratorOnTheAgent
           - AgentKitAgentsChatClient_ImagePromotion_ToolReturnedImage_ReachesProviderOnUserMessage
 
+      - id: AgentKitAgentsChatClient-ImagePromotion-HostBuiltPipeline
+        title: >-
+          The library shall let a host that builds its own agent or chat client pipeline install the
+          image-promoting decorator beneath the function-invocation loop with one builder call, and
+          shall refuse a pipeline that places it above that loop.
+        justification: |
+          The factory installs the decorator on every agent it builds, but a host that composes
+          AgentKit's tools into its own Agent Framework agent or raw IChatClient pipeline bypasses the
+          factory. On a provider that cannot carry a tool-result image — Ollama through OllamaSharp —
+          such a host's images would silently never reach the model. One builder call gives it the
+          same delivery, and refusing the wrong order keeps the omission from being silent. A provider
+          that delivers tool-result images natively, such as the GitHub Copilot SDK, needs none of it.
+        children:
+          - AgentKitAgentsChatClient-ChatClientAgentFactory-UseImagePromotion
+          - AgentKitAgentsChatClient-ChatClientAgentFactory-UseImagePromotionRefusesAboveFunctionInvocation
+          - AgentKit-OTS-MicrosoftAgentsAI-ChatClientBuilder
+        tests:
+          - AgentKitAgentsChatClient_ImagePromotion_BuilderExtension_PromotesBeneathFunctionInvocation
+
       - id: AgentKitAgentsChatClient-SessionAdapter-CarriesACoreSession
         title: >-
           The library shall carry an AgentKit Core session over any Microsoft.Extensions.AI chat

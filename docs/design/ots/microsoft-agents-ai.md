@@ -20,6 +20,9 @@ AgentKitAgentsChatClient package only, deliberately kept out of Core.
   `Microsoft.Extensions.AI` package this dependency brings. `ChatClientProviderSessionFactory`
   installs one above the client an application supplies, because a session declares its tools on
   every request and a bare client would emit tool calls nothing answers
+- `ChatClientBuilder` — the `Microsoft.Extensions.AI` pipeline builder this dependency brings, whose
+  `Use` composes a decorating client outermost first; `UseImagePromotion` registers the
+  image-promoting decorator through it
 
 ### Integration Pattern
 

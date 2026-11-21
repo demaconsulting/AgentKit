@@ -62,3 +62,30 @@ sections:
               - ChatClientAgentFactory_Create_EmptyTools_Throws
               - ChatClientAgentFactory_Create_NullToolEntry_Throws
               - ChatClientAgentFactory_Create_DuplicateToolNames_Throws
+
+          - id: AgentKitAgentsChatClient-ChatClientAgentFactory-UseImagePromotion
+            title: >-
+              The library shall let a host install the image-promoting decorator in a chat client
+              pipeline it builds itself, beneath the function-invocation loop, so a tool-returned
+              image reaches the provider on a user message with only a placeholder left in the tool
+              result.
+            justification: |
+              A host that builds its own Agent Framework agent, or a raw chat-client pipeline, does
+              not go through this package's factory and so did not get the decorator; on a provider
+              such as Ollama through OllamaSharp its tool-returned images then never reached the
+              model. Installing it must be one call in the pipeline builder the host already uses.
+            tests:
+              - ChatClientAgentFactory_UseImagePromotion_InstallsDecoratorBeneathFunctionInvocation
+              - ChatClientAgentFactory_UseImagePromotion_NullBuilder_Throws
+
+          - id: AgentKitAgentsChatClient-ChatClientAgentFactory-UseImagePromotionRefusesAboveFunctionInvocation
+            title: >-
+              The library shall refuse, when the pipeline is built, an image-promoting decorator
+              placed above the function-invocation loop.
+            justification: |
+              Above the loop the decorator only ever sees the request before any tool ran, so it
+              promotes nothing and images are silently dropped again — the failure it exists to
+              prevent. Refusing the misplaced pipeline when it is built, naming the correct order,
+              turns a silent defect into one the host sees immediately.
+            tests:
+              - ChatClientAgentFactory_UseImagePromotion_AboveFunctionInvocation_Throws
