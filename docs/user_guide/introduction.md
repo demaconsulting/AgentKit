@@ -742,12 +742,13 @@ The runtime is always:
   restart, only when that file is a regular file holding exactly what AgentKit wrote; any other
   non-empty directory — a Copilot CLI home, a shared folder, the data directory an earlier release's
   client used, or one whose marker is a link, a directory or was edited — is refused with an
-  `InvalidOperationException` naming it. The marker guards against reusing another tool's directory
-  by mistake; it is not a security boundary against a process that can already write to the
-  directory. Keep the directory private to the application, never point the Copilot CLI at it, and
-  give each runtime running at the same time a directory of its own. The runtime's caches are not kept
-  there: they go to the platform's cache folder (`%LOCALAPPDATA%` on Windows, `XDG_CACHE_HOME` or its
-  default elsewhere).
+  `InvalidOperationException` naming it. A new or empty directory that something else writes into
+  while AgentKit is claiming it is refused the same way. The marker guards against reusing another
+  tool's directory by mistake; it is not a security boundary against a process that can already
+  write to the directory. Keep the directory private to the application, never point the Copilot
+  CLI at it, and give each runtime running at the same time a directory of its own. The runtime's
+  caches are not kept there: they go to the platform's cache folder (`%LOCALAPPDATA%` on Windows,
+  `XDG_CACHE_HOME` or its default elsewhere).
 
 `CopilotRuntimeOptions` takes only the data directory and, optionally, a GitHub token, a log level and
 a logger. With no token the runtime authenticates from the `COPILOT_GITHUB_TOKEN`, `GH_TOKEN` or
@@ -976,8 +977,8 @@ for answer quality across a long conversation, not to save money.
   pass-through set reaches the runtime.
 - **`InvalidOperationException`: the data directory "is not empty and was not created by AgentKit".**
   The directory holds something AgentKit did not put there — a Copilot CLI home, or the data directory
-  an earlier release's client used. Give the runtime a new or empty directory of the application's
-  own.
+  an earlier release's client used — or something wrote into a new directory while AgentKit was
+  claiming it. Give the runtime a new or empty directory of the application's own.
 - **`InvalidOperationException`: the data directory's `.agentkit-copilot-runtime` entry "is not the
   marker AgentKit writes".** The directory has an entry with the marker's name, but it is a link, a
   directory, or a file whose content is not exactly what AgentKit writes — for example a marker that

@@ -447,6 +447,92 @@ public class CopilotRuntimeTests
     }
 
     /// <summary>
+    ///     Proves that a missing data directory another writer populates after AgentKit created it and
+    ///     before AgentKit marks it is refused as not created by AgentKit, left without a marker and
+    ///     with its content untouched, and refused again on the next start.
+    /// </summary>
+    [Fact]
+    public void CopilotRuntime_PrepareDataDirectory_MissingPopulatedBeforeMarking_IsRefusedAndLeftUnmarked()
+    {
+        // Arrange: a writer drops Copilot configuration into the directory just created
+        using var directory = new TemporaryDirectory();
+        var dataDirectory = Path.Combine(directory.Path, "nested", "copilot-runtime");
+        var configuration = Path.Combine(dataDirectory, "mcp-config.json");
+        const string content = "{\"mcpServers\":{}}";
+
+        // Act
+        var failure = Assert.Throws<InvalidOperationException>(
+            () => CopilotRuntime.PrepareDataDirectory(dataDirectory, path => File.WriteAllText(Path.Combine(path, "mcp-config.json"), content)));
+
+        // Assert
+        Assert.Contains(dataDirectory, failure.Message, StringComparison.Ordinal);
+        Assert.Contains("not created by AgentKit", failure.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain(InvalidMarkerPhrase, failure.Message, StringComparison.Ordinal);
+        Assert.False(File.Exists(Path.Combine(dataDirectory, CopilotRuntime.OwnershipMarkerFileName)));
+        Assert.Equal(content, File.ReadAllText(configuration));
+        var nextStart = Assert.Throws<InvalidOperationException>(() => CopilotRuntime.PrepareDataDirectory(dataDirectory));
+        Assert.Contains("not created by AgentKit", nextStart.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves that an empty data directory another writer populates - here with a subdirectory -
+    ///     after AgentKit found it empty and before AgentKit marks it is refused as not created by
+    ///     AgentKit, left without a marker and with its content untouched, and refused again on the
+    ///     next start.
+    /// </summary>
+    [Fact]
+    public void CopilotRuntime_PrepareDataDirectory_EmptyPopulatedBeforeMarking_IsRefusedAndLeftUnmarked()
+    {
+        // Arrange: a writer creates a subdirectory with a file in the directory found empty
+        using var directory = new TemporaryDirectory();
+        var state = Path.Combine(directory.Path, "session-state", "state.json");
+        const string content = "{}";
+
+        // Act
+        var failure = Assert.Throws<InvalidOperationException>(
+            () => CopilotRuntime.PrepareDataDirectory(directory.Path, path =>
+            {
+                Directory.CreateDirectory(Path.Combine(path, "session-state"));
+                File.WriteAllText(Path.Combine(path, "session-state", "state.json"), content);
+            }));
+
+        // Assert
+        Assert.Contains(directory.Path, failure.Message, StringComparison.Ordinal);
+        Assert.Contains("not created by AgentKit", failure.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain(InvalidMarkerPhrase, failure.Message, StringComparison.Ordinal);
+        Assert.False(File.Exists(Path.Combine(directory.Path, CopilotRuntime.OwnershipMarkerFileName)));
+        Assert.Equal(content, File.ReadAllText(state));
+        var nextStart = Assert.Throws<InvalidOperationException>(() => CopilotRuntime.PrepareDataDirectory(directory.Path));
+        Assert.Contains("not created by AgentKit", nextStart.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves that a valid marker another writer created first is the reuse path: accepted as it
+    ///     is, with content beside it, without being overwritten or the directory re-checked.
+    /// </summary>
+    [Fact]
+    public void CopilotRuntime_MarkDataDirectory_MarkerWrittenConcurrentlyValidWithContent_IsAccepted()
+    {
+        // Arrange: a racing AgentKit writer already marked the directory and its runtime wrote to it
+        using var directory = new TemporaryDirectory();
+        var marker = Path.Combine(directory.Path, CopilotRuntime.OwnershipMarkerFileName);
+        File.WriteAllBytes(marker, ExpectedMarker);
+        var writtenAt = new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        File.SetLastWriteTimeUtc(marker, writtenAt);
+        var state = Path.Combine(directory.Path, "session-state", "state.json");
+        Directory.CreateDirectory(Path.GetDirectoryName(state)!);
+        File.WriteAllText(state, "{}");
+
+        // Act
+        CopilotRuntime.MarkDataDirectory(directory.Path);
+
+        // Assert
+        Assert.Equal(writtenAt, File.GetLastWriteTimeUtc(marker));
+        Assert.Equal(ExpectedMarker, File.ReadAllBytes(marker));
+        Assert.Equal("{}", File.ReadAllText(state));
+    }
+
+    /// <summary>
     ///     Proves a data directory AgentKit marked earlier is accepted with the runtime's own content
     ///     in it, so conversations persist across restarts.
     /// </summary>

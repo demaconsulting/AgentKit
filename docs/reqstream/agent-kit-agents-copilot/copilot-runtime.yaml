@@ -65,7 +65,8 @@ sections:
               empty directory and marking it with a versioned marker file it never overwrites,
               reusing a directory whose marker is a regular file holding exactly what it writes, and
               refusing a path that names a file, a non-empty directory without the marker, or one
-              whose marker is a link, a directory or other content, before any runtime reads it.
+              whose marker is a link, a directory or other content, and refusing a new or empty
+              directory found populated once its marker is written, before any runtime reads it.
             tags: [security]
             justification: |
               Empty mode alone still runs an MCP server that the data directory configures, and a
@@ -78,6 +79,10 @@ sections:
               marker's name is not mistaken for one. The marker guards against reusing a foreign
               directory by mistake; it is not a security boundary against a process that can already
               write to the directory, which keeping the directory private to the application addresses.
+              A directory found to hold anything besides the marker just written is refused and the
+              marker removed, so a writer that populates a newly created path before it is marked does
+              not have its content adopted; content written after that check is not caught, which is
+              why the directory must stay private.
             tests:
               - CopilotRuntime_PrepareDataDirectory_Missing_IsCreatedAndMarked
               - CopilotRuntime_PrepareDataDirectory_Empty_IsMarked
@@ -91,6 +96,9 @@ sections:
               - CopilotRuntime_PrepareDataDirectory_MarkerIsASymbolicLink_IsRefusedAsInvalid
               - CopilotRuntime_MarkDataDirectory_MarkerWrittenConcurrentlyValid_IsAcceptedNotOverwritten
               - CopilotRuntime_MarkDataDirectory_MarkerWrittenConcurrentlyInvalid_IsRefusedNotOverwritten
+              - CopilotRuntime_PrepareDataDirectory_MissingPopulatedBeforeMarking_IsRefusedAndLeftUnmarked
+              - CopilotRuntime_PrepareDataDirectory_EmptyPopulatedBeforeMarking_IsRefusedAndLeftUnmarked
+              - CopilotRuntime_MarkDataDirectory_MarkerWrittenConcurrentlyValidWithContent_IsAccepted
 
           - id: AgentKitAgentsCopilot-CopilotRuntime-OffersOnlyNeutralOptions
             title: >-

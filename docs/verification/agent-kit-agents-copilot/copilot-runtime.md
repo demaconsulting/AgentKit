@@ -14,7 +14,9 @@ Copilot runtime:
 - **`PrepareDataDirectory` and `MarkDataDirectory`** run against real directories created under the
   system temporary folder and deleted afterwards, because the behavior under test is what the
   directory holds. `MarkDataDirectory` is driven directly to reproduce a concurrent writer that
-  created the marker first. The symbolic-link case is skipped on a Windows session that lacks the
+  created the marker first. `PrepareDataDirectory` takes a `beforeMark` callback so a test populates a
+  new or empty directory between the emptiness check and the marker, as a concurrent writer could. The
+  symbolic-link case is skipped on a Windows session that lacks the
   privilege to create symbolic links; it runs on Linux, macOS and elevated or Developer Mode Windows,
   and a marker that is a directory covers the non-link refusal everywhere.
 - **`StartClientAsync` and `StartOwnedAsync`** take the start, and the creation and disposal, as
@@ -66,7 +68,8 @@ arguments or a child working directory, or with any client-level capability chan
 `COPILOT_` or `GITHUB_COPILOT_` variable outside the pass-through set reaching the runtime environment,
 or any other host variable dropped; a pass-through set other than the documented one; a data directory
 accepted when it names a file, is a non-empty directory without the marker, or has a marker that is a
-link, a directory, the wrong size or the wrong content, or marked when refused; a marker written in
+link, a directory, the wrong size or the wrong content, or is found populated once its marker is
+written, or marked when refused; a marker written in
 any form other than the exact versioned bytes, or an existing marker overwritten;
 a failed start whose explanation omits the runtime's error, the direct SDK reference or an
 authentication source, or loses the
@@ -126,6 +129,9 @@ filtered environment rather than the host's.
   unprivileged Windows)
 - `CopilotRuntime_MarkDataDirectory_MarkerWrittenConcurrentlyValid_IsAcceptedNotOverwritten`
 - `CopilotRuntime_MarkDataDirectory_MarkerWrittenConcurrentlyInvalid_IsRefusedNotOverwritten`
+- `CopilotRuntime_PrepareDataDirectory_MissingPopulatedBeforeMarking_IsRefusedAndLeftUnmarked`
+- `CopilotRuntime_PrepareDataDirectory_EmptyPopulatedBeforeMarking_IsRefusedAndLeftUnmarked`
+- `CopilotRuntime_MarkDataDirectory_MarkerWrittenConcurrentlyValidWithContent_IsAccepted`
 
 Normal operation and the error paths. A missing nested directory is created and marked, and its full
 path returned; an empty one is marked; in both cases the marker's bytes equal the format-1 marker,
@@ -145,6 +151,11 @@ link whose target outside the data directory holds exactly the valid bytes (the 
 the target is left alone). When a concurrent writer created the marker first, a valid one is
 accepted with its bytes and last-write time unchanged, and a partial one is refused as invalid and
 left as it was.
+
+A directory a writer populates — with an `mcp-config.json`, or a subdirectory — after it was found
+new or empty and before it is marked is refused as not created by AgentKit, left without a marker,
+its content untouched, and refused again on the next start. A valid marker a concurrent writer
+created first is accepted with content beside it, as on reuse.
 
 #### AgentKitAgentsCopilot-CopilotRuntime-OffersOnlyNeutralOptions: Nothing That Widens the Session
 

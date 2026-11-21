@@ -399,7 +399,9 @@ public sealed class CopilotRuntime : IAsyncDisposable
     ///     <para>
     ///     A second process preparing the same directory at the same moment cannot make AgentKit
     ///     overwrite a marker: the marker is created only when absent, and one found already written
-    ///     is validated like any other, so the race fails closed. Hosts still give each runtime a
+    ///     is validated like any other, so the race fails closed. A writer that populates a new or
+    ///     empty directory before it is marked is caught by enumerating it again once the marker is
+    ///     written; one that writes after that check is not. Hosts still give each runtime a
     ///     directory of its own.
     ///     </para>
     /// </remarks>
@@ -411,7 +413,31 @@ public sealed class CopilotRuntime : IAsyncDisposable
     /// </exception>
     /// <exception cref="IOException">The directory or its marker could not be created or read.</exception>
     /// <exception cref="UnauthorizedAccessException">The directory is not writable, or its marker is not readable.</exception>
-    internal static string PrepareDataDirectory(string dataDirectory)
+    internal static string PrepareDataDirectory(string dataDirectory) =>
+        PrepareDataDirectory(dataDirectory, beforeMark: null);
+
+    /// <summary>
+    ///     Resolves a data directory and makes sure it is one AgentKit owns, with a hook that runs just
+    ///     before a new or empty directory is marked.
+    /// </summary>
+    /// <remarks>
+    ///     Behaves exactly as <see cref="PrepareDataDirectory(string)"/>, which passes
+    ///     <see langword="null"/>.
+    /// </remarks>
+    /// <param name="dataDirectory">The data directory requested. Must not be blank.</param>
+    /// <param name="beforeMark">
+    ///     Invoked with the directory's full path once it is known to be new or empty, just before
+    ///     it is marked; <see langword="null"/> outside tests, which use it to populate the directory
+    ///     the way a concurrent writer could.
+    /// </param>
+    /// <returns>The directory's full path.</returns>
+    /// <exception cref="InvalidOperationException">
+    ///     The path names an existing file, a non-empty directory without AgentKit's marker, or a
+    ///     directory whose marker entry is not exactly the marker AgentKit writes.
+    /// </exception>
+    /// <exception cref="IOException">The directory or its marker could not be created or read.</exception>
+    /// <exception cref="UnauthorizedAccessException">The directory is not writable, or its marker is not readable.</exception>
+    internal static string PrepareDataDirectory(string dataDirectory, Action<string>? beforeMark)
     {
         var fullPath = Path.GetFullPath(dataDirectory);
         var marker = Path.Combine(fullPath, OwnershipMarkerFileName);
@@ -447,6 +473,7 @@ public sealed class CopilotRuntime : IAsyncDisposable
         }
 
         // Marked only once it is known to be new or empty, so a refused directory is left untouched.
+        beforeMark?.Invoke(fullPath);
         MarkDataDirectory(fullPath);
         return fullPath;
     }
@@ -456,13 +483,25 @@ public sealed class CopilotRuntime : IAsyncDisposable
     ///     overwriting an entry already there.
     /// </summary>
     /// <remarks>
+    ///     <para>
     ///     The marker is created only when absent. When another writer created the entry first, it is
     ///     validated instead: a valid marker is accepted as it is, anything else is refused. A write
     ///     that fails after the file was created deletes the partial file, as a best effort, before the
     ///     failure propagates. Internal so the concurrent-writer path can be tested directly.
+    ///     </para>
+    ///     <para>
+    ///     When the marker was created here, the directory is enumerated again before the handle is
+    ///     released; any entry besides the marker means another writer populated it, so the marker is
+    ///     emptied, deleted as a best effort, and the directory refused as foreign. A marker another
+    ///     writer created first is the reuse path: when valid it is accepted without enumerating, as
+    ///     on a later start.
+    ///     </para>
     /// </remarks>
     /// <param name="dataDirectory">The data directory's full path.</param>
-    /// <exception cref="InvalidOperationException">An entry another writer created is not the marker AgentKit writes.</exception>
+    /// <exception cref="InvalidOperationException">
+    ///     An entry another writer created is not the marker AgentKit writes, or the directory holds
+    ///     anything besides the marker just written.
+    /// </exception>
     /// <exception cref="IOException">The marker could not be created or read.</exception>
     /// <exception cref="UnauthorizedAccessException">The directory is not writable, or the marker is not readable.</exception>
     internal static void MarkDataDirectory(string dataDirectory)
@@ -488,19 +527,47 @@ public sealed class CopilotRuntime : IAsyncDisposable
             return;
         }
 
+        bool foreign;
         try
         {
             using (stream)
             {
                 stream.Write(OwnershipMarkerContent);
+                stream.Flush();
+
+                // The claim is complete only if the marker is all the directory holds: a writer that
+                // populated it between the emptiness check and now must not have its content
+                // adopted. Checked while the handle is held, and a marker beside foreign content is
+                // emptied through that handle - only the file created here - so even if the delete
+                // below fails it is refused as invalid rather than trusted on the next start.
+                foreign = HoldsAnythingButTheMarker(dataDirectory);
+                if (foreign)
+                {
+                    stream.SetLength(0);
+                }
             }
         }
         catch
         {
-            TryDeletePartialMarker(marker);
+            TryDeleteCreatedMarker(marker);
             throw;
         }
+
+        if (foreign)
+        {
+            TryDeleteCreatedMarker(marker);
+            throw Foreign(dataDirectory);
+        }
     }
+
+    /// <summary>
+    ///     Reports whether a data directory holds any entry other than the ownership marker.
+    /// </summary>
+    /// <param name="dataDirectory">The data directory's full path.</param>
+    /// <returns><see langword="true"/> when another entry exists.</returns>
+    private static bool HoldsAnythingButTheMarker(string dataDirectory) =>
+        Directory.EnumerateFileSystemEntries(dataDirectory)
+            .Any(entry => !string.Equals(Path.GetFileName(entry), OwnershipMarkerFileName, StringComparison.Ordinal));
 
     /// <summary>
     ///     Reports whether an entry of the marker's name exists, of any kind and without following a
@@ -565,10 +632,11 @@ public sealed class CopilotRuntime : IAsyncDisposable
     }
 
     /// <summary>
-    ///     Deletes a marker whose write failed, as a best effort.
+    ///     Deletes a marker this call created - partial, or emptied beside foreign content - as a best
+    ///     effort.
     /// </summary>
     /// <param name="marker">The marker's full path.</param>
-    private static void TryDeletePartialMarker(string marker)
+    private static void TryDeleteCreatedMarker(string marker)
     {
         try
         {
@@ -576,8 +644,9 @@ public sealed class CopilotRuntime : IAsyncDisposable
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            // The write's own failure is the one reported; a partial marker left behind is refused
-            // as invalid on the next start, with a message that says how to recover.
+            // The original failure or refusal is the one reported; a marker left behind is empty or
+            // partial, so it is refused as invalid on the next start, with a message that says how
+            // to recover.
         }
     }
 

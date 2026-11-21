@@ -124,11 +124,26 @@ validated as above and the directory accepted or refused accordingly. A write th
 file was created deletes the partial file, as a best effort, and the failure propagates. A concurrent
 preparation of the same directory therefore fails closed.
 
+When `MarkDataDirectory` created the marker, it enumerates the directory again before releasing the
+`CreateNew` handle (opened with `FileShare.None`). Any entry besides the marker means another writer
+populated the path between the emptiness check and the marker, so the marker is emptied through that
+handle with `SetLength(0)` — touching only the file created here — then deleted as a best effort, and
+the directory is refused with the same not-created-by-AgentKit `InvalidOperationException` as any
+other foreign directory. A leftover marker after a failed delete is empty, so the next start refuses
+it as invalid rather than trusting it. A marker another writer created first is the reuse path: when
+valid it is accepted without enumerating, as on a later start — the call that writes the marker is
+the one that checks. For tests, an internal `PrepareDataDirectory(string, Action<string>?)` overload
+invokes a `beforeMark` callback with the full path just before the directory is marked, so a test can
+populate it as a concurrent writer could; the production overload passes `null`.
+
 **What the marker does and does not guarantee.** The marker guards against reusing a foreign Copilot
 home or a shared folder by mistake. It is not a security boundary against a process that can already
 write to the directory: such a process can write the exact marker, swap the entry for a link between
 the check and the read, or add configuration after the check, and a hard link to a marker elsewhere
 is not detected. The guarantee rests on the host keeping the directory private to the application.
+Re-enumerating after the marker is written narrows, but does not close, the window for a concurrent
+writer: content added after it, or (on Unix, where the lock is advisory) an entry swapped for
+another, is not detected.
 
 A fresh directory is what keeps user-configured MCP servers, installed plugins, user hooks and trusted
 folders from existing at all. A directory another tool populated is refused rather than inspected,
