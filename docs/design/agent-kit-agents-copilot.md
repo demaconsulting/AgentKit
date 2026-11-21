@@ -556,6 +556,11 @@ The session's configuration listing is not complete — it does not report the b
 even while that server is connected — so the post-create seal is defense in depth, not proof of
 absence. In every case, no MCP tool is on a session's allow-list.
 
+Refusing a session or turn when the runtime's MCP status events report any server pending or
+connected would close the listing gap for built-in, managed-catalog and account servers. It is
+deferred to a follow-up, and nothing in this release depends on it. Such a check would still detect a
+server only after it started, so it would contain such a server, not prevent it.
+
 The other ambient channels are absent from a session on this runtime: the live suite lists no
 plugin, skill, instruction source or agent, and the system prompt is smaller than a control session's
 that keeps the host environment context (L15). Hooks have no listing; they are covered by repository

@@ -665,5 +665,14 @@ servers that reached pending or connected were the probe or the built-in server 
 L14f); the other scenarios do not record those events. Managed-catalog and account servers could not be configured for
 the run, so for those sources the evidence is L14a's observation that none started for this account. After this run the
 agent scenarios' cleanup moved from the client's session deletion to `CopilotRuntime.DeleteSessionAsync`, which forwards
-to the same SDK call; that change was not re-run live. Later runs of the CI job record their results in the
+to the same SDK call. After the branch was rebased onto large tool output retention, the whole suite was
+run again on 2026-11-21, on the same machine and model, with `COPILOT_CLI_PATH` removed from the shell first and no
+filter; all 25 tests passed, in 5 minutes 22 seconds, including L10a to L10c, so the agent scenarios' cleanup through
+`CopilotRuntime.DeleteSessionAsync` held on the real runtime. Later runs of the CI job record their results in the
 `live-copilot-suite` artifact of each workflow run.
+
+**Platform coverage.** Every recorded live run of the owned runtime ran on Windows; the spawned
+runtime has not yet run live on Linux. The `live-copilot-suite` job, which runs on `ubuntu-latest`
+weekly and on dispatch, gives the first Linux evidence and records it in its artifact. The hermetic
+tests, including those for the client options, the withheld environment and the data-directory
+marking, run in the CI matrix on Linux.

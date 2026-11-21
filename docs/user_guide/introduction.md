@@ -1008,7 +1008,10 @@ adapter over `GitHub.Copilot.SDK` 1.0.x. Moving to the current release:
   explains a failed start itself. Dispose the runtime where you disposed the client, and delete a
   finished conversation with `runtime.DeleteSessionAsync`.
 - Give the runtime a new data directory: the one your client used is not empty and was not created by
-  AgentKit, so it is refused. Conversations kept there are not carried over.
+  AgentKit, so it is refused with the `InvalidOperationException` described under *Troubleshooting
+  the Copilot Runtime*. The same holds for a Copilot CLI home. This refusal is a deliberate breaking
+  change, accepted while the package is pre-1.0. There is no migration path for a client's data
+  directory, and conversations kept there are not carried over.
 - Move a client-level working directory to the `workingDirectory:` parameter of
   `CopilotAgentFactory.Create` or `CopilotProviderSessionFactory`.
 - Replace a `GHCP001` suppression with `MCPSDK001`.
