@@ -47,8 +47,9 @@ ignored.
 | `_options` | `ToolPackContextProviderOptions` | The validated options. |
 | `_sessions` | `ConditionalWeakTable<AgentSession, SessionTools>` | Each live session's tools and retention. |
 
-`SessionTools` is a private record of the contributed `IList<AITool>` and the conversation's
-`ToolOutputRetention`, or null. The weak table holds an entry only as long as its session lives.
+`SessionTools` is a private record of the composed tools, an `IReadOnlyList<AITool>` wrapping an owned
+array, and the conversation's `ToolOutputRetention`, or null. The weak table holds an entry only as
+long as its session lives.
 
 ### Key Methods
 
@@ -77,8 +78,10 @@ requested over a result ceiling below `ToolOutputSpill.MinimumResultCharacters`.
    `CopilotAgentFactory` and `ToolOutputRetention` as the alternatives.
 2. Look up the session's composition, creating it with `Compose` on first sight; a run with no session
    gets a throwaway composition that nothing persists.
-3. Return an `AIContext` with the composition's tools and the configured instructions; the framework
-   merges them with the agent's own.
+3. Return an `AIContext` with a fresh list copied from the composition's tools, and the configured
+   instructions; the framework merges them with the agent's own. The framework hands the list on as
+   the request's `ChatOptions.Tools`, so a change the framework or a middleware makes to one request's
+   tools never reaches the next run.
 
 #### Compose(AgentSession? session)
 
@@ -86,8 +89,9 @@ Calls the stored composition (an empty result is an `InvalidOperationException`)
 the tools are returned as they are. With retention, it restores a `ToolOutputRetention` from the
 session's state bag (`TryGetValue<ToolOutputRetentionSnapshot>` with the snapshot's source-generated
 serializer options) when a snapshot is present, otherwise creates a new one, and returns
-`retention.Wrap(tools)` followed by `retention.ReaderTools`. A malformed persisted snapshot throws the
-`ArgumentException` `ToolOutputRetention.Restore` raises rather than being silently discarded.
+`retention.Wrap(tools)` followed by `retention.ReaderTools`. A persisted snapshot that deserializes but
+is malformed throws the `ArgumentException` `ToolOutputRetention.Restore` raises, and state that does
+not deserialize as a snapshot throws the state bag's `JsonException`; neither is silently discarded.
 
 #### InvokedCoreAsync(InvokedContext context, CancellationToken cancellationToken)
 
@@ -110,6 +114,7 @@ Returns the configured state key, so the framework can detect two providers writ
 | Agent is not a chat-client agent | `InvalidOperationException` from the run |
 | Delegate composes no tool | `InvalidOperationException` from the run |
 | Malformed persisted snapshot | `ArgumentException` from the run |
+| State that does not deserialize as a snapshot | The state bag's `JsonException` from the run |
 | Refusals, oversized outputs, unknown references | Returned to the model as tool results |
 
 ### Design Constraints

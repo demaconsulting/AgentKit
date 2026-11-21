@@ -306,6 +306,29 @@ public class ToolPackContextProviderTests
     }
 
     /// <summary>
+    ///     Proves a tool a downstream client adds to one run's request never reaches the next run of
+    ///     the conversation, because each run is contributed a fresh list.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task ToolPackContextProvider_RequestToolsChangedDownstream_NextRunOffersComposedTools()
+    {
+        // Arrange: a client beneath the agent that records the tools offered, then adds one of its own
+        var client = new ToolAddingChatClient(RecordingChatClient.Answering("done", 1));
+        var agent = Agent(client, new ToolPackContextProvider(Policy(), [new ReportPack()]));
+        var session = await agent.CreateSessionAsync(TestContext.Current.CancellationToken);
+
+        // Act: two runs of one conversation
+        await agent.RunAsync("one", session, cancellationToken: TestContext.Current.CancellationToken);
+        await agent.RunAsync("two", session, cancellationToken: TestContext.Current.CancellationToken);
+
+        // Assert: both runs were offered exactly the composed tools
+        Assert.Equal(2, client.Seen.Count);
+        Assert.Equal(["report_build", "report_echo"], client.Seen[0]);
+        Assert.Equal(["report_build", "report_echo"], client.Seen[1]);
+    }
+
+    /// <summary>
     ///     Builds a tool-less chat-client agent whose tools come from the provider.
     /// </summary>
     /// <param name="client">The chat client the agent talks to.</param>
@@ -404,6 +427,30 @@ public class ToolPackContextProviderTests
                 "Builds the report."),
             Echo()
         ];
+    }
+
+    /// <summary>
+    ///     A middleware-style client that records the tools each request offers, then adds a tool of
+    ///     its own to that request, as a middleware extending a request's tools would.
+    /// </summary>
+    /// <param name="inner">The client requests are forwarded to.</param>
+    private sealed class ToolAddingChatClient(IChatClient inner) : DelegatingChatClient(inner)
+    {
+        /// <summary>
+        ///     Gets the tool names each request offered, before this client added its own.
+        /// </summary>
+        public List<List<string>> Seen { get; } = [];
+
+        /// <inheritdoc/>
+        public override Task<ChatResponse> GetResponseAsync(
+            IEnumerable<ChatMessage> messages,
+            ChatOptions? options = null,
+            CancellationToken cancellationToken = default)
+        {
+            Seen.Add(options?.Tools?.Select(tool => tool.Name).ToList() ?? []);
+            options?.Tools?.Add(AIFunctionFactory.Create(() => "x", "injected_tool"));
+            return base.GetResponseAsync(messages, options, cancellationToken);
+        }
     }
 
     /// <summary>

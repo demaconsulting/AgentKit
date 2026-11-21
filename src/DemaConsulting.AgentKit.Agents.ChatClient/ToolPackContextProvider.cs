@@ -275,7 +275,12 @@ public sealed class ToolPackContextProvider : AIContextProvider
     ///     tools, or when the composition yields no tool.
     /// </exception>
     /// <exception cref="ArgumentException">
-    ///     Thrown when the session holds a malformed retention snapshot under this provider's key.
+    ///     Thrown when the session holds a retention snapshot under this provider's key that
+    ///     deserializes but is malformed.
+    /// </exception>
+    /// <exception cref="System.Text.Json.JsonException">
+    ///     Thrown by the session's state bag when the state under this provider's key does not
+    ///     deserialize as a retention snapshot.
     /// </exception>
     protected override ValueTask<AIContext> ProvideAIContextAsync(
         InvokingContext context,
@@ -298,9 +303,12 @@ public sealed class ToolPackContextProvider : AIContextProvider
             ? Compose(session: null)
             : _sessions.GetValue(context.Session, Compose);
 
+        // A fresh list every run: the framework hands it on as the request's ChatOptions.Tools, which
+        // a middleware or later context provider may legitimately extend for that one request. The
+        // conversation's composition itself is read-only and never handed out.
         return new ValueTask<AIContext>(new AIContext
         {
-            Tools = composed.Tools,
+            Tools = new List<AITool>(composed.Tools),
             Instructions = _options.Instructions
         });
     }
@@ -382,7 +390,7 @@ public sealed class ToolPackContextProvider : AIContextProvider
 
         if (_options.ToolOutput is not { } outputOptions)
         {
-            return new SessionTools([.. tools], Retention: null);
+            return new SessionTools(Array.AsReadOnly<AITool>([.. tools]), Retention: null);
         }
 
         // A session reloaded by the agent carries the snapshot written after its last run.
@@ -395,13 +403,16 @@ public sealed class ToolPackContextProvider : AIContextProvider
             ? ToolOutputRetention.Restore(snapshot, _limits, outputOptions)
             : new ToolOutputRetention(_limits, outputOptions);
 
-        return new SessionTools([.. retention.Wrap(tools), .. retention.ReaderTools], retention);
+        return new SessionTools(Array.AsReadOnly<AITool>([.. retention.Wrap(tools), .. retention.ReaderTools]), retention);
     }
 
     /// <summary>
     ///     One conversation's composed tools and the retention they share, if any.
     /// </summary>
-    /// <param name="Tools">The tools contributed to every run of the conversation.</param>
+    /// <param name="Tools">
+    ///     The tools contributed to every run of the conversation, read-only so a run's changes to its
+    ///     own copy never reach the composition.
+    /// </param>
     /// <param name="Retention">The conversation's retention, or null when none is configured.</param>
-    private sealed record SessionTools(IList<AITool> Tools, ToolOutputRetention? Retention);
+    private sealed record SessionTools(IReadOnlyList<AITool> Tools, ToolOutputRetention? Retention);
 }

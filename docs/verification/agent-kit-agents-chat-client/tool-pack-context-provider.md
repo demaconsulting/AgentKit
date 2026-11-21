@@ -36,11 +36,11 @@ within the `DemaConsulting.AgentKit.Agents.ChatClient.Tests` project.
 
 ### Acceptance Criteria
 
-A unit test run passes when all eleven scenarios below pass. Any tool or instruction not contributed, any
-recomposition within a conversation, any reference readable across conversations, any retained output
-lost or re-issued across a reload, any retention lost after a failed run, any retained text persisted
-after opting out, any foreign tool left unbounded, any non-chat-client agent accepted, any undeclared
-state key, or any invalid configuration accepted constitutes a failure.
+A unit test run passes when all twelve scenarios below pass. Any tool or instruction not contributed, any
+recomposition within a conversation, any tool list shared between runs, any reference readable across
+conversations, any retained output lost or re-issued across a reload, any retention lost after a failed
+run, any retained text persisted after opting out, any foreign tool left unbounded, any non-chat-client
+agent accepted, any undeclared state key, or any invalid configuration accepted constitutes a failure.
 
 ### Test Scenarios
 
@@ -60,6 +60,14 @@ Without retention configured, asserts no `tool_output_*` tool is offered.
 **Test**: `ToolPackContextProvider_TwoRunsOneSession_ComposeOnce`
 
 A counting composition; two runs of one session and one run of another compose twice.
+
+#### AgentKitAgentsChatClient-ToolPackContextProvider-FreshToolListPerRun: A Run's Tool Changes Stay in That Run
+
+**Test**: `ToolPackContextProvider_RequestToolsChangedDownstream_NextRunOffersComposedTools`
+
+A delegating client beneath the agent records the tools each request offers, then adds a tool of its
+own to that request. Two runs of one session; asserts both were offered exactly `report_build` and
+`report_echo`, never the added tool.
 
 #### AgentKitAgentsChatClient-ToolPackContextProvider-RetentionPerSession: Conversations Are Isolated
 
