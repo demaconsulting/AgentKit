@@ -108,18 +108,22 @@ sections:
 
           - id: AgentKitCore-ToolOutputRetention-RestoreRejectsMalformedSnapshot
             title: >-
-              A retention shall refuse to restore a snapshot with a negative counter, a missing,
-              malformed or repeated reference, a reference above the snapshot's counter, or an
-              output whose lines are empty or not normalized.
+              A retention shall refuse to restore a snapshot with a negative counter or a counter
+              too large to continue numbering from, a missing, malformed or repeated reference, a
+              reference above the snapshot's counter, or an output whose lines are empty or not
+              normalized.
             justification: |
               A snapshot is persisted data that may have been edited or corrupted. Restoring part of
               it would leave references answering content that was never retained, and lines that are
               not normalized would break the paging guarantee that no numbered line exceeds a page.
               A reference the counter says was never issued would resolve to content the retention
-              never retained.
+              never retained. A counter at the edge of the numeric range would wrap on the next
+              retained output to a negative reference no reader resolves, and the snapshot then
+              exported would itself be refused.
             tests:
               - ToolOutputRetention_Restore_MalformedSnapshot_Throws
               - ToolOutputRetention_Restore_ReferenceAboveCounter_Throws
+              - ToolOutputRetention_Restore_CounterWithoutHeadroom_Throws
 
           - id: AgentKitCore-ToolOutputRetention-SnapshotOwnsItsData
             title: >-

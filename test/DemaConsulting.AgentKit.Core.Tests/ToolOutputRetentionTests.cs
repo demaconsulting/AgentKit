@@ -307,6 +307,42 @@ public class ToolOutputRetentionTests
     }
 
     /// <summary>
+    ///     Proves a snapshot whose counter leaves too little room to keep numbering is rejected, so a
+    ///     restored retention can never wrap its counter into a reference no reader resolves.
+    /// </summary>
+    [Fact]
+    public void ToolOutputRetention_Restore_CounterWithoutHeadroom_Throws()
+    {
+        // Arrange: counters at and just below the end of the range, with and without an output at the
+        // counter, and one just above the restorable bound
+        var withoutHeadroom = new[]
+        {
+            new ToolOutputRetentionSnapshot(long.MaxValue, []),
+            new ToolOutputRetentionSnapshot(long.MaxValue - 1, []),
+            new ToolOutputRetentionSnapshot(
+                long.MaxValue,
+                [new RetainedToolOutput("output-9223372036854775807", ["x"], false)]),
+            new ToolOutputRetentionSnapshot(
+                long.MaxValue - 1,
+                [new RetainedToolOutput("output-9223372036854775806", ["x"], false)]),
+            new ToolOutputRetentionSnapshot(ToolOutputStore.MaxRestorableCounter + 1, [])
+        };
+
+        // Act: restore a snapshot exactly at the bound
+        var atBound = ToolOutputRetention.Restore(
+            new ToolOutputRetentionSnapshot(ToolOutputStore.MaxRestorableCounter, []),
+            Limits);
+
+        // Assert: each without headroom is rejected naming the snapshot; the bound itself is accepted
+        Assert.All(
+            withoutHeadroom,
+            snapshot => Assert.Equal(
+                "snapshot",
+                Assert.Throws<ArgumentException>(() => ToolOutputRetention.Restore(snapshot, Limits)).ParamName));
+        Assert.Equal(ToolOutputStore.MaxRestorableCounter, atBound.Export().LastIssued);
+    }
+
+    /// <summary>
     ///     Proves a snapshot keeps its own copy of the outputs it was constructed with, so a later
     ///     change to the caller's list does not change it.
     /// </summary>

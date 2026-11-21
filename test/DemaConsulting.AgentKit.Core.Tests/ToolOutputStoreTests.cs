@@ -403,4 +403,28 @@ public class ToolOutputStoreTests
         // Act / Assert: restoring would interleave two histories under one counter
         Assert.Throws<InvalidOperationException>(() => store.Restore([], 0));
     }
+
+    /// <summary>
+    ///     Proves a store whose counter is exhausted refuses another output rather than wrapping to a
+    ///     negative identifier, and evicts nothing in refusing.
+    /// </summary>
+    [Fact]
+    public void ToolOutputStore_Add_CounterExhausted_ThrowsAndEvictsNothing()
+    {
+        // Arrange: a store keeping one output, restored with its counter at the end of the range
+        var store = new ToolOutputStore(new ToolOutputOptions(maxRetainedOutputs: 1));
+        store.Restore(
+            new (long Number, IReadOnlyList<string> Lines, bool Wrapped)[] { (long.MaxValue, new[] { "held" }, false) },
+            long.MaxValue);
+
+        // Act: retaining another output would need an identifier past the end of the range
+        var exception = Record.Exception(() => store.Add("next"));
+
+        // Assert: refused, the held output was not evicted, and the counter did not move
+        Assert.IsType<InvalidOperationException>(exception);
+        Assert.Equal(ToolOutputLookup.Found, store.Find("output-9223372036854775807", out var held));
+        Assert.Equal(["held"], held!.Lines);
+        store.Snapshot(out var lastIssued);
+        Assert.Equal(long.MaxValue, lastIssued);
+    }
 }

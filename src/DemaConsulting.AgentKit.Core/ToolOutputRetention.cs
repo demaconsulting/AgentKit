@@ -252,8 +252,9 @@ public sealed class ToolOutputRetention
     ///     </para>
     ///     <para>
     ///     A snapshot whose references are malformed, repeated or above its counter, whose counter is
-    ///     negative, or whose lines are empty or not normalized (a line that is null, holds a line
-    ///     break, or is longer than a retained line may be) is rejected rather than partly restored.
+    ///     negative or too large to continue numbering from, or whose lines are empty or not
+    ///     normalized (a line that is null, holds a line break, or is longer than a retained line may
+    ///     be) is rejected rather than partly restored.
     ///     </para>
     /// </remarks>
     /// <param name="snapshot">The snapshot to restore. Must not be <see langword="null"/>.</param>
@@ -344,6 +345,15 @@ public sealed class ToolOutputRetention
         if (snapshot.LastIssued < 0)
         {
             throw new ArgumentException("The snapshot's reference counter is negative.", nameof(snapshot));
+        }
+
+        // Numbering continues after the counter, so it must leave room to issue more: a counter at
+        // the edge of the range would wrap to a negative reference on the next retained output.
+        if (snapshot.LastIssued > ToolOutputStore.MaxRestorableCounter)
+        {
+            throw new ArgumentException(
+                "The snapshot's reference counter is too large to continue numbering from.",
+                nameof(snapshot));
         }
 
         var entries = new List<(long Number, IReadOnlyList<string> Lines, bool Wrapped)>();

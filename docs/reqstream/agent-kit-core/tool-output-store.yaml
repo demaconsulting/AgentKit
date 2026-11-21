@@ -13,15 +13,18 @@ sections:
             title: >-
               The output store shall name each retained output by an opaque identifier of the form
               output-N, issued in increasing order, and shall return the retained output for that
-              identifier.
+              identifier, and shall refuse to retain an output once it has issued the largest
+              identifier it can, evicting nothing.
             tags: [security]
             justification: |
               A reference that looked like a path would invite a model to hand it to a file tool,
               and one that could be guessed across compositions would let one agent read another's
               outputs. An opaque, ordered identifier names exactly one output in exactly one store,
               and its order is what lets the store tell an evicted reference from an unknown one.
+              Wrapping the counter would issue a negative identifier no lookup resolves.
             tests:
               - ToolOutputStore_Add_Outputs_IssuesMonotonicIdsAndRetainsTheLines
+              - ToolOutputStore_Add_CounterExhausted_ThrowsAndEvictsNothing
 
           - id: AgentKitCore-ToolOutputStore-NormalizedForPaging
             title: >-

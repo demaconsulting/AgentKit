@@ -119,6 +119,16 @@ internal sealed class ToolOutputStore
     internal const int MaxEchoedIdCharacters = 64;
 
     /// <summary>
+    ///     The largest counter a store may be restored with.
+    /// </summary>
+    /// <remarks>
+    ///     Half the range of <see cref="long"/> leaves room for more than 4.6 × 10^18 further
+    ///     identifiers, far more than any conversation retains, so a store restored from an accepted
+    ///     snapshot never exhausts its counter.
+    /// </remarks>
+    internal const long MaxRestorableCounter = long.MaxValue / 2;
+
+    /// <summary>
     ///     The writer options used to indent structured data for paging.
     /// </summary>
     /// <remarks>
@@ -204,6 +214,9 @@ internal sealed class ToolOutputStore
     /// <exception cref="ArgumentNullException">
     ///     Thrown when <paramref name="text"/> is <see langword="null"/>.
     /// </exception>
+    /// <exception cref="InvalidOperationException">
+    ///     Thrown when the store has already issued the largest identifier it can.
+    /// </exception>
     public ToolOutputEntry? Add(string text)
     {
         ArgumentNullException.ThrowIfNull(text);
@@ -224,6 +237,15 @@ internal sealed class ToolOutputStore
 
         lock (_gate)
         {
+            // Checked before anything is evicted, so a store that cannot issue another identifier
+            // refuses without losing an output; wrapping would issue a negative identifier no reader
+            // resolves. A restored counter is bounded by MaxRestorableCounter, so only a defect
+            // reaches this.
+            if (_issued == long.MaxValue)
+            {
+                throw new InvalidOperationException("The store has issued every identifier it can.");
+            }
+
             // Evict oldest first until the new entry fits both ceilings. The per-output ceiling is
             // no larger than the store's, so this always terminates with room for the new entry.
             while (_order.Count > 0
@@ -322,7 +344,10 @@ internal sealed class ToolOutputStore
     ///     The entries to restore with their numeric identifiers, in ascending order of number,
     ///     with no duplicate number and every line already normalized. Must not be null.
     /// </param>
-    /// <param name="lastIssued">The exported store's last issued number; zero or greater.</param>
+    /// <param name="lastIssued">
+    ///     The exported store's last issued number; zero or greater, and no greater than
+    ///     <see cref="MaxRestorableCounter"/> for a store expected to keep numbering.
+    /// </param>
     /// <exception cref="ArgumentNullException">
     ///     Thrown when <paramref name="entries"/> is <see langword="null"/>.
     /// </exception>

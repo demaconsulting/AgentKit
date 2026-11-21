@@ -24,13 +24,12 @@ project.
 
 ### Acceptance Criteria
 
-A unit test run passes when all eighteen scenarios below pass. Any identifier issued out of order
-or twice, any retained line altered or lost, any output over the per-output ceiling retained, any
-output that fits refused by the early raw-length check, any measured size differing from the
-normalized size, any eviction other than oldest-first, any
-lookup outcome misreported, any over-long malformed identifier echoed, any inconsistency under
-concurrent addition, any snapshot or restore that loses an identifier, reorders entries or re-issues
-an identifier, or any restore over a store already in use constitutes a failure.
+A unit test run passes when all nineteen scenarios below pass. Any identifier issued out of order or twice, any
+identifier wrapped past the end of the range, any retained line altered or lost, any output over the per-output ceiling
+retained, any output that fits refused by the early raw-length check, any measured size differing from the normalized
+size, any eviction other than oldest-first, any lookup outcome misreported, any over-long malformed identifier echoed,
+any inconsistency under concurrent addition, any snapshot or restore that loses an identifier, reorders entries or
+re-issues an identifier, or any restore over a store already in use constitutes a failure.
 
 ### Test Scenarios
 
@@ -40,6 +39,13 @@ an identifier, or any restore over a store already in use constitutes a failure.
 
 Normal operation: two outputs receive `output-1` and `output-2`, and the first resolves to its
 lines.
+
+#### AgentKitCore-ToolOutputStore-OpaqueReferences: An Exhausted Counter Refuses Without Wrapping
+
+**Test**: `ToolOutputStore_Add_CounterExhausted_ThrowsAndEvictsNothing`
+
+Boundary value: a store keeping one output restored at counter `long.MaxValue`; asserts `Add` throws
+`InvalidOperationException`, the held output still resolves and the counter is unchanged.
 
 #### AgentKitCore-ToolOutputStore-NormalizedForPaging: Line Endings Are Normalized
 

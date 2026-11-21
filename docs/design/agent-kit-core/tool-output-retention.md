@@ -50,7 +50,8 @@ Invariants:
 - `ReaderTools` returns the same two instances, built once, in a read-only wrapper over an owned
   array, for the life of the retention.
 - A restored retention never issues a reference at or below the snapshot's `LastIssued`, and every
-  reference it restores is at or below it.
+  reference it restores is at or below it; `LastIssued` is at most
+  `ToolOutputStore.MaxRestorableCounter`, so a restored retention cannot exhaust its counter.
 
 ### Key Methods
 
@@ -80,7 +81,9 @@ Takes `ToolOutputStore.Snapshot` under the store's lock and hands each entry's l
 1. Reject a null snapshot.
 2. Construct a new retention with `limits` and `options`, so ceilings are validated as the constructor
    validates them.
-3. Validate the snapshot: a negative `LastIssued`; a null output; an identifier `ToolOutputStore`
+3. Validate the snapshot: a negative `LastIssued`; a `LastIssued` above
+   `ToolOutputStore.MaxRestorableCounter` (`long.MaxValue / 2`), which would leave too little room to
+   keep numbering; a null output; an identifier `ToolOutputStore`
    could not have issued, one repeated, or one whose number is above `LastIssued` (a reference never
    issued); or lines that are empty, hold a null line, a line break, or a line longer than
    `ToolOutputStore.MaxLineCharacters` — each an `ArgumentException` naming `snapshot`. Nothing is
@@ -122,8 +125,8 @@ Instances are safe for concurrent use: the store is lock-guarded and every other
 
 ### Dependencies
 
-- **ToolOutputStore** — the store, its `Snapshot` and `Restore`, `TryParse` and `MaxLineCharacters`;
-  see *ToolOutputStore Unit Design*.
+- **ToolOutputStore** — the store, its `Snapshot` and `Restore`, `TryParse`, `MaxLineCharacters` and
+  `MaxRestorableCounter`; see *ToolOutputStore Unit Design*.
 - **ToolOutputSpill** — `SpillAttachment`, the ceiling and name checks and their wording; see
   *ToolOutputSpill Unit Design*.
 - **GuardedToolFactory** — the `GuardedFunction` wrapper; see *GuardedToolFactory Unit Design*.

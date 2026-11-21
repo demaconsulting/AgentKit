@@ -29,12 +29,13 @@ project.
 
 ### Acceptance Criteria
 
-A unit test run passes when all seventeen scenarios below, covering twenty tests, pass. Any reference not shared across
-wraps, any reader instance that changes, any mutable reader list, any invalid ceiling, tool or list accepted, any
-restored reference answering different content, any reference re-issued after a restore, any snapshot not fitted to
-the restoring ceilings, any malformed snapshot partly restored, any reference above the counter restored, any snapshot
-or retained output that changes when the caller's collection changes, any missing lines accepted, any JSON round trip
-that alters a snapshot, or any reference shared between retentions constitutes a failure.
+A unit test run passes when all eighteen scenarios below, covering twenty-one tests, pass. Any reference not shared
+across wraps, any reader instance that changes, any mutable reader list, any invalid ceiling, tool or list accepted, any
+restored reference answering different content, any reference re-issued after a restore, any snapshot not fitted to the
+restoring ceilings, any malformed snapshot partly restored, any reference above the counter restored, any counter
+without headroom restored, any snapshot or retained output that changes when the caller's collection changes, any
+missing lines accepted, any JSON round trip that alters a snapshot, or any reference shared between retentions
+constitutes a failure.
 
 ### Test Scenarios
 
@@ -135,6 +136,14 @@ holding a break, a line longer than 2,000 characters and a null output each thro
 
 A snapshot with counter 1 holding `output-2`, and one with counter 0 holding `output-1`, each throw
 `ArgumentException` naming `snapshot`, so a reference never issued is never installed.
+
+#### AgentKitCore-ToolOutputRetention-RestoreRejectsMalformedSnapshot: A Counter Without Headroom Is Refused
+
+**Test**: `ToolOutputRetention_Restore_CounterWithoutHeadroom_Throws`
+
+Snapshots with counter `long.MaxValue` and `long.MaxValue - 1`, each with no output and with an output
+at the counter, and one with counter `MaxRestorableCounter + 1`, each throw `ArgumentException` naming
+`snapshot`; a snapshot at `MaxRestorableCounter` is restored with that counter.
 
 #### AgentKitCore-ToolOutputRetention-SnapshotOwnsItsData: A Snapshot Ignores Changes to the Caller's List
 

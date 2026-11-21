@@ -41,7 +41,7 @@ if the store evicts it meanwhile.
 
 `ToolOutputLookup` names the four lookup outcomes: `Found`, `Malformed`, `Unknown` and `Evicted`.
 
-**Invariants:** identifiers are issued in strictly increasing order and never reused;
+**Invariants:** identifiers are issued in strictly increasing order, never reused, and never wrap;
 `_retainedCharacters` equals the sum of the retained entries' sizes; after every addition both
 `MaxRetainedOutputs` and `MaxRetainedCharacters` hold.
 
@@ -76,7 +76,11 @@ one shared scan, which assembles the lines only when asked to, so the size measu
 retained can never drift apart.
 
 **Retention:** when the normalized size exceeds `MaxOutputCharacters` the method returns `null` and
-evicts nothing — refusing one output must not cost the model references it already holds. Otherwise
+evicts nothing — refusing one output must not cost the model references it already holds. Before
+evicting, it throws `InvalidOperationException` when the counter is already `long.MaxValue`, so the
+counter never wraps to a negative identifier no lookup resolves and a refusal evicts nothing;
+`ToolOutputRetention.Restore` bounds a restored counter by `MaxRestorableCounter` (`long.MaxValue / 2`),
+so no public path reaches it. Otherwise
 it evicts the oldest entries until one more entry fits both ceilings (which always terminates,
 because the per-output ceiling is no larger than the total), issues the next identifier, and
 returns the entry.
@@ -139,7 +143,8 @@ Fills an empty store with previously exported entries, under the lock:
 3. Set the counter to the larger of `lastIssued` and the highest entry number, so no identifier at or
    below one ever issued is issued again, and a skipped or evicted entry is answered as evicted.
 
-The caller (`ToolOutputRetention.Restore`) validates identifiers and lines before calling.
+The caller (`ToolOutputRetention.Restore`) validates identifiers, lines and the counter bound
+(`MaxRestorableCounter`) before calling.
 
 ### Error Handling
 
@@ -151,6 +156,7 @@ The caller (`ToolOutputRetention.Restore`) validates identifiers and lines befor
 | Malformed, unknown or evicted identifier | `Find` reports the outcome; `Refusal` composes it |
 | `Refusal` asked about `Found` | `ArgumentOutOfRangeException` (a defect in the caller) |
 | `Restore` on a store that has retained output | `InvalidOperationException` (a defect in the caller) |
+| `Add` after the largest identifier was issued | `InvalidOperationException` before anything is evicted (a defect in the caller) |
 
 ### Dependencies
 
