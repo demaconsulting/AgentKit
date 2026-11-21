@@ -31,7 +31,7 @@ retained outputs through persistence. `ToolOutputSpill.Apply` — and through it
 | `_attachment` | `SpillAttachment` | The attachment every wrapped tool hands results to. |
 | `Limits` | `ToolLimits` | The ceilings the instance was created with. |
 | `Options` | `ToolOutputOptions` | The preview size and retention ceilings. |
-| `ReaderTools` | `IReadOnlyList<AIFunction>` | `tool_output_read` then `tool_output_search`, built once. |
+| `ReaderTools` | `IReadOnlyList<AIFunction>` | `tool_output_read` then `tool_output_search`, built once; a read-only wrapper over an owned array. |
 
 `ToolOutputRetentionSnapshot` holds `LastIssued` (`long`, the number of the last reference issued) and
 `Outputs` (`IReadOnlyList<RetainedToolOutput>`, oldest first). `RetainedToolOutput` holds `Id`

@@ -29,12 +29,12 @@ project.
 
 ### Acceptance Criteria
 
-A unit test run passes when all sixteen scenarios below, covering nineteen tests, pass. Any reference not shared across
-wraps, any reader instance that changes, any invalid ceiling, tool or list accepted, any restored reference answering
-different content, any reference re-issued after a restore, any snapshot not fitted to the restoring ceilings, any
-malformed snapshot partly restored, any reference above the counter restored, any snapshot or retained output that
-changes when the caller's collection changes, any missing lines accepted, any JSON round trip that alters a snapshot,
-or any reference shared between retentions constitutes a failure.
+A unit test run passes when all seventeen scenarios below, covering twenty tests, pass. Any reference not shared across
+wraps, any reader instance that changes, any mutable reader list, any invalid ceiling, tool or list accepted, any
+restored reference answering different content, any reference re-issued after a restore, any snapshot not fitted to
+the restoring ceilings, any malformed snapshot partly restored, any reference above the counter restored, any snapshot
+or retained output that changes when the caller's collection changes, any missing lines accepted, any JSON round trip
+that alters a snapshot, or any reference shared between retentions constitutes a failure.
 
 ### Test Scenarios
 
@@ -51,6 +51,13 @@ One tool is wrapped singly and another through the list overload. Asserts their 
 
 Asserts the readers are `tool_output_read` then `tool_output_search`, the same list instance on every
 read, and that `Limits` and `Options` are the values supplied (the default options when none were).
+
+#### AgentKitCore-ToolOutputRetention-ReaderToolsPublished: The Readers Are a Read-Only List
+
+**Test**: `ToolOutputRetention_ReaderTools_IsReadOnlyCollection`
+
+Asserts `ReaderTools` is a `ReadOnlyCollection` over the two readers in order, and that replacing an
+element through `IList` throws `NotSupportedException`.
 
 #### AgentKitCore-ToolOutputRetention-MinimumResultCeiling: A Too-Small Ceiling Is Refused
 

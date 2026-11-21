@@ -123,7 +123,9 @@ public sealed class ToolOutputRetention
 
         // The readers are built once and published as stable instances, so a host can add them to
         // a tool list at any time and every reference this instance issues is readable through them.
-        ReaderTools = [ToolOutputReadTool.Create(_store, limits), ToolOutputSearchTool.Create(_store, limits)];
+        // A read-only wrapper over an owned array, so no consumer can replace a reader.
+        ReaderTools = Array.AsReadOnly<AIFunction>(
+            [ToolOutputReadTool.Create(_store, limits), ToolOutputSearchTool.Create(_store, limits)]);
     }
 
     /// <summary>
@@ -141,9 +143,10 @@ public sealed class ToolOutputRetention
     ///     through and search the outputs this retention holds.
     /// </summary>
     /// <remarks>
-    ///     The same two instances on every read. They take an output reference and paging or search
-    ///     arguments and nothing else, so they cannot reach the file system, and their own results are
-    ///     bounded and refused when over the ceiling rather than retained.
+    ///     The same two instances, in the same read-only list, on every read. They take an output
+    ///     reference and paging or search arguments and nothing else, so they cannot reach the file
+    ///     system, and their own results are bounded and refused when over the ceiling rather than
+    ///     retained.
     /// </remarks>
     public IReadOnlyList<AIFunction> ReaderTools { get; }
 

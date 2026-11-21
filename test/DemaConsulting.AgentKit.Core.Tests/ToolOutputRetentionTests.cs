@@ -62,6 +62,23 @@ public class ToolOutputRetentionTests
     }
 
     /// <summary>
+    ///     Proves the readers are published as a read-only collection over an owned array, so a
+    ///     consumer cannot replace a reader.
+    /// </summary>
+    [Fact]
+    public void ToolOutputRetention_ReaderTools_IsReadOnlyCollection()
+    {
+        // Arrange / Act: a retention's readers
+        var retention = new ToolOutputRetention(Limits);
+        var readers = retention.ReaderTools;
+
+        // Assert: a read-only wrapper that refuses replacement, still the two readers in order
+        Assert.IsType<ReadOnlyCollection<AIFunction>>(readers);
+        Assert.Throws<NotSupportedException>(() => ((IList<AIFunction>)readers)[0] = readers[1]);
+        Assert.Equal([ToolOutputReadTool.ToolName, ToolOutputSearchTool.ToolName], readers.Select(tool => tool.Name));
+    }
+
+    /// <summary>
     ///     Proves a result ceiling a reference could not fit in is rejected at construction, and a
     ///     missing one is a programming error.
     /// </summary>

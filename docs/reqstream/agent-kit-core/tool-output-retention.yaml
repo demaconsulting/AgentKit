@@ -27,13 +27,15 @@ sections:
           - id: AgentKitCore-ToolOutputRetention-ReaderToolsPublished
             title: >-
               A retention shall publish the two reader tools that page through and search the
-              outputs it holds, as the same two instances on every request.
+              outputs it holds, as the same two instances in a read-only list on every request.
             justification: |
               A host adds the readers to the agent's tools once and wraps further tools later, so the
               readers must be available independently of any wrapping call and must not change, or a
-              tool list built earlier would hold readers over a different store.
+              tool list built earlier would hold readers over a different store. A list a consumer
+              could write to would let a reader be replaced.
             tests:
               - ToolOutputRetention_ReaderTools_AreTheTwoReadersAndStable
+              - ToolOutputRetention_ReaderTools_IsReadOnlyCollection
 
           - id: AgentKitCore-ToolOutputRetention-MinimumResultCeiling
             title: >-
