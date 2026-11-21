@@ -1,3 +1,4 @@
+using System.Collections;
 using Microsoft.Extensions.AI;
 
 namespace DemaConsulting.AgentKit.Core.Tests;
@@ -104,9 +105,60 @@ public class ToolOutputReadToolTests
         // Act: ask for every line
         var page = await ReadAsync(tool, id, 1, 500);
 
-        // Assert: a size refusal naming the ceiling
+        // Assert: a size refusal naming the range and the ceiling
+        Assert.Equal(
+            "Denied (ResourceTooLarge): Lines 1-500 of " + id
+            + " exceed the 300-character result limit. Request fewer lines.",
+            page);
+    }
+
+    /// <summary>
+    ///     Proves a range far larger than the ceiling is refused after reading no more lines than
+    ///     the ceiling admits, rather than the whole requested range.
+    /// </summary>
+    [Fact]
+    public void ToolOutputReadTool_ReadEntry_HugeRangeOverCeiling_ReadsOnlyWhatTheCeilingAdmits()
+    {
+        // Arrange: a million-line output whose lines count every read, and a small ceiling
+        var lines = new ProbeLines(1_000_000, "line");
+        var entry = new ToolOutputEntry("output-1", lines, 5_000_000, Wrapped: false);
+
+        // Act: ask for every line there could be
+        var page = Assert.IsType<string>(
+            ToolOutputReadTool.ReadEntry(entry, new ToolLimits(maxResultCharacters: 1_000), 1, int.MaxValue));
+
+        // Assert: refused, having read lines bounded by the ceiling, not by the output
         Assert.StartsWith("Denied (ResourceTooLarge)", page, StringComparison.Ordinal);
-        Assert.Contains("300-character result limit", page, StringComparison.Ordinal);
+        Assert.True(lines.Reads <= 1_000, $"The refusal read {lines.Reads} lines.");
+    }
+
+    /// <summary>
+    ///     Proves a page exactly at the ceiling is returned and one character over it is refused.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task ToolOutputReadTool_Read_RangeExactlyAtCeiling_IsReturnedAndOneOverIsRefused()
+    {
+        // Arrange: the page lines 9 to 10 of a twelve-line output render to, in a fresh store
+        // whose first output is output-1
+        var expected = "output-1 lines 9-10 of 12\n 9| line 9\n10| line 10";
+        var (atTool, atId) = Retained(
+            ToolOutputSpillTests.Lines(12),
+            new ToolLimits(maxResultCharacters: expected.Length));
+        var (overTool, overId) = Retained(
+            ToolOutputSpillTests.Lines(12),
+            new ToolLimits(maxResultCharacters: expected.Length - 1));
+
+        // Act: read the same range under a ceiling of exactly its size and one less
+        var at = await ReadAsync(atTool, atId, 9, 2);
+        var over = await ReadAsync(overTool, overId, 9, 2);
+
+        // Assert: the page at its exact size, and a refusal one character below it
+        Assert.Equal(expected, at);
+        Assert.Equal(
+            "Denied (ResourceTooLarge): Lines 9-10 of " + overId + " exceed the "
+            + (expected.Length - 1) + "-character result limit. Request fewer lines.",
+            over);
     }
 
     /// <summary>
@@ -196,5 +248,45 @@ public class ToolOutputReadToolTests
 
         var result = await tool.InvokeAsync(arguments, TestContext.Current.CancellationToken);
         return Assert.IsType<string>(result);
+    }
+
+    /// <summary>
+    ///     A retained output's lines, all equal, that count how many times a line is read.
+    /// </summary>
+    /// <param name="count">The number of lines.</param>
+    /// <param name="line">The content of every line.</param>
+    private sealed class ProbeLines(int count, string line) : IReadOnlyList<string>
+    {
+        /// <summary>
+        ///     Gets the number of lines read through the indexer.
+        /// </summary>
+        public int Reads { get; private set; }
+
+        /// <inheritdoc/>
+        public int Count => count;
+
+        /// <inheritdoc/>
+        public string this[int index]
+        {
+            get
+            {
+                ArgumentOutOfRangeException.ThrowIfNegative(index);
+                ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(index, count);
+                Reads++;
+                return line;
+            }
+        }
+
+        /// <inheritdoc/>
+        public IEnumerator<string> GetEnumerator()
+        {
+            for (var index = 0; index < count; index++)
+            {
+                yield return this[index];
+            }
+        }
+
+        /// <inheritdoc/>
+        IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
     }
 }

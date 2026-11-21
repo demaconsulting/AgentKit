@@ -1,3 +1,4 @@
+using System.Collections;
 using Microsoft.Extensions.AI;
 
 namespace DemaConsulting.AgentKit.Core.Tests;
@@ -145,9 +146,11 @@ public class ToolOutputSearchToolTests
         // Act: search with the pathological expression
         var result = await SearchAsync(tool, new() { ["id"] = id, ["pattern"] = "(a+)+$", ["literal"] = false });
 
-        // Assert: refused, naming the timeout
-        Assert.StartsWith("Denied (InvalidRequest)", result, StringComparison.Ordinal);
-        Assert.Contains("took longer than", result, StringComparison.Ordinal);
+        // Assert: refused, naming the per-line timeout and the output
+        Assert.Equal(
+            "Denied (InvalidRequest): The search pattern took longer than 1 second to evaluate against one line of "
+            + id + ".",
+            result);
     }
 
     /// <summary>
@@ -166,6 +169,104 @@ public class ToolOutputSearchToolTests
         // Assert: a size refusal naming the ceiling
         Assert.StartsWith("Denied (ResourceTooLarge)", result, StringComparison.Ordinal);
         Assert.Contains("200-character result limit", result, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves a result far larger than the ceiling is refused after reading no more lines than
+    ///     the ceiling admits, rather than searching the whole output first.
+    /// </summary>
+    [Fact]
+    public void ToolOutputSearchTool_SearchEntry_ResultOverCeiling_ReadsOnlyWhatTheCeilingAdmits()
+    {
+        // Arrange: a million matching lines that count every read, and a small ceiling
+        var lines = new ProbeLines(1_000_000, "line");
+        var entry = new ToolOutputEntry("output-1", lines, 5_000_000, Wrapped: false);
+
+        // Act: match every line
+        var result = Assert.IsType<string>(ToolOutputSearchTool.SearchEntry(
+            entry,
+            new ToolLimits(maxResultCharacters: 1_000),
+            "line",
+            contextLines: 0,
+            ignoreCase: false,
+            literal: true,
+            maxMatches: null,
+            TimeSpan.FromMinutes(1),
+            TestContext.Current.CancellationToken));
+
+        // Assert: the unchanged refusal, having read lines bounded by the ceiling, not by the output
+        Assert.Equal("Denied (ResourceTooLarge): The search result exceeds the 1000-character result limit.", result);
+        Assert.True(lines.Reads <= 1_000, $"The refusal read {lines.Reads} lines.");
+    }
+
+    /// <summary>
+    ///     Proves a result exactly at the ceiling is returned and one character over it is refused.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task ToolOutputSearchTool_Search_ResultExactlyAtCeiling_IsReturnedAndOneOverIsRefused()
+    {
+        // Arrange: a listing with context and a separator, retained under a ceiling of exactly
+        // its size and under one a character less
+        const string expected = "1-line 1\n2:line 2\n3-line 3\n--\n7-line 7\n8:line 8\n9-line 9\n";
+        var (atTool, atId) = Retained(
+            ToolOutputSpillTests.Lines(10),
+            new ToolLimits(maxResultCharacters: expected.Length));
+        var (overTool, overId) = Retained(
+            ToolOutputSpillTests.Lines(10),
+            new ToolLimits(maxResultCharacters: expected.Length - 1));
+
+        // Act: search both for two separated lines with one line of context
+        var at = await SearchAsync(atTool, new()
+        {
+            ["id"] = atId,
+            ["pattern"] = "^line (2|8)$",
+            ["literal"] = false,
+            ["contextLines"] = 1,
+        });
+        var over = await SearchAsync(overTool, new()
+        {
+            ["id"] = overId,
+            ["pattern"] = "^line (2|8)$",
+            ["literal"] = false,
+            ["contextLines"] = 1,
+        });
+
+        // Assert: the listing at its exact size, and a refusal one character below it
+        Assert.Equal(expected, at);
+        Assert.Equal(
+            "Denied (ResourceTooLarge): The search result exceeds the " + (expected.Length - 1)
+            + "-character result limit.",
+            over);
+    }
+
+    /// <summary>
+    ///     Proves a search whose total time budget is spent is refused on timeout between lines,
+    ///     even when no single line is slow to evaluate.
+    /// </summary>
+    [Fact]
+    public void ToolOutputSearchTool_SearchEntry_SpentSearchBudget_IsRefusedOnTimeout()
+    {
+        // Arrange: a million lines that count every read, none matching
+        var lines = new ProbeLines(1_000_000, "line");
+        var entry = new ToolOutputEntry("output-1", lines, 5_000_000, Wrapped: false);
+
+        // Act: search with a budget already spent
+        var result = Assert.IsType<string>(ToolOutputSearchTool.SearchEntry(
+            entry,
+            ToolLimits.Default,
+            "absent",
+            contextLines: 0,
+            ignoreCase: false,
+            literal: true,
+            maxMatches: null,
+            TimeSpan.Zero,
+            TestContext.Current.CancellationToken));
+
+        // Assert: the whole-search timeout refusal, worded for a literal search too, after at
+        // most one line
+        Assert.Equal("Denied (InvalidRequest): The search took longer than 0 second to run against output-1.", result);
+        Assert.True(lines.Reads <= 1, $"The refusal read {lines.Reads} lines.");
     }
 
     /// <summary>
@@ -208,5 +309,45 @@ public class ToolOutputSearchToolTests
     {
         var result = await tool.InvokeAsync(arguments, TestContext.Current.CancellationToken);
         return Assert.IsType<string>(result);
+    }
+
+    /// <summary>
+    ///     A retained output's lines, all equal, that count how many times a line is read.
+    /// </summary>
+    /// <param name="count">The number of lines.</param>
+    /// <param name="line">The content of every line.</param>
+    private sealed class ProbeLines(int count, string line) : IReadOnlyList<string>
+    {
+        /// <summary>
+        ///     Gets the number of lines read through the indexer.
+        /// </summary>
+        public int Reads { get; private set; }
+
+        /// <inheritdoc/>
+        public int Count => count;
+
+        /// <inheritdoc/>
+        public string this[int index]
+        {
+            get
+            {
+                ArgumentOutOfRangeException.ThrowIfNegative(index);
+                ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(index, count);
+                Reads++;
+                return line;
+            }
+        }
+
+        /// <inheritdoc/>
+        public IEnumerator<string> GetEnumerator()
+        {
+            for (var index = 0; index < count; index++)
+            {
+                yield return this[index];
+            }
+        }
+
+        /// <inheritdoc/>
+        IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
     }
 }

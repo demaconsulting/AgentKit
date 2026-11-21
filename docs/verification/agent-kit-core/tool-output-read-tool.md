@@ -18,12 +18,13 @@ project.
 - **Framework**: xUnit v3 running under the .NET SDK
 - **Execution**: `dotnet test` invoked by `build.ps1` and the CI pipeline
 - **Dependencies**: `Microsoft.Extensions.AI.Abstractions`; no file system or network access
-- **Mocking**: None
+- **Mocking**: A counting double for a retained output's lines (`ProbeLines`), so a scenario can
+  assert how many lines an oversized request reads
 - **Isolation**: Each test builds its own store and tool
 
 ### Acceptance Criteria
 
-A unit test run passes when all eight scenarios below pass. Any page in the wrong shape, any page
+A unit test run passes when all ten scenarios below pass. Any page in the wrong shape, any page
 exceeding the ceiling, any truncated page, any path parameter, or any unresolvable request answered
 other than by a refusal constitutes a failure.
 
@@ -64,7 +65,23 @@ Normal operation: with no count, the page starts at line 1, fits the ceiling and
 
 **Test**: `ToolOutputReadTool_Read_RangeOverCeiling_IsRefusedNamingTheCeiling`
 
-Error path: a range larger than the ceiling is a `ResourceTooLarge` refusal naming it.
+Error path: a range larger than the ceiling is the exact `ResourceTooLarge` refusal naming the
+range and the ceiling and asking for fewer lines.
+
+#### AgentKitCore-ToolOutputReadTool-BoundedPage: A Huge Range Reads Only What the Ceiling Admits
+
+**Test**: `ToolOutputReadTool_ReadEntry_HugeRangeOverCeiling_ReadsOnlyWhatTheCeilingAdmits`
+
+Boundary value: asking `ReadEntry` for `int.MaxValue` lines of a million-line output under a
+1,000-character ceiling is refused after reading no more than 1,000 lines through the counting
+double, not the whole output.
+
+#### AgentKitCore-ToolOutputReadTool-BoundedPage: A Page Exactly at the Ceiling Is Returned
+
+**Test**: `ToolOutputReadTool_Read_RangeExactlyAtCeiling_IsReturnedAndOneOverIsRefused`
+
+Boundary value: lines 9-10 of 12 are returned when the ceiling equals the page's exact size, and
+the same range is refused when the ceiling is one character less.
 
 #### AgentKitCore-ToolOutputReadTool-InvalidRequestsRefused: An Invalid Range Is Refused
 

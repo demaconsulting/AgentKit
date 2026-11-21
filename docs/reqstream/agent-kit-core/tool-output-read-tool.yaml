@@ -55,11 +55,19 @@ sections:
           - id: AgentKitCore-ToolOutputReadTool-BoundedPage
             title: >-
               The output read tool shall refuse an explicit range whose page exceeds the result
-              ceiling, naming the ceiling, rather than truncating it.
+              ceiling, naming the range and the ceiling, rather than truncating it, and shall refuse
+              it as soon as the page is known to exceed the ceiling, reading no more of the output
+              than the ceiling admits.
+            tags: [reliability]
             justification: |
-              A truncated page would hide lines the model believes it read.
+              A truncated page would hide lines the model believes it read. A model may request any
+              line count, up to the whole output; refusing as soon as the page is known to be over
+              the ceiling bounds the work and memory of every read by the ceiling rather than by the
+              request or the retained output, so repeated oversized requests cannot stall the host.
             tests:
               - ToolOutputReadTool_Read_RangeOverCeiling_IsRefusedNamingTheCeiling
+              - ToolOutputReadTool_ReadEntry_HugeRangeOverCeiling_ReadsOnlyWhatTheCeilingAdmits
+              - ToolOutputReadTool_Read_RangeExactlyAtCeiling_IsReturnedAndOneOverIsRefused
 
           - id: AgentKitCore-ToolOutputReadTool-InvalidRequestsRefused
             title: >-

@@ -53,12 +53,16 @@ sections:
           - id: AgentKitCore-ToolOutputSearchTool-PathologicalPatternRefused
             title: >-
               The output search tool shall refuse a regular expression that does not finish
-              evaluating a line within one second.
+              evaluating a line within one second, and shall refuse a search whose total time
+              exceeds a one-second budget, checked between lines.
             tags: [reliability]
             justification: |
-              A pathological expression must not stall the agent's turn.
+              A pathological expression must not stall the agent's turn. A per-line timeout alone
+              would let an expression that takes just under it on every line run for one timeout per
+              line, so the whole search is bounded too.
             tests:
               - ToolOutputSearchTool_Search_PathologicalRegex_IsRefusedOnTimeout
+              - ToolOutputSearchTool_SearchEntry_SpentSearchBudget_IsRefusedOnTimeout
 
           - id: AgentKitCore-ToolOutputSearchTool-InvalidRequestsRefused
             title: >-
@@ -74,8 +78,15 @@ sections:
           - id: AgentKitCore-ToolOutputSearchTool-BoundedResult
             title: >-
               The output search tool shall refuse a result exceeding the result ceiling, naming the
-              ceiling, rather than truncating it.
+              ceiling, rather than truncating it, and shall stop searching as soon as the result is
+              known to exceed the ceiling, holding no more than the ceiling's worth of result.
+            tags: [reliability]
             justification: |
-              A truncated search result hides matches the model would then never see.
+              A truncated search result hides matches the model would then never see. A broad
+              pattern may match every line of a large output; stopping as soon as the result is
+              known to be over the ceiling bounds the work and memory of the refusal by the ceiling
+              rather than by the retained output, so repeated broad searches cannot stall the host.
             tests:
               - ToolOutputSearchTool_Search_ResultOverCeiling_IsRefused
+              - ToolOutputSearchTool_SearchEntry_ResultOverCeiling_ReadsOnlyWhatTheCeilingAdmits
+              - ToolOutputSearchTool_Search_ResultExactlyAtCeiling_IsReturnedAndOneOverIsRefused

@@ -29,9 +29,15 @@ namespace DemaConsulting.AgentKit.Core;
 ///     to read one and how to page forward. A window past the end is an honest empty result naming
 ///     the true total. When <c>lineCount</c> is omitted, as many whole lines as fit the result
 ///     ceiling are returned, and the header states where they stopped. An explicit range whose page
-///     exceeds <see cref="ToolLimits.MaxResultCharacters"/> is refused with the ceiling named,
-///     never truncated — and the tool's own results are never retained, so a page can never become
-///     another reference.
+///     exceeds <see cref="ToolLimits.MaxResultCharacters"/> is refused with the range and the
+///     ceiling named, never truncated — and the tool's own results are never retained, so a page
+///     can never become another reference.
+///     </para>
+///     <para>
+///     <b>Work is bounded by the ceiling, not by the request.</b> A page's size is accumulated
+///     line by line and an oversized range is refused as soon as it is known to be over, so even
+///     a request for every line reads no more of the output than the ceiling admits; only a page
+///     that fits is ever built.
 ///     </para>
 ///     <para>
 ///     The delegate is declared to return <see cref="object"/> deliberately — see the remarks on
@@ -130,9 +136,25 @@ public static class ToolOutputReadTool
             return ToolOutputStore.Refusal(outcome, id);
         }
 
-        var lines = entry!.Lines;
-        var total = lines.Count;
-        var start = startLine ?? 1;
+        return ReadEntry(entry!, limits, startLine ?? 1, lineCount);
+    }
+
+    /// <summary>
+    ///     Reads one page of a resolved retained output.
+    /// </summary>
+    /// <remarks>
+    ///     Internal, rather than private, because it is the page logic over one entry: the unit
+    ///     tests drive it with an entry whose lines count every read, proving an oversized request
+    ///     reads no more of the output than the result ceiling admits.
+    /// </remarks>
+    /// <param name="entry">The retained output.</param>
+    /// <param name="limits">The ceilings bounding the page.</param>
+    /// <param name="start">The 1-based line to begin at, 1 or greater.</param>
+    /// <param name="lineCount">The number of lines to read, 0 or greater, or null for as many as fit.</param>
+    /// <returns>The numbered page, or a refusal naming its reason.</returns>
+    internal static object ReadEntry(ToolOutputEntry entry, ToolLimits limits, int start, int? lineCount)
+    {
+        var total = entry.Lines.Count;
 
         // A window that begins past the last line, or a zero-count window, is an honest empty
         // result naming the true total, not an error.
@@ -147,31 +169,45 @@ public static class ToolOutputReadTool
     }
 
     /// <summary>
-    ///     Renders an explicit range, refusing it when the page exceeds the result ceiling.
+    ///     Renders an explicit range, refusing it as soon as the page is known to exceed the result
+    ///     ceiling.
     /// </summary>
+    /// <remarks>
+    ///     The page's exact size is accumulated line by line and the range is refused at the first
+    ///     line that carries it over the ceiling, so an oversized request — even one asking for
+    ///     every line there is — reads no more of the output than the ceiling admits, and only a
+    ///     page that fits is ever built. The refusal therefore names the range and the ceiling but
+    ///     not the page's full size, which could only be stated by walking the whole range.
+    /// </remarks>
     /// <param name="entry">The retained output.</param>
     /// <param name="limits">The ceilings bounding the page.</param>
     /// <param name="start">The 1-based first line, within the output.</param>
-    /// <param name="end">The 1-based last line, within the output.</param>
-    /// <returns>The numbered page, or a refusal naming the ceiling.</returns>
+    /// <param name="end">The 1-based last line, within the output, at least <paramref name="start"/>.</param>
+    /// <returns>The numbered page, or a refusal naming the range and the ceiling.</returns>
     private static object ReadRange(ToolOutputEntry entry, ToolLimits limits, int start, int end)
     {
-        var page = Render(entry, start, end);
+        var lines = entry.Lines;
+        var width = Width(lines.Count);
 
         // The return budget bounds a page exactly as it bounds any result, and a truncated page
-        // would hide lines the model believes it read.
-        if (page.Length > limits.MaxResultCharacters)
+        // would hide lines the model believes it read. Every term is non-negative, so the running
+        // size crosses the ceiling exactly when the whole page would.
+        long size = Header(entry.Id, start, end, lines.Count).Length;
+        for (var number = start; number <= end; number++)
         {
-            return ToolResult.Denied(
-                DenialReason.ResourceTooLarge,
-                "Lines " + start.ToString(CultureInfo.InvariantCulture) + "-"
-                + end.ToString(CultureInfo.InvariantCulture) + " of " + entry.Id + " are "
-                + page.Length.ToString(CultureInfo.InvariantCulture) + " characters, which exceeds the "
-                + limits.MaxResultCharacters.ToString(CultureInfo.InvariantCulture)
-                + "-character result limit. Request fewer lines.");
+            size += LineCost(width, lines[number - 1]);
+            if (size > limits.MaxResultCharacters)
+            {
+                return ToolResult.Denied(
+                    DenialReason.ResourceTooLarge,
+                    "Lines " + start.ToString(CultureInfo.InvariantCulture) + "-"
+                    + end.ToString(CultureInfo.InvariantCulture) + " of " + entry.Id + " exceed the "
+                    + limits.MaxResultCharacters.ToString(CultureInfo.InvariantCulture)
+                    + "-character result limit. Request fewer lines.");
+            }
         }
 
-        return ToolResult.Text(page);
+        return ToolResult.Text(Render(entry, start, end, (int)size));
     }
 
     /// <summary>
@@ -179,7 +215,8 @@ public static class ToolOutputReadTool
     /// </summary>
     /// <remarks>
     ///     No range end was requested, so returning fewer lines than remain is not a truncation of
-    ///     anything the model asked for; the header states exactly where the page stopped.
+    ///     anything the model asked for; the header states exactly where the page stopped. Lines
+    ///     are read only until the first that does not fit.
     /// </remarks>
     /// <param name="entry">The retained output.</param>
     /// <param name="limits">The ceilings bounding the page.</param>
@@ -189,15 +226,15 @@ public static class ToolOutputReadTool
     {
         var lines = entry.Lines;
         var total = lines.Count;
-        var width = total.ToString(CultureInfo.InvariantCulture).Length;
+        var width = Width(total);
 
         // Budget against the widest header the page could carry, then take whole lines.
-        var budget = limits.MaxResultCharacters - Header(entry.Id, total, total, total).Length;
-        var used = 0;
+        long budget = limits.MaxResultCharacters - Header(entry.Id, total, total, total).Length;
+        long used = 0;
         var end = start - 1;
         while (end < total)
         {
-            var cost = 1 + width + LineNumberDelimiter.Length + lines[end].Length;
+            var cost = LineCost(width, lines[end]);
             if (used + cost > budget)
             {
                 break;
@@ -217,7 +254,8 @@ public static class ToolOutputReadTool
                 + "-character result limit.");
         }
 
-        return ToolResult.Text(Render(entry, start, end));
+        return ToolResult.Text(
+            Render(entry, start, end, Header(entry.Id, start, end, total).Length + (int)used));
     }
 
     /// <summary>
@@ -226,13 +264,14 @@ public static class ToolOutputReadTool
     /// <param name="entry">The retained output.</param>
     /// <param name="start">The 1-based first line.</param>
     /// <param name="end">The 1-based last line, at least <paramref name="start"/>.</param>
+    /// <param name="capacity">The rendered page's exact size, already known to fit the ceiling.</param>
     /// <returns>The rendered page.</returns>
-    private static string Render(ToolOutputEntry entry, int start, int end)
+    private static string Render(ToolOutputEntry entry, int start, int end, int capacity)
     {
         var lines = entry.Lines;
-        var width = lines.Count.ToString(CultureInfo.InvariantCulture).Length;
+        var width = Width(lines.Count);
 
-        var builder = new StringBuilder(Header(entry.Id, start, end, lines.Count));
+        var builder = new StringBuilder(capacity).Append(Header(entry.Id, start, end, lines.Count));
         for (var number = start; number <= end; number++)
         {
             builder.Append('\n')
@@ -243,6 +282,27 @@ public static class ToolOutputReadTool
 
         return builder.ToString();
     }
+
+    /// <summary>
+    ///     Computes the width every line number is padded to: the width of the output's line count.
+    /// </summary>
+    /// <param name="total">The output's line count.</param>
+    /// <returns>The number of digits in <paramref name="total"/>.</returns>
+    private static int Width(int total) => total.ToString(CultureInfo.InvariantCulture).Length;
+
+    /// <summary>
+    ///     Computes the characters one numbered line adds to a page.
+    /// </summary>
+    /// <remarks>
+    ///     The line feed that precedes the line, its number padded to <paramref name="width"/>,
+    ///     the delimiter and the content — exactly what <see cref="Render"/> appends, shared by the
+    ///     explicit-range and fitting paths so their accounting cannot drift from the page built.
+    /// </remarks>
+    /// <param name="width">The width line numbers are padded to.</param>
+    /// <param name="line">The line's content.</param>
+    /// <returns>The line's cost in characters.</returns>
+    private static long LineCost(int width, string line) =>
+        1L + width + LineNumberDelimiter.Length + line.Length;
 
     /// <summary>
     ///     Composes the range header, in the same shape <c>text_file_read</c> uses.

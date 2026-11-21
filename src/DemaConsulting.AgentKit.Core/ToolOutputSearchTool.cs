@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -29,14 +30,17 @@ namespace DemaConsulting.AgentKit.Core;
 ///     separates one run of matches from the next. The numbers are the same numbers
 ///     <see cref="ToolOutputReadTool"/> pages by, so a model searches and then reads around what it
 ///     found. The pattern is literal by default; setting <c>literal</c> to false interprets it as a
-///     regular expression, evaluated with the invariant culture and a one-second timeout so a
-///     pathological expression is refused rather than stalling the agent. An invalid expression is a
-///     refused request, not a thrown error.
+///     regular expression, evaluated with the invariant culture and a one-second timeout on each
+///     line, within a one-second budget for the whole search, so a pathological expression is
+///     refused rather than stalling the agent — whether it is slow on one line or slightly slow on
+///     every line. An invalid expression is a refused request, not a thrown error.
 ///     </para>
 ///     <para>
 ///     The result is bounded by <see cref="ToolLimits.MaxResultCharacters"/> and refused with the
-///     ceiling named when over it; it is never retained. A search that matched nothing reports that
-///     plainly. The delegate is declared to return <see cref="object"/> deliberately — see the
+///     ceiling named when over it; it is never retained. The search is one pass that writes each
+///     match as it is found and stops as soon as the result is known to exceed the ceiling, so an
+///     oversized result costs no more than the ceiling's worth of work and memory. A search that
+///     matched nothing reports that plainly. The delegate is declared to return <see cref="object"/> deliberately — see the
 ///     remarks on <see cref="GuardedToolFactory"/> — and every refusal is returned rather than
 ///     thrown.
 ///     </para>
@@ -81,6 +85,18 @@ public static class ToolOutputSearchTool
     ///     refused before a model's turn is noticeably stalled.
     /// </remarks>
     private static readonly TimeSpan MatchTimeout = TimeSpan.FromSeconds(1);
+
+    /// <summary>
+    ///     The longest a whole search may take before it is refused.
+    /// </summary>
+    /// <remarks>
+    ///     The per-line <see cref="MatchTimeout"/> alone would let an expression that takes just
+    ///     under it on every line run for one timeout per line. Checked between lines, this budget
+    ///     bounds the whole search by itself plus at most one line's timeout. It equals the per-line
+    ///     timeout, so a search runs for at most about two seconds in total: the one-second budget
+    ///     plus the one-second timeout of the line in progress when the budget runs out.
+    /// </remarks>
+    private static readonly TimeSpan SearchBudget = MatchTimeout;
 
     /// <summary>
     ///     Creates the <c>tool_output_search</c> tool over one composition's store.
@@ -168,6 +184,58 @@ public static class ToolOutputSearchTool
             return ToolOutputStore.Refusal(outcome, id);
         }
 
+        return SearchEntry(
+            entry!,
+            limits,
+            pattern,
+            contextLines,
+            ignoreCase,
+            literal,
+            maxMatches,
+            SearchBudget,
+            cancellationToken);
+    }
+
+    /// <summary>
+    ///     Searches one resolved retained output in a single pass, refusing as soon as the result
+    ///     is known to exceed the ceiling or the search has spent its time budget.
+    /// </summary>
+    /// <remarks>
+    ///     <para>
+    ///     Internal, rather than private, because it is the search logic over one entry: the unit
+    ///     tests drive it with an entry whose lines count every read and with an already-spent time
+    ///     budget, proving an oversized result and a slow search each stop early.
+    ///     </para>
+    ///     <para>
+    ///     Lines are tested in order and each match is written, grep-style, with its context as
+    ///     soon as it is found, so no list of matches or ranges is ever held. A piece that would
+    ///     carry the listing over the ceiling ends the search with the size refusal, so the listing
+    ///     never holds more than the ceiling's worth of result. The elapsed time is checked before
+    ///     every line, so the whole search is bounded by <paramref name="searchBudget"/> plus at
+    ///     most one line's <see cref="MatchTimeout"/>, not by one timeout per line.
+    ///     </para>
+    /// </remarks>
+    /// <param name="entry">The retained output.</param>
+    /// <param name="limits">The ceilings bounding the result.</param>
+    /// <param name="pattern">The text or expression to search for; not empty.</param>
+    /// <param name="contextLines">The number of context lines to show around each match, 0 or greater.</param>
+    /// <param name="ignoreCase">Whether to match case-insensitively.</param>
+    /// <param name="literal">Whether the pattern is literal rather than a regular expression.</param>
+    /// <param name="maxMatches">The greatest number of matches to report, 0 or greater, or null for no cap.</param>
+    /// <param name="searchBudget">The longest the whole search may take.</param>
+    /// <param name="cancellationToken">A token that cancels the search.</param>
+    /// <returns>The grep-style listing, or a refusal naming its reason.</returns>
+    internal static object SearchEntry(
+        ToolOutputEntry entry,
+        ToolLimits limits,
+        string pattern,
+        int contextLines,
+        bool ignoreCase,
+        bool literal,
+        int? maxMatches,
+        TimeSpan searchBudget,
+        CancellationToken cancellationToken)
+    {
         // Compile the matcher. An invalid regular expression is a refused request, not a throw.
         Regex regex;
         try
@@ -182,137 +250,158 @@ public static class ToolOutputSearchTool
                 + "literal to true to search for it as plain text.");
         }
 
-        // Find the matching lines. A pathological expression times out and is refused rather than
-        // stalling the turn.
-        List<int> matches;
+        var lines = entry.Lines;
+        var total = lines.Count;
+        var cap = maxMatches ?? int.MaxValue;
+        var max = limits.MaxResultCharacters;
+        var listing = new StringBuilder();
+        var found = 0;
+        var writtenThrough = 0;
+        var contextThrough = 0;
+        var started = Stopwatch.GetTimestamp();
+
         try
         {
-            matches = FindMatches(entry!.Lines, regex, maxMatches ?? int.MaxValue, cancellationToken);
+            for (var number = 1; number <= total; number++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                // A search is bounded in total, not only per line: an expression just under the
+                // per-line timeout on every line of a large output must not stall the turn.
+                if (Stopwatch.GetElapsedTime(started) >= searchBudget)
+                {
+                    return SearchTimedOut(entry, searchBudget);
+                }
+
+                if (found < cap && regex.IsMatch(lines[number - 1]))
+                {
+                    found++;
+                    var windowStart = (int)Math.Max(1, (long)number - contextLines);
+
+                    // Separate one run of matches from the next, as grep does, only when context
+                    // makes the runs distinguishable from consecutive matches.
+                    if (contextLines > 0 && writtenThrough > 0 && windowStart > writtenThrough + 1)
+                    {
+                        if (!Fits(listing, max, GroupSeparator.Length + 1))
+                        {
+                            return TooLarge(max);
+                        }
+
+                        listing.Append(GroupSeparator).Append('\n');
+                    }
+
+                    // Leading context not already written as an earlier match's trailing context.
+                    for (var before = Math.Max(windowStart, writtenThrough + 1); before < number; before++)
+                    {
+                        if (!TryAppendLine(listing, max, before, '-', lines[before - 1]))
+                        {
+                            return TooLarge(max);
+                        }
+                    }
+
+                    if (!TryAppendLine(listing, max, number, ':', lines[number - 1]))
+                    {
+                        return TooLarge(max);
+                    }
+
+                    writtenThrough = number;
+                    contextThrough = (int)Math.Min(total, (long)number + contextLines);
+                }
+                else if (number <= contextThrough)
+                {
+                    // Trailing context; a line matching past the cap is shown as context, as grep
+                    // shows it.
+                    if (!TryAppendLine(listing, max, number, '-', lines[number - 1]))
+                    {
+                        return TooLarge(max);
+                    }
+
+                    writtenThrough = number;
+                }
+                else if (found >= cap)
+                {
+                    break;
+                }
+            }
         }
         catch (RegexMatchTimeoutException)
         {
-            return ToolResult.Denied(
-                DenialReason.InvalidRequest,
-                "The regular expression took longer than "
-                + MatchTimeout.TotalSeconds.ToString(CultureInfo.InvariantCulture)
-                + " second to evaluate against a line of " + entry!.Id + ".");
+            // A pathological expression times out on a line and is refused rather than stalling
+            // the turn.
+            return LineTimedOut(entry, MatchTimeout);
         }
 
-        if (matches.Count == 0)
-        {
-            return ToolResult.Text(NoMatches);
-        }
-
-        var result = Render(entry.Lines, matches, contextLines);
-
-        // The return budget bounds a search result exactly as it bounds any result.
-        if (result.Length > limits.MaxResultCharacters)
-        {
-            return ToolResult.Denied(
-                DenialReason.ResourceTooLarge,
-                "The search result exceeds the "
-                + limits.MaxResultCharacters.ToString(CultureInfo.InvariantCulture)
-                + "-character result limit.");
-        }
-
-        return ToolResult.Text(result);
+        return ToolResult.Text(found == 0 ? NoMatches : listing.ToString());
     }
 
     /// <summary>
-    ///     Finds the 1-based numbers of the lines that match, up to a cap.
+    ///     Appends one numbered line to the listing, unless it would carry the listing over the
+    ///     ceiling.
     /// </summary>
-    /// <param name="lines">The retained lines.</param>
-    /// <param name="regex">The compiled matcher.</param>
-    /// <param name="cap">The greatest number of matches to report.</param>
-    /// <param name="cancellationToken">A token that cancels the search.</param>
-    /// <returns>The matching line numbers, in ascending order.</returns>
-    /// <exception cref="RegexMatchTimeoutException">
-    ///     Thrown when the expression exceeds its timeout on a line.
-    /// </exception>
-    private static List<int> FindMatches(
-        IReadOnlyList<string> lines,
-        Regex regex,
-        int cap,
-        CancellationToken cancellationToken)
+    /// <param name="listing">The listing written so far, within the ceiling.</param>
+    /// <param name="max">The result ceiling, in characters.</param>
+    /// <param name="number">The 1-based line number.</param>
+    /// <param name="marker"><c>:</c> for a match, <c>-</c> for context.</param>
+    /// <param name="line">The line's content.</param>
+    /// <returns><see langword="true"/> when the line was appended; <see langword="false"/> when it would not fit.</returns>
+    private static bool TryAppendLine(StringBuilder listing, int max, int number, char marker, string line)
     {
-        var matches = new List<int>();
-        for (var index = 0; index < lines.Count && matches.Count < cap; index++)
+        var digits = number.ToString(CultureInfo.InvariantCulture);
+        if (!Fits(listing, max, digits.Length + 1L + line.Length + 1))
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            if (regex.IsMatch(lines[index]))
-            {
-                matches.Add(index + 1);
-            }
+            return false;
         }
 
-        return matches;
+        listing.Append(digits).Append(marker).Append(line).Append('\n');
+        return true;
     }
 
     /// <summary>
-    ///     Renders the matches and their context as merged groups.
+    ///     Decides whether a piece of the given size still fits the ceiling.
     /// </summary>
-    /// <param name="lines">The retained lines.</param>
-    /// <param name="matches">The matching line numbers, in ascending order.</param>
-    /// <param name="contextLines">The number of context lines around each match.</param>
-    /// <returns>The grep-style listing.</returns>
-    private static string Render(IReadOnlyList<string> lines, List<int> matches, int contextLines)
-    {
-        var matched = new HashSet<int>(matches);
-        var builder = new StringBuilder();
-        var groups = 0;
-
-        foreach (var (start, end) in MergeRanges(matches, contextLines, lines.Count))
-        {
-            // Separate one run of matches from the next, as grep does, only when context makes the
-            // runs distinguishable from consecutive matches.
-            if (groups > 0 && contextLines > 0)
-            {
-                builder.Append(GroupSeparator).Append('\n');
-            }
-
-            groups++;
-
-            for (var number = start; number <= end; number++)
-            {
-                builder.Append(number.ToString(CultureInfo.InvariantCulture))
-                    .Append(matched.Contains(number) ? ':' : '-')
-                    .Append(lines[number - 1])
-                    .Append('\n');
-            }
-        }
-
-        return builder.ToString();
-    }
+    /// <param name="listing">The listing written so far, within the ceiling.</param>
+    /// <param name="max">The result ceiling, in characters.</param>
+    /// <param name="cost">The size of the piece to append.</param>
+    /// <returns><see langword="true"/> when the piece fits.</returns>
+    private static bool Fits(StringBuilder listing, int max, long cost) => listing.Length + cost <= max;
 
     /// <summary>
-    ///     Merges each match's context window into contiguous, non-overlapping line ranges.
+    ///     Composes the refusal for a result over the ceiling.
     /// </summary>
-    /// <param name="matches">The 1-based match line numbers, in ascending order.</param>
-    /// <param name="contextLines">The number of context lines around each match.</param>
-    /// <param name="total">The output's line count, used to clamp the ranges.</param>
-    /// <returns>The merged inclusive ranges, in order.</returns>
-    private static List<(int Start, int End)> MergeRanges(List<int> matches, int contextLines, int total)
-    {
-        var ranges = new List<(int Start, int End)>();
-        foreach (var match in matches)
-        {
-            var start = (int)Math.Max(1, (long)match - contextLines);
-            var end = (int)Math.Min(total, (long)match + contextLines);
+    /// <param name="max">The result ceiling, in characters.</param>
+    /// <returns>The refusal naming the ceiling.</returns>
+    private static object TooLarge(int max) =>
+        ToolResult.Denied(
+            DenialReason.ResourceTooLarge,
+            "The search result exceeds the " + max.ToString(CultureInfo.InvariantCulture)
+            + "-character result limit.");
 
-            // Extend the current range when this window touches or overlaps it, so adjacent matches
-            // share one group with no duplicated lines.
-            if (ranges.Count > 0 && start <= ranges[^1].End + 1)
-            {
-                ranges[^1] = (ranges[^1].Start, Math.Max(ranges[^1].End, end));
-            }
-            else
-            {
-                ranges.Add((start, end));
-            }
-        }
+    /// <summary>
+    ///     Composes the refusal for a pattern that ran out of time on one line.
+    /// </summary>
+    /// <param name="entry">The retained output searched.</param>
+    /// <param name="limit">The per-line time limit that was exceeded.</param>
+    /// <returns>The refusal naming the limit and the output.</returns>
+    private static object LineTimedOut(ToolOutputEntry entry, TimeSpan limit) =>
+        ToolResult.Denied(
+            DenialReason.InvalidRequest,
+            "The search pattern took longer than "
+            + limit.TotalSeconds.ToString(CultureInfo.InvariantCulture)
+            + " second to evaluate against one line of " + entry.Id + ".");
 
-        return ranges;
-    }
+    /// <summary>
+    ///     Composes the refusal for a whole search that ran out of its time budget, which applies
+    ///     to literal and regular-expression searches alike.
+    /// </summary>
+    /// <param name="entry">The retained output searched.</param>
+    /// <param name="limit">The whole-search time budget that was exceeded.</param>
+    /// <returns>The refusal naming the budget and the output.</returns>
+    private static object SearchTimedOut(ToolOutputEntry entry, TimeSpan limit) =>
+        ToolResult.Denied(
+            DenialReason.InvalidRequest,
+            "The search took longer than "
+            + limit.TotalSeconds.ToString(CultureInfo.InvariantCulture)
+            + " second to run against " + entry.Id + ".");
 
     /// <summary>
     ///     Builds the matcher from the pattern and its options.

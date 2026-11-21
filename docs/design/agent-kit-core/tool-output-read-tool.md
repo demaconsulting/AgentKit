@@ -41,15 +41,29 @@ Builds the tool through `GuardedToolFactory.Create` with a delegate declared to 
 
 1. Refuses `startLine < 1` or `lineCount < 0` as `InvalidRequest`.
 2. Looks the identifier up; a failure returns `ToolOutputStore.Refusal`.
-3. A window starting past the end, or a zero count, returns the honest empty header
-   `output-3 lines S-(S-1) of N`.
-4. With an explicit count, renders that range and refuses it as `ResourceTooLarge` — naming the
-   range, its size and the ceiling, and stating "Request fewer lines." — when the page exceeds
-   `MaxResultCharacters`. A truncated page would hide lines the model believes it read.
+3. Passes the entry to `ReadEntry`, which does the rest. A window starting past the end, or a zero
+   count, returns the honest empty header `output-3 lines S-(S-1) of N`.
+4. With an explicit count, accumulates the page's exact size — the header, then each line's cost —
+   and refuses the range as `ResourceTooLarge` at the first line that carries it over
+   `MaxResultCharacters`: `Lines A-B of output-3 exceed the M-character result limit. Request
+   fewer lines.` A truncated page would hide lines the model believes it read. The refusal names
+   the range and the ceiling but not the page's full size, which could only be stated by walking
+   the whole range; refusing early means even a request for every line reads no more of the output
+   than the ceiling admits. Only a page that fits is built, into a buffer of its exact size.
 5. With no count, takes as many whole lines from the start as fit the ceiling, budgeting against
-   the widest possible header. No range end was requested, so this is not a truncation; the header
-   states exactly where the page stopped. When not even one line fits, the result is a
-   `ResourceTooLarge` refusal naming the ceiling.
+   the widest possible header and reading lines only until the first that does not fit. No range
+   end was requested, so this is not a truncation; the header states exactly where the page
+   stopped. When not even one line fits, the result is a `ResourceTooLarge` refusal naming the
+   ceiling.
+
+Steps 4 and 5 share one line-cost function — the line feed before the line, its padded number,
+the delimiter and the content — so their accounting cannot drift from the page rendered.
+
+#### ReadEntry(ToolOutputEntry entry, ToolLimits limits, int start, int? lineCount)
+
+The page logic over one resolved entry — steps 3 to 5 above. It is internal rather than private
+so the unit tests can drive it with an entry whose lines count every read, proving an oversized
+request reads no more of the output than the ceiling admits.
 
 **Page shape:** a header `output-3 lines A-B of N` followed by each line as its number, padded to
 the width of `N`, then `| `, then the content.
@@ -61,7 +75,7 @@ the width of `N`, then `| `, then the content.
 | Invalid range | `InvalidRequest` refusal returned |
 | Missing or malformed identifier | `InvalidRequest` refusal returned |
 | Unknown or evicted identifier | `TargetNotFound` refusal returned |
-| Page over the ceiling | `ResourceTooLarge` refusal returned |
+| Page over the ceiling | `ResourceTooLarge` refusal returned, naming the range and the ceiling |
 | Null store or limits at construction | `ArgumentNullException` propagates |
 
 ### Dependencies
