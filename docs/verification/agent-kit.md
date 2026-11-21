@@ -1,6 +1,7 @@
 # AgentKit Product Capability Verification
 
-This document describes how AgentKit's three product-level provider capabilities are verified.
+This document describes how AgentKit's three product-level provider capabilities, and its capability
+for tools in an agent runtime AgentKit did not build, are verified.
 
 ## Verification Approach
 
@@ -90,6 +91,26 @@ capability.
   from the chat-client capability, which is where the conversation half of this promise is
   delivered: Ollama reaches an application as an `IChatClient`, and no part of rotation is
   Ollama-specific.
+
+### AgentKit-Tools-AnyAgentRuntime
+
+- `AgentKitCore_SystemForeignTool_GuardedOversizedResult_IsRefused` — a tool built with the plain
+  function factory, unbounded on its own, is refused when bounded by AgentKit's ceilings.
+- `AgentKitCore_SystemToolOutput_RestoredRetention_AnswersAnEarlierReference` — a retention handle
+  exported to JSON and restored answers a reference issued before.
+- `AgentKitAgentsChatClient_ContextProvider_ToolsReachTheProviderAndRun` — a host-built
+  `ChatClientAgent` with no tools of its own is offered AgentKit's tools through the context provider
+  and runs one.
+- `AgentKitAgentsChatClient_ContextProvider_DeserializedSession_PagesAnEarlierOutput` — a
+  conversation's retained output survives the agent serializing and deserializing its session.
+- `AgentKitAgentsChatClient_ImagePromotion_BuilderExtension_PromotesBeneathFunctionInvocation` — a
+  host-built agent over `UseImagePromotion()` delivers a tool-returned image on a user message.
+- `AgentKitAgentsChatClient_ChatReducer_InMemoryHistoryProvider_ReducesStoredHistory` — AgentKit's
+  reducer consolidates the stored history of a host-built agent through the framework's hook.
+
+That these building blocks hold against a live model is shown by the opt-in live Ollama suite
+described in *AgentKitAgentsChatClient System Verification Design*; like the live Copilot suite, it is
+supplementary and none of its tests is linked here.
 
 ## Acceptance Criteria
 

@@ -27,7 +27,7 @@ context, so a long-running agent behaves the same way on every provider.
 - 🎛️ **Application-Set Controls**: Path grants, tool limits, and host capabilities bound every tool
 - 🧰 **Ready-Made Tool Families**: Text file, file, Markdown, image, todo, memory, and agent delegation
 - 🧩 **Custom Tools**: Build your own tools through the same guarded factory and publish them as packs
-- 🔌 **Provider-Neutral**: Plain `AIFunction` tools for Microsoft Agent Framework, Copilot, and any `IChatClient`
+- 🔌 **Provider-Neutral**: Plain `AIFunction` tools that keep their limits in any agent, Copilot, or `IChatClient`
 - 🧠 **Self-Compacting Sessions**: Tiered context compaction keeps a long conversation alive on any provider
 - 🗄️ **Large Output Retention**: Opt-in, any provider; held in memory for `tool_output_read` and `tool_output_search`
 - 📏 **Honest Context Windows**: Sessions account against the window a provider really runs, Ollama included

@@ -7,7 +7,8 @@ supports a model served by Ollama. All three promise an
 agent confined to the tools the application granted it and a conversation that outlives the
 provider's context window; the chat-client capability promises one thing more, that what a tool
 returned reaches the model intact. Each promise is demonstrated end to end rather than argued from
-its parts.
+its parts. A fourth, `AgentKit-Tools-AnyAgentRuntime`, is not a provider capability: it promises that
+AgentKit's tools and the controls around them work in an agent runtime the application built itself.
 
 ## Why the Capabilities Sit Above the Packages
 
@@ -53,6 +54,23 @@ provider reached through an `IChatClient` drops a tool-returned image at the wir
 installs the image-promoting decorator beneath the function-invocation loop on every agent and every
 session it builds, with no option to omit it. Copilot needs no such promise — its runtime delivers a
 tool's binary results to the model itself — which is why the capabilities are not symmetric.
+
+## Tools in an Agent Runtime AgentKit Did Not Build
+
+`AgentKit-Tools-AnyAgentRuntime` is delivered by building blocks rather than by one system, because the
+runtime is the application's: AgentKitCore supplies `GuardedToolFactory.AsGuarded` to bound a tool it
+did not build, `ToolOutputRetention` as a per-conversation retention handle whose outputs can be
+exported and restored, and `AgentKitChatReducer` to consolidate a host-owned history through the
+summarizer; AgentKitAgentsChatClient supplies `UseImagePromotion()` for a host-built pipeline and
+`ToolPackContextProvider`, which contributes AgentKit tools to every run of a host-built
+`ChatClientAgent`, composed once per conversation, with retention kept in the session's state. See
+*AgentKitCore System Design* and *AgentKitAgentsChatClient System Design*.
+
+The building blocks are deliberately reduced in scope compared with AgentKit's own agents and
+`CompactingAgentSession`: the reducer has one record, one level and no rotation, and the context
+provider is honored only by `ChatClientAgent`. On the GitHub Copilot path, whose runtime owns the
+history and fixes a session's tools at creation, `CopilotAgentFactory` and `CompactingAgentSession`
+remain the recommended route; the user guide describes both.
 
 ## What the OTS Requirements Are Doing Here
 
