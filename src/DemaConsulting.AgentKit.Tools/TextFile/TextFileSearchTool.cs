@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Globalization;
+using System.IO.Enumeration;
 using System.Security;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -53,6 +54,14 @@ namespace DemaConsulting.AgentKit.Tools.TextFile;
 ///     search that found nothing is not a failed request.
 ///     </para>
 ///     <para>
+///     <b>A path naming a file searches that file alone</b>, as <c>grep pattern file</c> does. The
+///     file is authorized by the same read decision that admits each enumerated candidate, so this
+///     reaches nothing a directory search could not. The checks a directory search applies
+///     silently per candidate become refusals for a named file — a supplied <c>filePattern</c>
+///     the file does not match, or binary content — because the model asked about that file and a
+///     silent "No matches." would be a false answer.
+///     </para>
+///     <para>
 ///     The delegate is declared to return <c>Task&lt;object&gt;</c> deliberately — see the remarks on
 ///     <see cref="GuardedToolFactory"/> — and every refusal is returned rather than thrown.
 ///     </para>
@@ -74,9 +83,9 @@ public static class TextFileSearchTool
     private const string ToolDescription =
         "Searches the text files the agent may read for a pattern, reporting matches grep-style as "
         + "'path:line:content'. The pattern is literal by default; set literal to false for a regular "
-        + "expression. Optionally scope with a directory and a file glob, add context lines, ignore "
-        + "case, and cap the number of matches. Returns the matches, or a denial explaining why the "
-        + "request was refused.";
+        + "expression. Optionally scope with a directory or a single file and a file glob, add "
+        + "context lines, ignore case, and cap the number of matches. Returns the matches, or a "
+        + "denial explaining why the request was refused.";
 
     /// <summary>
     ///     The file glob used when the request supplies none.
@@ -109,6 +118,16 @@ public static class TextFileSearchTool
     private const int StreamBufferSize = 16 * 1024;
 
     /// <summary>
+    ///     Whether a file glob matches a file name case-insensitively on this platform.
+    /// </summary>
+    /// <remarks>
+    ///     Mirrors the platform default a directory enumeration applies to the same glob, so a
+    ///     named file is accepted by exactly the globs that would have selected it in its directory.
+    /// </remarks>
+    private static readonly bool FileNameIgnoresCase =
+        OperatingSystem.IsWindows() || OperatingSystem.IsMacOS();
+
+    /// <summary>
     ///     Creates the <c>text_file_search</c> tool governed by an access policy.
     /// </summary>
     /// <remarks>
@@ -131,8 +150,9 @@ public static class TextFileSearchTool
                 [Description("The text or regular expression to search for.")]
                 string? pattern = null,
                 [Description(
-                    "The directory to search, relative to the workspace or an absolute path. "
-                    + "Optional: omit it to search every location the agent may read.")]
+                    "The directory to search, or a single text file to search, relative to the "
+                    + "workspace or an absolute path. Optional: omit it to search every location the "
+                    + "agent may read.")]
                 string? path = null,
                 [Description(
                     "The file-name glob to restrict the search to, for example '*.md'. "
@@ -173,7 +193,9 @@ public static class TextFileSearchTool
     /// </summary>
     /// <param name="policy">The access policy governing the search.</param>
     /// <param name="pattern">The text or expression to search for.</param>
-    /// <param name="path">The directory to search, or null for every permitted location.</param>
+    /// <param name="path">
+    ///     The directory or single file to search, or null for every permitted location.
+    /// </param>
     /// <param name="filePattern">The file glob to restrict to, or null for every file.</param>
     /// <param name="contextLines">The number of context lines to show around each match.</param>
     /// <param name="ignoreCase">Whether to match case-insensitively.</param>
@@ -208,9 +230,13 @@ public static class TextFileSearchTool
         }
 
         // A named directory that the policy refuses is reported as a refusal, so the model learns
-        // where it may search rather than receiving a silent empty result.
+        // where it may search rather than receiving a silent empty result. The same decision
+        // authorizes a named file, applying exactly the grant and deny-pattern test enumeration
+        // applies to each candidate, so searching a named file reaches nothing a directory
+        // search could not.
+        string? namedPath = null;
         if (!PathPolicy.IsDiscoveryRequest(path)
-            && !policy.TryResolveRead(path, out _, out var denialMessage))
+            && !policy.TryResolveRead(path, out namedPath, out var denialMessage))
         {
             return ToolResult.Denied(DenialReason.PathNotPermitted, denialMessage);
         }
@@ -232,8 +258,24 @@ public static class TextFileSearchTool
         var searchPattern = NormalizeFilePattern(filePattern);
         var cap = maxMatches ?? int.MaxValue;
 
+        // A path naming a file searches that file alone, as grep does. The checks a directory
+        // search applies silently per candidate are refusals here, because the model asked about
+        // this file specifically and a silent "No matches." would be a false answer.
+        string? singleFile = null;
+        if (namedPath is not null && System.IO.File.Exists(namedPath))
+        {
+            var refusal = await CheckNamedFileAsync(namedPath, path!, filePattern, searchPattern, cancellationToken)
+                .ConfigureAwait(false);
+            if (refusal is not null)
+            {
+                return refusal;
+            }
+
+            singleFile = namedPath;
+        }
+
         var result = await BuildResultAsync(
-            policy, path, searchPattern, regex, contextLines, cap, cancellationToken)
+            policy, path, singleFile, searchPattern, regex, contextLines, cap, cancellationToken)
             .ConfigureAwait(false);
 
         // An empty result is a fact, not a refusal.
@@ -258,10 +300,70 @@ public static class TextFileSearchTool
     }
 
     /// <summary>
+    ///     Decides whether a file the request named directly can be searched, returning the refusal
+    ///     when it cannot.
+    /// </summary>
+    /// <remarks>
+    ///     A directory search skips a binary file and a file the glob does not select without
+    ///     comment, because the caller did not name it. A named file is different: the caller asked
+    ///     about it specifically, so skipping it silently would report "No matches." for a file
+    ///     that was never searched. Each refusal echoes only the values the model supplied, never a
+    ///     resolved host path.
+    /// </remarks>
+    /// <param name="realPath">The real location of the permitted, existing file.</param>
+    /// <param name="requested">The path exactly as the model supplied it.</param>
+    /// <param name="filePattern">The file glob exactly as the model supplied it, or null.</param>
+    /// <param name="searchPattern">The normalized .NET file-name pattern derived from the glob.</param>
+    /// <param name="cancellationToken">A token that cancels the binary sniff.</param>
+    /// <returns>The refusal to return, or <see langword="null"/> when the file can be searched.</returns>
+    private static async Task<object?> CheckNamedFileAsync(
+        string realPath,
+        string requested,
+        string? filePattern,
+        string searchPattern,
+        CancellationToken cancellationToken)
+    {
+        // A glob the named file does not satisfy makes the request self-contradictory; the model
+        // is told both ways to resolve it rather than given an empty answer.
+        if (!string.IsNullOrWhiteSpace(filePattern)
+            && !FileSystemName.MatchesSimpleExpression(searchPattern, Path.GetFileName(realPath), FileNameIgnoresCase))
+        {
+            return ToolResult.Denied(
+                DenialReason.InvalidRequest,
+                "path names the file '" + requested + "', which filePattern '" + filePattern
+                + "' does not match. Omit filePattern to search that file, or name its directory in "
+                + "path to search the files the pattern matches.");
+        }
+
+        try
+        {
+            // The same leading sniff a directory search uses to skip binary files; here it refuses,
+            // because a binary file cannot be searched as text.
+            var length = new FileInfo(realPath).Length;
+            if (await TextFileBinaryGuard.IsBinaryAsync(realPath, length, cancellationToken)
+                .ConfigureAwait(false))
+            {
+                return ToolResult.Denied(
+                    DenialReason.UnsupportedMediaType,
+                    "'" + requested + "' is binary content, not text; " + ToolName + " searches text only.");
+            }
+        }
+        catch (Exception exception) when (IsAccessFailure(exception))
+        {
+            return ToolResult.Denied(DenialReason.InvalidRequest, "The requested file could not be read.");
+        }
+
+        return null;
+    }
+
+    /// <summary>
     ///     Assembles the grep-style result across every permitted, searchable file.
     /// </summary>
     /// <param name="policy">The access policy whose enumeration and dialect are used.</param>
-    /// <param name="requested">The directory the model requested, mirroring its dialect.</param>
+    /// <param name="requested">The directory or file the model requested, mirroring its dialect.</param>
+    /// <param name="singleFile">
+    ///     The real location of a named file to search alone, or null to enumerate candidates.
+    /// </param>
     /// <param name="searchPattern">The .NET file-name pattern to enumerate with.</param>
     /// <param name="regex">The compiled matcher.</param>
     /// <param name="contextLines">The number of context lines to show around each match.</param>
@@ -271,15 +373,18 @@ public static class TextFileSearchTool
     private static async Task<string> BuildResultAsync(
         PathPolicy policy,
         string? requested,
+        string? singleFile,
         string searchPattern,
         Regex regex,
         int contextLines,
         int cap,
         CancellationToken cancellationToken)
     {
-        var files = EnumerateFiles(policy, requested, searchPattern)
-            .OrderBy(file => file, StringComparer.Ordinal)
-            .ToList();
+        List<string> files = singleFile is not null
+            ? [singleFile]
+            : EnumerateFiles(policy, requested, searchPattern)
+                .OrderBy(file => file, StringComparer.Ordinal)
+                .ToList();
 
         var builder = new StringBuilder();
         var progress = new SearchProgress();

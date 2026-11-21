@@ -15,6 +15,12 @@ The unit's most important responsibility is non-disclosure. Every candidate come
 `PathPolicy.EnumerateFiles`, so a search never discloses the content, path or existence of a file the
 policy would refuse.
 
+A `path` naming a file searches that file alone, as `grep pattern file` does. A model reading the
+tool as grep names a file there, and treating the path only as a directory answered `No matches.`
+for a file that was never searched. The file is authorized by the same `TryResolveRead` decision that
+admits each enumerated candidate, so the single-file branch reaches nothing a directory search could
+not.
+
 #### Data Model
 
 The class is static and holds no state. A constructed tool holds exactly one captured value — the
@@ -28,6 +34,7 @@ The class is static and holds no state. A constructed tool holds exactly one cap
 | `RecursiveEverything` | `string` | `**`; treated as every file recursively |
 | `NoMatches` | `string` | Returned as text when the search finds nothing |
 | `GroupSeparator` | `string` | `--`; separates context groups when context is requested |
+| `FileNameIgnoresCase` | `bool` | True on Windows and macOS; the case rule a named file's glob check uses |
 
 The search is additionally bounded by `PathPolicy.Limits.MaxResultCharacters` for the assembled
 result. `MaxReadBytes` no longer gates a searched file: each file is streamed line by line so a file
@@ -64,7 +71,9 @@ governed by the supplied policy for the rest of its life.
    as supplied. An invalid regular expression is refused.
 5. The file glob is normalized. A missing pattern becomes `*`; a leading `**/` or a bare `**` is
    honored and reduced to the file-name pattern used by the policy enumeration.
-6. The result is assembled from the permitted candidates.
+6. When the permitted `path` names an existing file, `CheckNamedFileAsync` decides whether it can be
+   searched, and its refusal is returned when it cannot. The result is then assembled from that file
+   alone; otherwise it is assembled from the permitted candidates.
 7. No matches are returned as `No matches.`, not as a refusal.
 8. A result longer than `MaxResultCharacters` is returned as `ToolResult.Oversized(result, message)`.
    Without retention of large outputs the model receives exactly `ResourceTooLarge`, naming the
@@ -72,11 +81,24 @@ governed by the supplied policy for the rest of its life.
    model receives a preview and a reference (see *ToolOutputSpill Unit Design*).
 9. Otherwise the grep-style listing is returned.
 
+##### CheckNamedFileAsync(...)
+
+Runs the checks a directory search applies silently per candidate, as refusals, because the model
+asked about this file and a silent `No matches.` would be a false answer:
+
+- a supplied `filePattern` the file name does not match (`FileSystemName.MatchesSimpleExpression` on
+  the normalized glob, with the platform's case rule) is refused as `InvalidRequest`, naming the file and
+  glob as the model supplied them and both ways to recover;
+- a file whose leading bytes are binary (`TextFileBinaryGuard`) is refused as `UnsupportedMediaType`;
+- a file that cannot be read is refused as `InvalidRequest`.
+
+Each refusal echoes only values the model supplied, never a resolved host path.
+
 ##### BuildResultAsync(...)
 
-Enumerates the permitted files, sorts them ordinally, and searches each in turn until the match cap
-is reached. A running match-and-group progress is carried across files so the cap and the group
-separators span the whole result.
+Searches a named file alone when one is supplied. Otherwise enumerates the permitted files, sorts them ordinally, and
+searches each in turn until the match cap is reached. A running match-and-group progress is carried across files so the
+cap and the group separators span the whole result.
 
 ##### AppendFileMatchesAsync(...)
 

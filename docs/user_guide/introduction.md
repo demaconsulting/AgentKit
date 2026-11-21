@@ -420,7 +420,7 @@ row.
 
 | Family | Tool | Purpose | Capability | Write grant |
 | --- | --- | --- | --- | --- |
-| Text file | `text_file_search` | Searches permitted text files for a pattern | None | No |
+| Text file | `text_file_search` | Searches permitted text files, or one named file, for a pattern | None | No |
 | Text file | `text_file_read` | Reads a paged, line-numbered file window | None | No |
 | Text file | `text_file_create` | Creates a new text file within the policy | None | Yes |
 | Text file | `text_file_write` | Sets a file's whole content, capturing the old | None | Yes |

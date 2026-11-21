@@ -361,6 +361,193 @@ public class TextFileSearchToolTests
     }
 
     /// <summary>
+    ///     Proves a path naming a file searches that file, as grep does, rather than answering a
+    ///     silent "No matches." for a file it never searched.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task TextFileSearchTool_Search_PathNamesAFile_SearchesThatFile()
+    {
+        // Arrange: two files holding the token, one of which the model names
+        using var fixture = new TempDirectoryFixture();
+        TempDirectoryFixture.WriteFile(fixture.Root, "big.log", "INFO ok\nERROR code=E23\n");
+        TempDirectoryFixture.WriteFile(fixture.Root, "other.log", "ERROR code=E99\n");
+        var tool = TextFileSearchTool.Create(RootedPolicy(fixture.Root));
+
+        // Act: search with path naming the file, as a model reading grep usage does
+        var result = await InvokeAsync(
+            tool,
+            new AIFunctionArguments { ["pattern"] = "ERROR", ["path"] = "big.log" });
+
+        // Assert: the named file's match only, reported in the caller's relative dialect
+        var text = Assert.IsType<string>(result);
+        Assert.Equal("big.log:2:ERROR code=E23\n", text);
+    }
+
+    /// <summary>
+    ///     Proves a file named by an absolute path is reported absolutely, mirroring the caller.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task TextFileSearchTool_Search_PathNamesAFile_ReportsPathInCallerDialect()
+    {
+        // Arrange: a file addressed by its absolute path
+        using var fixture = new TempDirectoryFixture();
+        var file = TempDirectoryFixture.WriteFile(fixture.Root, "notes.md", "target\n");
+        var tool = TextFileSearchTool.Create(RootedPolicy(fixture.Root));
+
+        // Act: search that one file by its absolute path
+        var result = await InvokeAsync(
+            tool,
+            new AIFunctionArguments { ["pattern"] = "target", ["path"] = file });
+
+        // Assert: the match carries the absolute path the caller used
+        var text = Assert.IsType<string>(result);
+        Assert.Contains(file.Replace('\\', '/') + ":1:target", text, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves a file glob that the named file does not match is refused with both ways to
+    ///     resolve the contradiction.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task TextFileSearchTool_Search_PathNamesAFileWithNonMatchingFilePattern_ReturnsDenial()
+    {
+        // Arrange: a log file and a glob that selects only markdown
+        using var fixture = new TempDirectoryFixture();
+        TempDirectoryFixture.WriteFile(fixture.Root, "big.log", "target\n");
+        var tool = TextFileSearchTool.Create(RootedPolicy(fixture.Root));
+
+        // Act: name the file and a glob it cannot satisfy
+        var result = await InvokeAsync(
+            tool,
+            new AIFunctionArguments { ["pattern"] = "target", ["path"] = "big.log", ["filePattern"] = "*.md" });
+
+        // Assert: a refusal naming the file and the glob as supplied, and how to recover
+        var text = Assert.IsType<string>(result);
+        Assert.StartsWith("Denied (InvalidRequest)", text, StringComparison.Ordinal);
+        Assert.Contains("'big.log'", text, StringComparison.Ordinal);
+        Assert.Contains("'*.md'", text, StringComparison.Ordinal);
+        Assert.Contains("Omit filePattern", text, StringComparison.Ordinal);
+        Assert.DoesNotContain(fixture.Root, text, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves a file glob the named file does match leaves the search unaffected.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task TextFileSearchTool_Search_PathNamesAFileWithMatchingFilePattern_SearchesIt()
+    {
+        // Arrange: a log file and a glob that selects it
+        using var fixture = new TempDirectoryFixture();
+        TempDirectoryFixture.WriteFile(fixture.Root, "big.log", "target\n");
+        var tool = TextFileSearchTool.Create(RootedPolicy(fixture.Root));
+
+        // Act: name the file and a glob it satisfies
+        var result = await InvokeAsync(
+            tool,
+            new AIFunctionArguments { ["pattern"] = "target", ["path"] = "big.log", ["filePattern"] = "*.log" });
+
+        // Assert: the match is reported
+        Assert.Equal("big.log:1:target\n", Assert.IsType<string>(result));
+    }
+
+    /// <summary>
+    ///     Proves a named binary file is refused as not text rather than reported as holding no
+    ///     match.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task TextFileSearchTool_Search_PathNamesABinaryFile_ReturnsDenial()
+    {
+        // Arrange: a binary file whose bytes contain the token
+        using var fixture = new TempDirectoryFixture();
+        TempDirectoryFixture.WriteBytes(
+            fixture.Root, "data.bin", [0x74, 0x6F, 0x6B, 0x65, 0x6E, 0x00, 0x74, 0x6F, 0x6B, 0x65, 0x6E]);
+        var tool = TextFileSearchTool.Create(RootedPolicy(fixture.Root));
+
+        // Act: name the binary file
+        var result = await InvokeAsync(
+            tool,
+            new AIFunctionArguments { ["pattern"] = "token", ["path"] = "data.bin" });
+
+        // Assert: refused as binary content, naming the file as supplied
+        var text = Assert.IsType<string>(result);
+        Assert.StartsWith("Denied (UnsupportedMediaType)", text, StringComparison.Ordinal);
+        Assert.Contains("'data.bin'", text, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves a named file outside every grant is refused exactly as a directory there is.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task TextFileSearchTool_Search_PathNamesAFileOutsideGrants_ReturnsDenial()
+    {
+        // Arrange: a file outside the permitted location
+        using var fixture = new TempDirectoryFixture();
+        TempDirectoryFixture.WriteFile(fixture.Outside, "secret.txt", "token");
+        var tool = TextFileSearchTool.Create(RootedPolicy(fixture.Root));
+
+        // Act: name the outside file
+        var result = await InvokeAsync(
+            tool,
+            new AIFunctionArguments { ["pattern"] = "token", ["path"] = "../outside/secret.txt" });
+
+        // Assert: refused by the policy, and the token never surfaces
+        var text = Assert.IsType<string>(result);
+        Assert.StartsWith("Denied (PathNotPermitted)", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("secret.txt:1:", text, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves a named file the grant's deny pattern refuses is refused, never searched.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task TextFileSearchTool_Search_PathNamesAFileMatchingDenyPattern_ReturnsDenial()
+    {
+        // Arrange: a file inside the location that the deny pattern refuses
+        using var fixture = new TempDirectoryFixture();
+        TempDirectoryFixture.WriteFile(fixture.Root, "secret.txt", "TOP-SECRET-TOKEN");
+        var policy = new PathPolicy(fixture.Root, [PathRule.ReadWrite(fixture.Root, ["secret.txt"])]);
+        var tool = TextFileSearchTool.Create(policy);
+
+        // Act: name the refused file directly
+        var result = await InvokeAsync(
+            tool,
+            new AIFunctionArguments { ["pattern"] = "TOP-SECRET-TOKEN", ["path"] = "secret.txt" });
+
+        // Assert: refused, and the content is never surfaced
+        var text = Assert.IsType<string>(result);
+        Assert.StartsWith("Denied (PathNotPermitted)", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("secret.txt:1:", text, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves a named file that holds no match is reported plainly as having none.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task TextFileSearchTool_Search_PathNamesAFileWithNoMatch_ReturnsNoMatches()
+    {
+        // Arrange: a text file without the token
+        using var fixture = new TempDirectoryFixture();
+        TempDirectoryFixture.WriteFile(fixture.Root, "big.log", "INFO ok\n");
+        var tool = TextFileSearchTool.Create(RootedPolicy(fixture.Root));
+
+        // Act: search the named file
+        var result = await InvokeAsync(
+            tool,
+            new AIFunctionArguments { ["pattern"] = "ERROR", ["path"] = "big.log" });
+
+        // Assert: a plain fact, not a refusal
+        Assert.Equal("No matches.", Assert.IsType<string>(result));
+    }
+
+    /// <summary>
     ///     Builds a multi-line fixture whose bytes exceed a small read ceiling while each line stays
     ///     tiny, carrying a unique token on one line, so streaming search finds a match that a
     ///     whole-file size gate would have skipped.

@@ -27,7 +27,7 @@ Unit tests reside in `TextFile/TextFileSearchToolTests.cs` within the
 
 #### Acceptance Criteria
 
-A unit test run passes when all 13 requirement scenarios below, covering 18 listed test method
+A unit test run passes when all 14 requirement scenarios below, covering 26 listed test method
 entries, pass without error or exception beyond those explicitly asserted. A missing name or
 description, accepted null construction input, wrong capability or tool order, ignored policy
 decision, leaked path, unsafe file mutation, malformed request thrown as a framework error, or
@@ -63,8 +63,34 @@ searched or disclosed.
 
 **Test**: `TextFileSearchTool_Search_DirectoryOutsideGrants_ReturnsDenial`
 
+**Test**: `TextFileSearchTool_Search_PathNamesAFileOutsideGrants_ReturnsDenial`
+
+**Test**: `TextFileSearchTool_Search_PathNamesAFileMatchingDenyPattern_ReturnsDenial`
+
 The listed tests prove a file glob restricts the search to matching files; a directory outside the
-grants is refused rather than searched silently.
+grants is refused rather than searched silently; and a named file outside the grants, or one the
+grant's deny pattern refuses, is refused with its content never surfaced.
+
+##### AgentKitTools-TextFile-SearchTool-FilePathSearchesThatFile: A Named File Is Searched
+
+**Test**: `TextFileSearchTool_Search_PathNamesAFile_SearchesThatFile`
+
+**Test**: `TextFileSearchTool_Search_PathNamesAFile_ReportsPathInCallerDialect`
+
+**Test**: `TextFileSearchTool_Search_PathNamesAFileWithNonMatchingFilePattern_ReturnsDenial`
+
+**Test**: `TextFileSearchTool_Search_PathNamesAFileWithMatchingFilePattern_SearchesIt`
+
+**Test**: `TextFileSearchTool_Search_PathNamesABinaryFile_ReturnsDenial`
+
+**Test**: `TextFileSearchTool_Search_PathNamesAFileWithNoMatch_ReturnsNoMatches`
+
+The listed tests prove a path naming a file searches that file alone — a sibling file holding the
+same token is not reported — with the match reported relatively for a relative request and
+absolutely for an absolute one. A glob the file does not match is refused as `InvalidRequest`
+naming the file and glob as supplied, without the host location; a glob it does match leaves the
+search unaffected. A named binary file is refused as `UnsupportedMediaType` rather than answered
+`No matches.`, and a named text file without the pattern is answered `No matches.`.
 
 ##### AgentKitTools-TextFile-SearchTool-GrepOutput: Grep Output
 
