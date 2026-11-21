@@ -41,8 +41,8 @@ runtime's default is left in place.
 **Ownership.** The `CopilotRuntime` is the host's and is disposed by the host; every session this
 summarizer creates is its own and is released and deleted by it.
 
-Safe for concurrent use: each call creates a session of its own and shares nothing but the runtime's
-client and the model name.
+Safe for concurrent use: each call creates a session of its own and shares nothing but the runtime
+and the model name.
 
 ### Data Model
 
@@ -57,9 +57,12 @@ client and the model name.
 
 **Purpose:** Hold what every consolidation needs, and nothing else.
 
-**Algorithm:** Reject a null runtime and build the production channel opener over its client — one that
-deletes each session when it is released, because a consolidation session is finished with once it
-has answered. Record the model name without checking it, for the same reason the session factory
+**Algorithm:** Reject a null runtime, check it is not disposed (`CopilotRuntime.ThrowIfDisposed`), and
+build the production channel opener over the runtime — one that deletes each session when it is
+released, because a consolidation session is finished with once it has answered. The opener is handed
+the runtime, not its client, and reads the client at each open and release: the SDK restarts a
+disposed client on demand, so a summarizer that held the client would bring a runtime the host had
+disposed back to life. Record the model name without checking it, for the same reason the session factory
 does: only the runtime knows which models the signed-in user may use.
 
 The model is named separately from the conversation's because consolidation is summarization rather
@@ -110,6 +113,7 @@ for.
 | --- | --- |
 | Null `runtime` or `opener` | `ArgumentNullException` propagates |
 | Disposed `runtime` | `ObjectDisposedException` propagates |
+| `runtime` disposed after construction | `ObjectDisposedException` from the next consolidation; nothing started |
 | Null `request` | `ArgumentNullException` propagates |
 | Cancellation before opening | `OperationCanceledException`; nothing is opened |
 | Opener returned null | `InvalidOperationException` propagates |
@@ -124,8 +128,8 @@ for.
   *CopilotAgentFactory Unit Design*.
 - **CopilotTurnChannel** — opens and owns each short-lived runtime session; see *CopilotTurnChannel
   Unit Design*.
-- **CopilotRuntime** — the runtime whose client every consolidation runs on; see *CopilotRuntime Unit
-  Design*.
+- **CopilotRuntime** — the runtime every consolidation runs on, whose client the opener reads at each
+  open and release; see *CopilotRuntime Unit Design*.
 - **Microsoft.Copilot.SDK** — supplies `CopilotClient` and `MessageOptions`; see
   *Microsoft.Copilot.SDK Design*.
 

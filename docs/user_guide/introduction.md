@@ -742,12 +742,16 @@ The runtime is always:
   survive a restart; any other non-empty directory — a Copilot CLI home, a shared folder, the data
   directory an earlier release's client used — is refused with an `InvalidOperationException` naming
   it. Keep the directory private to the application, never point the Copilot CLI at it, and give
-  each runtime running at the same time a directory of its own.
+  each runtime running at the same time a directory of its own. The runtime's caches are not kept
+  there: they go to the platform's cache folder (`%LOCALAPPDATA%` on Windows, `XDG_CACHE_HOME` or its
+  default elsewhere).
 
 `CopilotRuntimeOptions` takes only the data directory and, optionally, a GitHub token, a log level and
-a logger. With no token the runtime authenticates as the signed-in GitHub user — as `gh auth login`
-or a Copilot sign-in left it — and honors the `COPILOT_GITHUB_TOKEN`, `GH_TOKEN` and `GITHUB_TOKEN`
-environment variables; pass `gitHubToken:` to supply a credential directly.
+a logger. With no token the runtime authenticates from the `COPILOT_GITHUB_TOKEN`, `GH_TOKEN` or
+`GITHUB_TOKEN` environment variable, or as the user the GitHub CLI is signed in as (`gh auth login`;
+the runtime runs `gh auth token`, so `gh` must be on `PATH`). A sign-in made only with the Copilot
+CLI is not used: it lives in the system keychain or the Copilot CLI's own home, and the runtime
+AgentKit starts reads neither. Pass `gitHubToken:` to supply a credential directly.
 
 Copilot arrives as a complete runtime carrying its own tools — shell, fetch, file editing and more.
 The factory suppresses them by deriving the session allow-list from the same tools you supplied, so
@@ -963,7 +967,8 @@ for answer quality across a long conversation, not to save money.
   and `osx-arm64`. A Copilot CLI shell's
   `COPILOT_CLI_PATH` is no longer a cause, because the runtime never receives it. If the runtime
   starts but cannot authenticate, check that a token is supplied, that `GH_TOKEN` or `GITHUB_TOKEN` is
-  set, or that the GitHub CLI is signed in; of the host's `COPILOT_` variables, only the documented
+  set, or that `gh auth status` shows a signed-in user and `gh` is on `PATH`; a Copilot CLI sign-in
+  is not used. Of the host's `COPILOT_` variables, only the documented
   pass-through set reaches the runtime.
 - **`InvalidOperationException`: the data directory "is not empty and was not created by AgentKit".**
   The directory holds something AgentKit did not put there — a Copilot CLI home, or the data directory

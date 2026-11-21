@@ -44,7 +44,7 @@ namespace DemaConsulting.AgentKit.Agents.Copilot;
 ///     </para>
 ///     <para>
 ///     Safe for concurrent use: each call creates a session of its own and shares nothing but the
-///     runtime's client and the model name.
+///     runtime and the model name.
 ///     </para>
 /// </remarks>
 public sealed class CopilotSummarizer : ISummarizer
@@ -66,7 +66,8 @@ public sealed class CopilotSummarizer : ISummarizer
     /// <param name="runtime">
     ///     The Copilot runtime each consolidation runs on, from <see cref="CopilotRuntime.StartAsync"/>.
     ///     Must not be <see langword="null"/> or disposed. Whoever started it disposes it: this
-    ///     summarizer disposes it never, and a consolidation made after it was disposed fails.
+    ///     summarizer disposes it never, and a consolidation made after it was disposed fails with
+    ///     <see cref="ObjectDisposedException"/> without the runtime being started again.
     /// </param>
     /// <param name="model">
     ///     The Copilot model to perform each consolidation — for example <c>gpt-5.4-mini</c>. When
@@ -79,8 +80,9 @@ public sealed class CopilotSummarizer : ISummarizer
     public CopilotSummarizer(CopilotRuntime runtime, string? model = null)
     {
         ArgumentNullException.ThrowIfNull(runtime);
+        runtime.ThrowIfDisposed();
 
-        _opener = CopilotSessionChannel.Open(runtime.Client);
+        _opener = CopilotSessionChannel.Open(runtime);
         _model = model;
     }
 

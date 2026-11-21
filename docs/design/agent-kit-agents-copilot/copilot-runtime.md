@@ -43,9 +43,16 @@ impossible to express rather than refused when used.
 `CopilotRuntime`:
 
 - **`_client`** (`CopilotClient?`) — the client this runtime owns; `null` once disposed. Exposed
-  internally as `Client`, which throws `ObjectDisposedException` after disposal. Never exposed
-  publicly, so nothing outside AgentKit can open a session on it or reconfigure it.
+  internally as `Client`, which throws `ObjectDisposedException` (object name `CopilotRuntime`) after
+  disposal. Never exposed publicly, so nothing outside AgentKit can open a session on it or
+  reconfigure it. Never captured either: everything built on the runtime reads `Client` at each open,
+  resume and release, because the SDK restarts a disposed client on demand — its start, create,
+  resume and delete calls all reconnect a client that is not running.
 - **`DataDirectory`** (`string`) — the prepared data directory's full path; available after disposal.
+  The runtime's credentials and kept conversations live there. Its caches do not: the runtime writes
+  them to the platform cache folder (`%LOCALAPPDATA%` on Windows, `XDG_CACHE_HOME` or its default
+  elsewhere), because the SDK sets `COPILOT_CACHE_HOME` only for in-process hosting and the host's own
+  copy is withheld.
 - **`PassThroughVariables`** (`FrozenSet<string>`) — the `COPILOT_` variables that reach the runtime:
   `COPILOT_GITHUB_TOKEN`, `COPILOT_GH_HOST`, `COPILOT_SYSTEM_PROXY`, `COPILOT_PROXY_KERBEROS`,
   `COPILOT_PROXY_KERBEROS_SPN`, `COPILOT_TELEMETRY_DISABLED` and `COPILOT_GITHUB_TELEMETRY_DISABLED`.
@@ -175,12 +182,27 @@ confinement.
 **Algorithm:** Reject a null, empty or whitespace identifier; ask the client to delete the session.
 The SDK's own exception for a session the runtime does not hold propagates unchanged.
 
+#### ThrowIfDisposed()
+
+**Purpose:** Refuse a disposed runtime where something is built on it.
+
+**Algorithm:** Read `Client` and discard it, so a disposed runtime throws `ObjectDisposedException`
+with the object name `CopilotRuntime`. Called by `CopilotAgentFactory.Create` and by the
+`CopilotProviderSessionFactory` and `CopilotSummarizer` constructors.
+
 #### DisposeAsync()
 
-**Purpose:** Stop the runtime process.
+**Purpose:** Stop the runtime process, for good.
 
 **Algorithm:** Atomically take the client and dispose it; a second call finds none and returns.
 Sessions open on the runtime end with it; their persisted state stays in the data directory.
+
+**Postconditions:** Every agent, provider-session factory and summarizer built on the runtime fails
+its next open, resume or deletion with `ObjectDisposedException` before the SDK is reached, so nothing
+starts the runtime again. The host disposes the runtime only once no run is in progress on it: an
+open that has already read the client when disposal begins races the disposal, and the SDK may then
+restart the client for that open. Disposal is not serialized against open runs, as is usual for
+`IAsyncDisposable`.
 
 ### Error Handling
 
@@ -194,6 +216,7 @@ Sessions open on the runtime end with it; their persisted state stays in the dat
 | Runtime fails to start | client disposed; `InvalidOperationException` with the runtime's error as cause |
 | Start canceled | client disposed; `OperationCanceledException` propagates unchanged |
 | Runtime used after disposal | `ObjectDisposedException` from `Client` |
+| Built-on object used after disposal | `ObjectDisposedException` on its next open or resume; nothing started |
 | Null or blank session identifier to delete | `ArgumentNullException` or `ArgumentException` |
 
 ### Dependencies
@@ -205,7 +228,8 @@ Sessions open on the runtime end with it; their persisted state stays in the dat
 
 A host application calls `CopilotRuntime.StartAsync` once and disposes the runtime when finished,
 handing it to `CopilotAgentFactory.Create`, `CopilotProviderSessionFactory` and `CopilotSummarizer`,
-which read its client for their channel openers and never dispose it. A host deletes a finished
+which check it is not disposed, pass it to their channel openers — each open, resume and release
+reads its client — and never dispose it. A host deletes a finished
 conversation with `DeleteSessionAsync`, passing `CopilotAgentSession.SessionId`. The production turn channel
 calls `StartClientAsync` before every session it opens or resumes; see *CopilotTurnChannel Unit
 Design*.

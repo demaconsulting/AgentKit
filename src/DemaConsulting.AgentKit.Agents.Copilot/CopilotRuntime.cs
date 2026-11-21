@@ -84,8 +84,19 @@ namespace DemaConsulting.AgentKit.Agents.Copilot;
 ///     remain.
 ///     </para>
 ///     <para>
+///     <b>A disposed runtime is never started again.</b> The SDK restarts a disposed client on
+///     demand — its start, create, resume and delete calls all reconnect a client that is not
+///     running — so nothing built on the runtime keeps the client. Every session open, resume and
+///     release reads it from the runtime when it runs, and after disposal that read fails with
+///     <see cref="ObjectDisposedException"/> before the SDK is reached; an agent, provider-session
+///     factory or summarizer cannot even be built on a disposed runtime.
+///     </para>
+///     <para>
 ///     Safe for concurrent use: sessions may be opened on one runtime from several threads, and
-///     disposal is idempotent.
+///     disposal is idempotent. Dispose the runtime only once no run is in progress on it: an open
+///     that has already read the client when disposal begins races it, and the SDK may then
+///     restart the client for that open. Disposal is not serialized against open runs, as is usual
+///     for <see cref="IAsyncDisposable"/>.
 ///     </para>
 /// </remarks>
 /// <example>
@@ -155,7 +166,9 @@ public sealed class CopilotRuntime : IAsyncDisposable
     /// </summary>
     /// <remarks>
     ///     Internal: production obtains a runtime only from <see cref="StartAsync"/>, which builds and
-    ///     starts the client itself. A test passes a client that was never started, which spawns nothing.
+    ///     starts the client itself. A unit test passes a client that was never started, which spawns
+    ///     nothing; the opt-in live suite passes a started client of another mode, to show the
+    ///     session-level confinement holding on a client AgentKit would never build.
     /// </remarks>
     /// <param name="client">The client this runtime owns and disposes.</param>
     /// <param name="dataDirectory">The prepared data directory's full path.</param>
@@ -193,8 +206,9 @@ public sealed class CopilotRuntime : IAsyncDisposable
     /// </summary>
     /// <remarks>
     ///     The runtime's <c>COPILOT_HOME</c>: its credentials (the system keychain is not used in
-    ///     Empty mode) and the conversations kept for resumption live here. Remains available after
-    ///     disposal.
+    ///     Empty mode) and the conversations kept for resumption live here. The runtime's caches do
+    ///     not: they go to the platform's cache folder (<c>%LOCALAPPDATA%</c> on Windows,
+    ///     <c>XDG_CACHE_HOME</c> or its default elsewhere). Remains available after disposal.
     /// </remarks>
     public string DataDirectory { get; }
 
@@ -202,13 +216,30 @@ public sealed class CopilotRuntime : IAsyncDisposable
     ///     Gets the client this runtime owns.
     /// </summary>
     /// <remarks>
+    ///     <para>
     ///     Internal: a host never reaches the client, so nothing can reconfigure it or open a session
     ///     on it outside AgentKit's confinement. The live suite reads it through
     ///     <c>InternalsVisibleTo</c>.
+    ///     </para>
+    ///     <para>
+    ///     Read at every step that reaches the SDK, never captured: the SDK restarts a disposed
+    ///     client on demand, so a captured client would outlive the runtime's disposal.
+    ///     </para>
     /// </remarks>
     /// <exception cref="ObjectDisposedException">The runtime has been disposed.</exception>
     internal CopilotClient Client =>
         Volatile.Read(ref _client) ?? throw new ObjectDisposedException(nameof(CopilotRuntime));
+
+    /// <summary>
+    ///     Throws if the runtime has been disposed.
+    /// </summary>
+    /// <remarks>
+    ///     Called where something is built on the runtime — an agent, a provider-session factory, a
+    ///     summarizer — so a disposed runtime is refused where the host composes its objects rather
+    ///     than at their first use.
+    /// </remarks>
+    /// <exception cref="ObjectDisposedException">The runtime has been disposed.</exception>
+    internal void ThrowIfDisposed() => _ = Client;
 
     /// <summary>
     ///     Starts a confined Copilot runtime.
@@ -302,8 +333,16 @@ public sealed class CopilotRuntime : IAsyncDisposable
     ///     Disposes the client, which stops the runtime process.
     /// </summary>
     /// <remarks>
+    ///     <para>
     ///     Idempotent and safe to call concurrently: only the first call disposes. Sessions open on
     ///     the runtime end with it; their persisted state stays in the data directory.
+    ///     </para>
+    ///     <para>
+    ///     Afterwards, every agent, provider-session factory and summarizer built on the runtime fails
+    ///     its next open, resume or deletion with <see cref="ObjectDisposedException"/> before the
+    ///     SDK is reached, so nothing starts the runtime again. Dispose only once no run is in
+    ///     progress: an open already past its read of the client can race the disposal.
+    ///     </para>
     /// </remarks>
     /// <returns>A task that completes when the client has been disposed.</returns>
     public async ValueTask DisposeAsync()

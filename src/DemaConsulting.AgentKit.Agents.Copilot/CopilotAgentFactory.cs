@@ -318,11 +318,13 @@ public static class CopilotAgentFactory
         string? workingDirectory = null)
     {
         ArgumentNullException.ThrowIfNull(runtime);
-        var client = runtime.Client;
+        runtime.ThrowIfDisposed();
 
         // A conversation's sessions are kept when released, because the conversation continues on
         // the next run; a run made without a conversation deletes its session, because nothing could
-        // ever resume it. The host still owns the runtime; nothing here disposes it.
+        // ever resume it. The host still owns the runtime; nothing here disposes it. The channels
+        // take the runtime, not its client, and read the client at every open, resume and release,
+        // so a runtime the host has disposed is refused rather than restarted by the SDK.
         return CreateAgent(
             tools,
             instructions,
@@ -330,9 +332,9 @@ public static class CopilotAgentFactory
             name,
             model,
             workingDirectory,
-            CopilotSessionChannel.OpenRetained(client),
-            CopilotSessionChannel.Resume(client),
-            CopilotSessionChannel.Open(client));
+            CopilotSessionChannel.OpenRetained(runtime),
+            CopilotSessionChannel.Resume(runtime),
+            CopilotSessionChannel.Open(runtime));
     }
 
     /// <summary>
@@ -341,8 +343,8 @@ public static class CopilotAgentFactory
     /// </summary>
     /// <remarks>
     ///     <para>
-    ///     The test seam behind <see cref="Create"/>: production passes channels over the runtime's
-    ///     client, a test passes a scripted runtime, and everything else — validation, the snapshot of
+    ///     The test seam behind <see cref="Create"/>: production passes channels over the runtime,
+    ///     a test passes a scripted runtime, and everything else — validation, the snapshot of
     ///     the tool list, and the per-run configuration builders — is shared.
     ///     </para>
     ///     <para>

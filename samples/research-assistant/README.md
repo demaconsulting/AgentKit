@@ -70,7 +70,7 @@ shows how it *proceeds*.
 From the repository root, with nothing installed beyond the .NET SDK. On the default
 `--provider copilot`:
 
-- Sign in as a GitHub user with Copilot access — through `gh auth login` or a Copilot sign-in — or
+- Sign in as a GitHub user with Copilot access with the GitHub CLI (`gh auth login`, with `gh` on `PATH`), or
   set a token in `GH_TOKEN`. Installing the Copilot CLI is **not** required.
 - Expect the first build to download the Copilot runtime: the sample references
   `Microsoft.Copilot.SDK` directly, so that build fetches it (about 100 MB, adding about 356 MB to the

@@ -435,7 +435,7 @@ public sealed class CopilotLiveTests
                 TestContext.Current.CancellationToken);
             var config = CopilotAgentFactory.BuildEngineSessionConfig(_live.ReadTools, null, _live.Model, _live.Sandbox);
             var session = await CopilotSessionChannel.CreateConfinedSessionAsync(
-                runtime.Client,
+                runtime,
                 config,
                 TestContext.Current.CancellationToken);
             try
@@ -473,13 +473,17 @@ public sealed class CopilotLiveTests
     [Fact]
     public async Task AgentKitAgentsCopilotLive_Confinement_AmbientMcpServerOnACodingAgentClient_IsDisabled()
     {
-        // Arrange: a CodingAgent client whose data directory configures a non-GitHub MCP server
+        // Arrange: a CodingAgent client whose data directory configures a non-GitHub MCP server,
+        // owned by a runtime so the production channel can open on it
         _live.RequireOptIn();
-        await using var client = await StartAmbientMcpClientAsync("ambient-home-a");
+        await using var runtime = new CopilotRuntime(
+            await StartAmbientMcpClientAsync("ambient-home-a"),
+            Path.Combine(_live.Root, "ambient-home-a"));
+        var client = runtime.Client;
         var config = CopilotAgentFactory.BuildEngineSessionConfig(_live.ReadTools, null, _live.Model, _live.Sandbox);
 
         // Act: open the session exactly as production opens one
-        var session = await CopilotSessionChannel.CreateConfinedSessionAsync(client, config, TestContext.Current.CancellationToken);
+        var session = await CopilotSessionChannel.CreateConfinedSessionAsync(runtime, config, TestContext.Current.CancellationToken);
         try
         {
             var configured = await session.Rpc.Mcp.ListConfiguredAsync(TestContext.Current.CancellationToken);
@@ -599,9 +603,13 @@ public sealed class CopilotLiveTests
     [Fact]
     public async Task AgentKitAgentsCopilotLive_Confinement_AmbientMcpServerOnAResumedSession_IsDisabled()
     {
-        // Arrange: a session created directly, so the probe is enabled on it, then released
+        // Arrange: a session created directly, so the probe is enabled on it, then released; the
+        // client is owned by a runtime so the production channel can resume on it
         _live.RequireOptIn();
-        await using var client = await StartAmbientMcpClientAsync("ambient-home-d");
+        await using var runtime = new CopilotRuntime(
+            await StartAmbientMcpClientAsync("ambient-home-d"),
+            Path.Combine(_live.Root, "ambient-home-d"));
+        var client = runtime.Client;
         var created = await client.CreateSessionAsync(
             CopilotAgentFactory.BuildEngineSessionConfig(_live.ReadTools, null, _live.Model, _live.Sandbox),
             TestContext.Current.CancellationToken);
@@ -620,7 +628,7 @@ public sealed class CopilotLiveTests
         {
             // Act: resume exactly as production resumes one
             await using var session = await CopilotSessionChannel.ResumeConfinedSessionAsync(
-                client,
+                runtime,
                 sessionId,
                 resume,
                 TestContext.Current.CancellationToken);
@@ -668,11 +676,14 @@ public sealed class CopilotLiveTests
             Path.Combine(workspace, ".github", "agents", $"{WorkspaceAgentProbe}.agent.md"),
             AgentDefinition(WorkspaceAgentProbe),
             TestContext.Current.CancellationToken);
-        await using var client = await StartAgentDefinitionsClientAsync("agents-home", workspace);
+        await using var runtime = new CopilotRuntime(
+            await StartAgentDefinitionsClientAsync("agents-home", workspace),
+            Path.Combine(_live.Root, "agents-home"));
+        var client = runtime.Client;
         var config = CopilotAgentFactory.BuildEngineSessionConfig(_live.ReadTools, null, _live.Model, workspace);
 
         // Act: open the session exactly as production opens one
-        var session = await CopilotSessionChannel.CreateConfinedSessionAsync(client, config, TestContext.Current.CancellationToken);
+        var session = await CopilotSessionChannel.CreateConfinedSessionAsync(runtime, config, TestContext.Current.CancellationToken);
         try
         {
             var listed = await session.Rpc.Agent.ListAsync(
@@ -713,7 +724,7 @@ public sealed class CopilotLiveTests
 
         // Act: open it through the production channel and take one turn, which is when the runtime
         // starts its built-in server unless told not to
-        var session = await CopilotSessionChannel.CreateConfinedSessionAsync(_live.Client, config, TestContext.Current.CancellationToken);
+        var session = await CopilotSessionChannel.CreateConfinedSessionAsync(_live.Runtime, config, TestContext.Current.CancellationToken);
         try
         {
             var reply = await session.SendAndWaitAsync("Reply with OK only.", TurnTimeout, TestContext.Current.CancellationToken);
@@ -802,7 +813,7 @@ public sealed class CopilotLiveTests
         var events = RecordMcpEvents(config, "L14c");
 
         // Act: open the session through the production channel and take one turn
-        var session = await CopilotSessionChannel.CreateConfinedSessionAsync(runtime.Client, config, TestContext.Current.CancellationToken);
+        var session = await CopilotSessionChannel.CreateConfinedSessionAsync(runtime, config, TestContext.Current.CancellationToken);
         try
         {
             _ = await session.SendAndWaitAsync("Reply with OK only.", TurnTimeout, TestContext.Current.CancellationToken);
@@ -878,7 +889,7 @@ public sealed class CopilotLiveTests
         var events = RecordMcpEvents(config, "L14e");
 
         // Act: open the session through the production channel and take one turn
-        var session = await CopilotSessionChannel.CreateConfinedSessionAsync(runtime.Client, config, TestContext.Current.CancellationToken);
+        var session = await CopilotSessionChannel.CreateConfinedSessionAsync(runtime, config, TestContext.Current.CancellationToken);
         try
         {
             _ = await session.SendAndWaitAsync("Reply with OK only.", TurnTimeout, TestContext.Current.CancellationToken);
@@ -962,7 +973,7 @@ public sealed class CopilotLiveTests
         };
 
         // Act
-        var session = await CopilotSessionChannel.CreateConfinedSessionAsync(_live.Client, config, TestContext.Current.CancellationToken);
+        var session = await CopilotSessionChannel.CreateConfinedSessionAsync(_live.Runtime, config, TestContext.Current.CancellationToken);
         var controlSession = await _live.Client.CreateSessionAsync(control, TestContext.Current.CancellationToken);
         try
         {

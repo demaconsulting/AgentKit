@@ -29,13 +29,12 @@ prompt and the default must be safe without asking. A host that wants a policy o
 an agent, where that choice is offered. This is a reversible judgment call, recorded rather than
 assumed.
 
-**Ownership follows the contract this package already records.** The host starts and disposes the
-`CopilotRuntime`; this factory holds its client and disposes nothing. It takes no client of the host's,
-so every session it creates runs under the confinement that runtime guarantees. Each session it
-opens belongs to the `CopilotProviderSession` it hands back — and where it cannot hand one back, to
-this factory's own failure path.
+**Ownership follows the contract this package already records.** The host starts and disposes the `CopilotRuntime`; this
+factory holds the runtime — never its client — and disposes nothing. It takes no client of the host's, so every session
+it creates runs under the confinement that runtime guarantees. Each session it opens belongs to the
+`CopilotProviderSession` it hands back — and where it cannot hand one back, to this factory's own failure path.
 
-Safe for concurrent use: creating a session reads the runtime's client and the model name and
+Safe for concurrent use: creating a session reads the runtime and the model name and
 touches nothing else this factory owns, and each session gets an observer and a runtime session of
 its own.
 
@@ -130,7 +129,8 @@ rather than asserted.
 ### Data Model
 
 - **`_opener`** (`CopilotChannelOpener`) — Opens one runtime session per rotation. In production, a
-  session on the runtime's client; in a test, a scripted channel. See *CopilotTurnChannel Unit Design*.
+  session on the runtime, whose client the opener reads at each open; in a test, a scripted channel.
+  See *CopilotTurnChannel Unit Design*.
 - **`_model`** (`string?`) — The model backing every session this factory creates, or null to leave
   the choice to the runtime.
 - **`_maxWindowTokens`** (`int?`) — The ceiling each session accounts its window against, or null to
@@ -147,10 +147,13 @@ rather than asserted.
 
 **Purpose:** Hold what every session this factory creates needs, and nothing else.
 
-**Algorithm:** Reject a null runtime and a ceiling below one. Build the production channel opener over
-the runtime's client — one that deletes each session when it is released, because a rotated session is
-finished with by definition — once, so the client reference is captured in exactly one place and every
-session a rotation creates demonstrably runs on the runtime the host started. Record the model name without
+**Algorithm:** Reject a null runtime and a ceiling below one, and check the runtime is not disposed
+(`CopilotRuntime.ThrowIfDisposed`). Build the production channel opener over the runtime — one that
+deletes each session when it is released, because a rotated session is finished with by definition —
+once, so every session a rotation creates demonstrably runs on the runtime the host started. The
+opener is handed the runtime, not its client, and reads the client at each open and release: the SDK
+restarts a disposed client on demand, so a factory that held the client would bring a runtime the
+host had disposed back to life. Record the model name without
 checking it: only the runtime knows which models the signed-in user may use, so an unrecognized name
 is refused at session creation rather than here. Record the window ceiling as stated, and the working
 directory without checking it: the runtime resolves it when a session is created.
@@ -250,6 +253,7 @@ asserts on it directly — the configuration no longer carries it.
 | --- | --- |
 | Null `runtime` or `opener` | `ArgumentNullException` propagates |
 | Disposed `runtime` | `ObjectDisposedException` propagates |
+| `runtime` disposed after construction | `ObjectDisposedException` from the next `CreateAsync`; nothing started |
 | Window ceiling below one | `ArgumentOutOfRangeException` propagates |
 | Null `seed` | `ArgumentNullException` propagates |
 | Cancellation before opening | `OperationCanceledException`; nothing is opened |
@@ -268,8 +272,8 @@ asserts on it directly — the configuration no longer carries it.
   *CopilotSessionObserver Unit Design*.
 - **CopilotTurnChannel** — opens and owns each runtime session; see *CopilotTurnChannel Unit
   Design*.
-- **CopilotRuntime** — the runtime whose client every session runs on; see *CopilotRuntime Unit
-  Design*.
+- **CopilotRuntime** — the runtime every session runs on, whose client the opener reads at each open
+  and release; see *CopilotRuntime Unit Design*.
 - **Microsoft.Copilot.SDK** — supplies `CopilotClient`, `CreateSessionOptions` and the session event
   type; see *Microsoft.Copilot.SDK Design*.
 

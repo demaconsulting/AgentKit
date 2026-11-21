@@ -612,6 +612,58 @@ public class CopilotAgentFactoryTests
     }
 
     /// <summary>
+    ///     Proves an agent never starts its runtime again once the host has disposed it. The SDK
+    ///     restarts a disposed client on demand, so a run that reached the client would bring a
+    ///     runtime the host had stopped back to life. A run without a conversation, the first run of a
+    ///     conversation and a run that resumes one must each fail with the runtime's disposal instead.
+    /// </summary>
+    [Fact]
+    public async Task CopilotAgentFactory_Create_RuntimeDisposedAfterCreation_RunsFailWithoutStartingTheRuntime()
+    {
+        // Arrange: an agent on a runtime whose client can never start, so an attempt to start it
+        // would fail as a start failure rather than as the runtime's disposal
+        var runtime = RuntimeThatCannotStart();
+        var agent = CopilotAgentFactory.Create(runtime, [MakeTool("doc_read")]);
+        var conversation = await agent.CreateSessionAsync(TestContext.Current.CancellationToken);
+        var resumable = (CopilotAgentSession)await agent.CreateSessionAsync(TestContext.Current.CancellationToken);
+        resumable.SessionId = "session-1";
+        await runtime.DisposeAsync();
+
+        // Act
+        var oneOff = await Assert.ThrowsAsync<ObjectDisposedException>(
+            () => agent.RunAsync("q", cancellationToken: TestContext.Current.CancellationToken));
+        var first = await Assert.ThrowsAsync<ObjectDisposedException>(
+            () => agent.RunAsync("q", conversation, cancellationToken: TestContext.Current.CancellationToken));
+        var resumed = await Assert.ThrowsAsync<ObjectDisposedException>(
+            () => agent.RunAsync("q", resumable, cancellationToken: TestContext.Current.CancellationToken));
+
+        // Assert: each run was refused by the runtime itself, before any start was attempted
+        Assert.Equal(nameof(CopilotRuntime), oneOff.ObjectName);
+        Assert.Equal(nameof(CopilotRuntime), first.ObjectName);
+        Assert.Equal(nameof(CopilotRuntime), resumed.ObjectName);
+    }
+
+    /// <summary>
+    ///     Builds a runtime over a client that can never start: its runtime path names no file, so
+    ///     an attempt to start it fails, spawning nothing, rather than succeeding unseen.
+    /// </summary>
+    /// <returns>The runtime. Nothing has been started.</returns>
+    private static CopilotRuntime RuntimeThatCannotStart()
+    {
+        var temporary = Path.GetTempPath();
+        var unique = Guid.NewGuid().ToString("N");
+        return new CopilotRuntime(
+            new CopilotClient(new CopilotClientOptions
+            {
+                Mode = CopilotClientMode.Empty,
+                Runtime = RuntimeConnection.ForSpawnedStdio(
+                    path: Path.Combine(temporary, "agentkit-no-such-runtime-" + unique),
+                    baseDirectory: Path.Combine(temporary, unique)),
+            }),
+            Path.Combine(temporary, unique));
+    }
+
+    /// <summary>
     ///     Builds a no-op tool carrying the given name.
     /// </summary>
     /// <param name="name">The tool name.</param>

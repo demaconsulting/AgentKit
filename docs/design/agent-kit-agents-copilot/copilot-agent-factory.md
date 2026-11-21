@@ -151,14 +151,17 @@ client the host built, because none of the runtime's guarantees could hold on on
 
 **Algorithm:**
 
-1. Reject a null `runtime`; read its client, which throws `ObjectDisposedException` when the runtime
-   has been disposed.
-2. Hand the arguments to `CreateAgent` with the production channels over that client: an opener that
+1. Reject a null `runtime`; check it is not disposed (`CopilotRuntime.ThrowIfDisposed`), which throws
+   `ObjectDisposedException` when it has been.
+2. Hand the arguments to `CreateAgent` with the production channels over that runtime: an opener that
    creates a session and **keeps** it on release, a resumer that resumes a recorded session and keeps
    it too, and an opener for a run made without a conversation that **deletes** the session on
    release. A conversation continues on its next run, so its sessions are never deleted by AgentKit.
    A run made without a conversation has nothing that could resume it, so its session is deleted;
-   see *CopilotTurnChannel Unit Design*.
+   see *CopilotTurnChannel Unit Design*. The channels are handed the runtime, not its client, and
+   each open, resume and release reads the client: the SDK restarts a disposed client on demand, so
+   an agent that held the client would bring a runtime the host had disposed back to life. Once the
+   runtime is disposed, every run fails with `ObjectDisposedException` and nothing is started.
 3. Return the agent as an `AIAgent`.
 
 **Throws:** `ArgumentNullException` when `runtime` or `tools` is null, or a tool is null;
@@ -181,7 +184,7 @@ path policy.
 
 #### CreateAgent(tools, instructions, onPermissionRequest, name, model, workingDirectory, opener, resumer, ephemeralOpener)
 
-Internal seam behind `Create`: production passes channels over the runtime's client, a test passes a
+Internal seam behind `Create`: production passes channels over the runtime, a test passes a
 scripted runtime, and everything else is shared.
 
 **Algorithm:**
@@ -432,6 +435,7 @@ incentive to bypass it.
 | --- | --- |
 | Null `runtime` | `ArgumentNullException` propagates |
 | Disposed `runtime` | `ObjectDisposedException` propagates |
+| `runtime` disposed after the agent was built | `ObjectDisposedException` on the next run; nothing started |
 | Null `tools`, or a null tool entry | `ArgumentNullException` propagates |
 | Empty `tools` on the agent path | `ArgumentException` propagates |
 | Two tools sharing a name | `ArgumentException` propagates |
@@ -442,8 +446,8 @@ incentive to bypass it.
 ### Dependencies
 
 - **CopilotAgent** — the agent `CreateAgent` constructs; see *CopilotAgent Unit Design*.
-- **CopilotRuntime** — the runtime `Create` takes, whose client the channels run on; see
-  *CopilotRuntime Unit Design*.
+- **CopilotRuntime** — the runtime `Create` takes, whose client the channels read at every open,
+  resume and release; see *CopilotRuntime Unit Design*.
 - **CopilotTurnChannel** — supplies the keeping opener, the resumer and the deleting opener (for a run
   made without a conversation) that `Create` hands the agent; see *CopilotTurnChannel Unit Design*.
 - **Microsoft.Copilot.SDK** — supplies `CopilotClient`, `CreateSessionOptions`, `ResumeSessionOptions`

@@ -32,7 +32,7 @@ namespace DemaConsulting.AgentKit.Agents.Copilot;
 ///     composes an agent, where that choice is offered.
 ///     </para>
 ///     <para>
-///     Safe for concurrent use: creating a session reads the runtime's client, the model name and
+///     Safe for concurrent use: creating a session reads the runtime, the model name and
 ///     the working directory and touches nothing else this factory owns, and each session gets an observer and a runtime
 ///     session of its own.
 ///     </para>
@@ -96,7 +96,7 @@ public sealed class CopilotProviderSessionFactory : IProviderSessionFactory
 
     /// <summary>
     ///     Opens one runtime session per rotation. In production a real Copilot session on the
-    ///     runtime's client; in a test, a scripted channel.
+    ///     runtime, whose client it reads at each open; in a test, a scripted channel.
     /// </summary>
     private readonly CopilotChannelOpener _opener;
 
@@ -124,7 +124,8 @@ public sealed class CopilotProviderSessionFactory : IProviderSessionFactory
     /// <param name="runtime">
     ///     The Copilot runtime every session runs on, from <see cref="CopilotRuntime.StartAsync"/>.
     ///     Must not be <see langword="null"/> or disposed. Whoever started it disposes it: this
-    ///     factory disposes it never, and a session created after it was disposed fails.
+    ///     factory disposes it never, and a session created after it was disposed fails with
+    ///     <see cref="ObjectDisposedException"/> without the runtime being started again.
     /// </param>
     /// <param name="model">
     ///     The Copilot model to back each session — for example <c>gpt-5.4-mini</c>. When
@@ -160,8 +161,9 @@ public sealed class CopilotProviderSessionFactory : IProviderSessionFactory
     {
         ArgumentNullException.ThrowIfNull(runtime);
         ArgumentOutOfRangeException.ThrowIfLessThan(maxWindowTokens ?? 1, 1);
+        runtime.ThrowIfDisposed();
 
-        _opener = CopilotSessionChannel.Open(runtime.Client);
+        _opener = CopilotSessionChannel.Open(runtime);
         _model = model;
         _maxWindowTokens = maxWindowTokens;
         _workingDirectory = workingDirectory;

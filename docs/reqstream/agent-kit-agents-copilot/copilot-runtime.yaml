@@ -125,17 +125,27 @@ sections:
           - id: AgentKitAgentsCopilot-CopilotRuntime-LeavesNoRuntimeBehind
             title: >-
               The runtime shall release its Copilot client when the start fails or is canceled, and
-              shall release it once when the runtime is disposed, after which it can no longer be used.
+              shall release it once when the runtime is disposed, after which it can no longer be used
+              and nothing built on it starts the runtime again.
             justification: |
               A start that fails after the runtime process was launched must not leave that process
               running with nothing holding it. Whoever started the runtime disposes it, and an
               agent, provider-session factory or summarizer built on it never does; disposing twice is
               harmless, and a runtime used after disposal fails rather than reaching a stopped client.
+              The SDK restarts a disposed client on demand - its start, create, resume and delete
+              calls all reconnect a client that is not running - so an agent, provider-session factory
+              or summarizer that reached the client after disposal would bring the runtime the host
+              had stopped back to life. Each open, resume and release therefore reads the client from
+              the runtime and fails with the runtime's disposal before the SDK is reached.
             tests:
               - CopilotRuntime_StartOwned_FailedStart_DisposesTheClient
               - CopilotRuntime_StartOwned_Canceled_DisposesTheClient
               - CopilotRuntime_StartOwned_Succeeds_ReturnsTheClientUndisposed
               - CopilotRuntime_DisposeAsync_IsIdempotentAndClientIsThenUnavailable
+              - CopilotAgentFactory_Create_RuntimeDisposedAfterCreation_RunsFailWithoutStartingTheRuntime
+              - CopilotProviderSessionFactory_CreateAsync_RuntimeDisposedAfterConstruction_FailsWithoutStartingTheRuntime
+              - CopilotSummarizer_ConsolidateAsync_RuntimeDisposedAfterConstruction_FailsWithoutStartingTheRuntime
+              - CopilotSessionChannel_OpenersOnADisposedRuntime_FailWithoutStartingTheRuntime
 
           - id: AgentKitAgentsCopilot-CopilotRuntime-DeletesAKeptConversation
             title: >-

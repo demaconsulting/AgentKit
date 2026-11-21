@@ -18,6 +18,12 @@ Copilot runtime:
 - **Disposal and deletion** are exercised on a runtime constructed over a `CopilotClient` that was never started
   through the internal constructor. Constructing a client spawns nothing, and the SDK accepts the
   Empty-mode options because they carry a base directory.
+- **Nothing built on a disposed runtime starts it again.** The SDK restarts a disposed client on
+  demand, so the tests for an agent, a provider-session factory, a summarizer and the production
+  openers construct a runtime over a client that can never start: its runtime path names a file that
+  does not exist. An attempt to start it fails with the SDK's own start failure and spawns nothing, so
+  a start that should not have been attempted is observable rather than silent; the tests assert the
+  runtime's `ObjectDisposedException` instead. These tests live beside the units they drive.
 
 Nothing about the runtime's own logic is stubbed: the classification of options, the filtering of
 variables, the data-directory rules, the explanation and the disposal ordering are production code.
@@ -31,7 +37,9 @@ reach a session on it. That suite is supplementary evidence outside the trace ma
 *AgentKitAgentsCopilot System Verification Design*.
 
 Unit tests reside in `CopilotRuntimeTests.cs` within the `DemaConsulting.AgentKit.Agents.Copilot.Tests`
-project.
+project; the tests that nothing built on a disposed runtime starts it reside in
+`CopilotAgentFactoryTests.cs`, `CopilotProviderSessionFactoryTests.cs`, `CopilotSummarizerTests.cs` and
+`CopilotTurnChannelTests.cs` in the same project.
 
 ### Test Environment
 
@@ -40,8 +48,10 @@ project.
 - **External services**: None. No Copilot runtime is started, **no credential is used**, and no
   network access is made
 - **Mocking**: Delegates standing in for the client's start, creation and disposal, and a hashtable
-  standing in for the host environment; no mocking framework
-- **File system**: Directories under the system temporary folder, one per test, deleted afterwards
+  standing in for the host environment; no mocking framework. A client that cannot start — a real
+  `CopilotClient` whose runtime path names no file — stands in for a runtime that must not be started
+- **File system**: Directories under the system temporary folder, one per test, deleted afterwards;
+  the runtime path and base directory of the client that cannot start are never created
 - **Isolation**: No test reads or changes the process environment; no state is shared
 
 ### Acceptance Criteria
@@ -54,8 +64,9 @@ or any other host variable dropped; a pass-through set other than the documented
 accepted when it names a file or is a non-empty directory without the marker, or marked when refused;
 a failed start whose explanation omits the runtime's error or the direct SDK reference, or loses the
 original failure; a cancellation that is wrapped; a failed or canceled start that leaves the client
-undisposed; a disposal that is not idempotent or leaves the client usable; or invalid options or a
-blank session identifier that are accepted constitutes a failure.
+undisposed; a disposal that is not idempotent or leaves the client usable; an agent, provider-session
+factory, summarizer or production opener built on a disposed runtime that reaches the SDK client; or
+invalid options or a blank session identifier that are accepted constitutes a failure.
 
 ### Test Scenarios
 
@@ -141,7 +152,7 @@ succeeds passes through.
 
 The very same `OperationCanceledException` instance reaches the caller.
 
-#### AgentKitAgentsCopilot-CopilotRuntime-LeavesNoRuntimeBehind: Disposed on Failure, Once on Request
+#### AgentKitAgentsCopilot-CopilotRuntime-LeavesNoRuntimeBehind: Disposed on Failure, Once on Request, Never Restarted
 
 **Tests**:
 
@@ -149,10 +160,24 @@ The very same `OperationCanceledException` instance reaches the caller.
 - `CopilotRuntime_StartOwned_Canceled_DisposesTheClient`
 - `CopilotRuntime_StartOwned_Succeeds_ReturnsTheClientUndisposed`
 - `CopilotRuntime_DisposeAsync_IsIdempotentAndClientIsThenUnavailable`
+- `CopilotAgentFactory_Create_RuntimeDisposedAfterCreation_RunsFailWithoutStartingTheRuntime`
+- `CopilotProviderSessionFactory_CreateAsync_RuntimeDisposedAfterConstruction_FailsWithoutStartingTheRuntime`
+- `CopilotSummarizer_ConsolidateAsync_RuntimeDisposedAfterConstruction_FailsWithoutStartingTheRuntime`
+- `CopilotSessionChannel_OpenersOnADisposedRuntime_FailWithoutStartingTheRuntime`
 
 A start that fails or is canceled disposes the created client and rethrows; a start that succeeds
 returns the client undisposed. A runtime disposed twice disposes once, its client is then unavailable
 with `ObjectDisposedException`, and its data directory remains readable.
+
+Error path. An agent, a provider-session factory and a summarizer are built on a runtime over the
+client that cannot start, and the runtime is then disposed. The agent's run without a conversation, its
+first run of a conversation and its run on a conversation with a recorded session identifier; the
+factory's next session; and the summarizer's next consolidation each fail with
+`ObjectDisposedException` whose object name is `CopilotRuntime`. So do the production openers made
+before the disposal — `Open`, `OpenRetained` and `Resume` — and `CreateConfinedSessionAsync` and
+`ResumeConfinedSessionAsync` called after it. Had any of them reached the SDK client, the SDK would
+have tried to start it and failed with its own start failure instead, so the assertion proves no
+start was attempted. Before the fix, the agent, factory and summarizer tests failed exactly that way.
 
 #### AgentKitAgentsCopilot-CopilotRuntime-DeletesAKeptConversation: Deletion Without the Client
 

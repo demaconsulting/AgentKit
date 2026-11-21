@@ -104,80 +104,86 @@ that the confinement was re-applied.
 
 **`CopilotSessionChannel`** (sealed class) — The production implementation.
 
-- **`_client`** (`CopilotClient`) — The runtime's client the session was created on. Held only to
-  delete the session on release. Invariant: never disposed here.
+- **`_runtime`** (`CopilotRuntime`) — The runtime the session was created on. Held only to delete the
+  session on release, through the runtime's client read at that moment. Invariant: never disposed
+  here, and its client is never captured, because the SDK restarts a disposed client on demand — its
+  start, create, resume and delete calls all reconnect a client that is not running.
 - **`_session`** (`CopilotSession`) — The session handle this channel owns and releases.
 - **`_deleteOnRelease`** (`bool`) — Whether release also asks the runtime to delete the session's
   persisted state. Invariant: fixed by the factory method that opened the channel.
 
 ### Key Methods
 
-#### Open(CopilotClient client)
+#### Open(CopilotRuntime runtime)
 
 **Purpose:** Produce the opener the session engine, the summarizer and an agent's run made without a
 conversation create their sessions through.
 
-**Algorithm:** Return a delegate that creates a session from the options on `client` and wraps it in
-a channel that **deletes** the session on release. Produced once per factory rather than per session,
-so the client reference is captured in exactly one place and every session a rotation creates
-demonstrably runs on the same client the runtime started.
+**Algorithm:** Return a delegate that creates a session from the options on `runtime` through
+`CreateConfinedSessionAsync` and wraps it in a channel that **deletes** the session on release.
+Produced once per factory rather than per session, so every session a rotation creates demonstrably
+runs on the runtime the host started. The delegate holds the runtime, never its client: each step
+reads `runtime.Client` when it runs, so after the host disposes the runtime the next open fails with
+`ObjectDisposedException` instead of the SDK restarting the client.
 
-**Preconditions:** `client` is not null. Production passes the client of a `CopilotRuntime`, which is
-already started; the opt-in live suite also passes hostile CodingAgent clients through this internal
-seam. A client not yet started, or whose connection was lost, is started on the first creation,
-through `CopilotRuntime.StartClientAsync`.
+**Preconditions:** `runtime` is not null. Production passes the `CopilotRuntime` the host started; the
+opt-in live suite also wraps hostile CodingAgent clients in a `CopilotRuntime` through its internal
+constructor and opens on them through this seam. A client not yet started, or whose connection was
+lost, is started on the first creation, through `CopilotRuntime.StartClientAsync`.
 
-**Postconditions:** An opener over that client; every session it creates went through
-`CreateConfinedSessionAsync`.
+**Postconditions:** An opener over that runtime; every session it creates went through
+`CreateConfinedSessionAsync`; on a disposed runtime it fails before any start.
 
-#### OpenRetained(CopilotClient client)
+#### OpenRetained(CopilotRuntime runtime)
 
 **Purpose:** Produce the opener an agent creates a conversation's first session through.
 
 **Algorithm:** As `Open`, but the channel **keeps** the session on release, so the conversation can be
 resumed by `Resume` until the host deletes it.
 
-**Preconditions:** `client` is not null. A client not yet started is started on the first creation.
+**Preconditions:** `runtime` is not null. A client not yet started is started on the first creation.
 
-**Postconditions:** An opener over that client; every session it creates went through
-`CreateConfinedSessionAsync`.
+**Postconditions:** An opener over that runtime; every session it creates went through
+`CreateConfinedSessionAsync`; on a disposed runtime it fails before any start.
 
-#### Resume(CopilotClient client)
+#### Resume(CopilotRuntime runtime)
 
 **Purpose:** Produce the resumer an agent reopens a recorded session through on every later run.
 
 **Algorithm:** Return a delegate that resumes the session with the given identifier and options on
-`client` through `ResumeConfinedSessionAsync` and wraps it in a channel that **keeps** the session on
+`runtime` through `ResumeConfinedSessionAsync` and wraps it in a channel that **keeps** the session on
 release.
 
-**Preconditions:** `client` is not null; the runtime still holds the session. A client not yet started is
-started on the first resumption.
+**Preconditions:** `runtime` is not null; the runtime still holds the session. A client not yet
+started is started on the first resumption.
 
-**Postconditions:** A resumer over that client; a session it could not seal is released and kept,
-never deleted.
+**Postconditions:** A resumer over that runtime; a session it could not seal is released and kept,
+never deleted; on a disposed runtime it fails before any start.
 
-#### CreateConfinedSessionAsync(CopilotClient client, CreateSessionOptions config, CancellationToken cancellationToken)
+#### CreateConfinedSessionAsync(CopilotRuntime runtime, CreateSessionOptions config, CancellationToken cancellationToken)
 
 **Purpose:** Create a session through the confining protocol: the one path every production opener
 shares, and the path the opt-in live suite uses to inspect a session opened exactly as production
 opens one.
 
-**Algorithm:** `OpenConfinedAsync` with discovery on `client` for the options' working directory, the
-client's session creation, the live seal, and, as the abandon step, `ReleaseAsync` with the handle's
-release and the client's deletion of the session.
+**Algorithm:** `OpenConfinedAsync` with discovery on the runtime's client for the options' working
+directory, the client's session creation, the live seal, and, as the abandon step, `ReleaseAsync`
+with the handle's release and the client's deletion of the session. Each step — discovery, creation,
+the abandoning deletion — reads `runtime.Client` when it runs, so a disposed runtime fails the step
+with `ObjectDisposedException` rather than being restarted.
 
-**Preconditions:** `client` and `config` are not null.
+**Preconditions:** `runtime` and `config` are not null.
 
 **Postconditions:** A sealed session the caller owns, or an exception with no session left behind.
 
-#### ResumeConfinedSessionAsync(CopilotClient client, string sessionId, ResumeSessionOptions config, CancellationToken cancellationToken)
+#### ResumeConfinedSessionAsync(CopilotRuntime runtime, string sessionId, ResumeSessionOptions config, CancellationToken cancellationToken)
 
 **Purpose:** Resume a session through the confining protocol.
 
 **Algorithm:** As `CreateConfinedSessionAsync`, resuming rather than creating, with `ReleaseAsync` of
-the handle alone as the abandon step.
+the handle alone as the abandon step; each step reads `runtime.Client` when it runs.
 
-**Preconditions:** `client`, `sessionId` and `config` are not null.
+**Preconditions:** `runtime`, `sessionId` and `config` are not null.
 
 **Postconditions:** A sealed session the caller owns, or an exception with the conversation kept.
 
@@ -278,7 +284,9 @@ producing one.
 channel was opened by `Open`.
 
 **Algorithm:** Call `ReleaseAsync` with the session handle's own release and, when `_deleteOnRelease`
-is set, the client's deletion of the session.
+is set, a deletion of the session through `_runtime.Client` read at that moment. On a runtime the host
+has disposed, that read throws `ObjectDisposedException` inside `ReleaseAsync`, which swallows it like
+any other deletion failure, so a disposed runtime is never restarted to delete a session.
 
 **Preconditions:** None.
 
@@ -317,6 +325,7 @@ recoverable disk state.
 | Turn canceled by the caller | `OperationCanceledException` propagates |
 | Runtime failure during a turn | Propagates to the provider session, summarizer or agent |
 | Starting the client fails while opening | Explained by `CopilotRuntime.StartClientAsync`; nothing opened |
+| Runtime disposed before an open or resume | `ObjectDisposedException` from `Client`; nothing started |
 | MCP discovery fails | Propagates from the opener or resumer; nothing opened |
 | Creating or resuming a session fails | Propagates from the opener or resumer; nothing to release |
 | The seal fails | Session abandoned (see below); the failure propagates |
@@ -324,6 +333,7 @@ recoverable disk state.
 | The runtime refuses a disable, as an owned MCP installation may | `RemoteRpcException` propagates; abandoned |
 | Session release fails in transit | Swallowed; the handle is abandoned either way |
 | Session deletion fails on release | Swallowed; the handle is already released |
+| Runtime disposed before a deleting release | Swallowed as a deletion failure; not restarted |
 
 A seal fails when the runtime refuses the plugins patch, the listing or a disable, or when a server
 stays enabled. The session is then abandoned before the failure propagates: a created session is
@@ -345,7 +355,8 @@ discards an error — everywhere the system cannot know something it needs, it r
   opening protocol uses: the client's MCP discovery, the session's options patch with its plugin
   options, and the session's MCP configuration listing and disable; see
   *Microsoft.Copilot.SDK Design*.
-- **CopilotRuntime** — its explained start runs before discovery, so a runtime that cannot start is
+- **CopilotRuntime** — supplies the client, read at every step so a disposed runtime is refused rather
+  than restarted; its explained start runs before discovery, so a runtime that cannot start is
   explained on this path too; see *CopilotRuntime Unit Design*.
 
 ### Callers

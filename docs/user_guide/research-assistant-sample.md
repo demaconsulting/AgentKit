@@ -212,7 +212,7 @@ dotnet run --project samples/research-assistant -- \
 The Copilot provider needs nothing installed beyond the .NET SDK — installing the Copilot CLI is not
 required. The sample references `Microsoft.Copilot.SDK` directly, so its first build downloads the
 Copilot runtime (about 100 MB, adding about 356 MB to the sample's output), and it authenticates as
-the GitHub user signed in on the machine — through `gh auth login` or a Copilot sign-in — or with a
+the GitHub user signed in with the GitHub CLI (`gh auth login`, with `gh` on `PATH`) or with a
 token in `GH_TOKEN`. AgentKit starts the runtime itself, with none of the shell's `COPILOT_`
 variables, so the sample runs from a Copilot CLI shell too. The runtime keeps its state in
 `AgentKit/research-assistant/copilot-runtime` under the user's local application data, a directory AgentKit

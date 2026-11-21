@@ -281,7 +281,7 @@ in exactly the same way.
 
 - The .NET SDK matching the repository's `global.json`.
 - For `--provider copilot`:
-  - A signed-in GitHub user with Copilot access — through `gh auth login` or a Copilot sign-in — or
+  - A GitHub user with Copilot access signed in with the GitHub CLI (`gh auth login`, with `gh` on `PATH`), or
     a token in `GH_TOKEN`. Installing the Copilot CLI is **not** required.
   - Network access on the first build: the sample references `Microsoft.Copilot.SDK` directly, so
     that build downloads the Copilot runtime (about 100 MB, adding about 356 MB to the sample's
