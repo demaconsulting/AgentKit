@@ -25,6 +25,8 @@ sections:
                 ImagePromotingChatClient_GetResponseAsync_ToolResultWithImage_AddsUserMessageCarryingTheSameDataContent
               - >-
                 ImagePromotingChatClient_GetResponseAsync_ToolResultWithContentList_PromotesOnlyTheImageParts
+              - >-
+                ImagePromotingChatClient_GetResponseAsync_ToolResultWithTwoImagesInList_EachReplacedInPlaceAndBothPromotedInOrder
 
           - id: AgentKitCore-ImagePromotingChatClient-ToolResultCarriesNoImageBytes
             title: >-
@@ -49,6 +51,10 @@ sections:
                 ImagePromotingChatClient_GetResponseAsync_ToolResultWithCaptionAndImage_CaptionKeptImageReplaced
               - >-
                 ImagePromotingChatClient_GetStreamingResponseAsync_ToolResultWithImage_ToolMessageCarriesPlaceholder
+              - >-
+                ImagePromotingChatClient_GetResponseAsync_ToolResultWithTwoImagesInList_EachReplacedInPlaceAndBothPromotedInOrder
+              - >-
+                ImagePromotingChatClient_GetResponseAsync_ToolMessageWithParallelImageResults_EveryResultReplacedAndCallerUntouched
 
           - id: AgentKitCore-ImagePromotingChatClient-CallerMessagesUnchanged
             title: >-
@@ -62,6 +68,8 @@ sections:
               the next request needs to promote again.
             tests:
               - ImagePromotingChatClient_GetResponseAsync_CallerMessages_AreNotModified
+              - >-
+                ImagePromotingChatClient_GetResponseAsync_ToolMessageWithParallelImageResults_EveryResultReplacedAndCallerUntouched
 
           - id: AgentKitCore-ImagePromotingChatClient-AnnouncesAttachment
             title: >-

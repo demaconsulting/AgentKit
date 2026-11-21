@@ -43,7 +43,7 @@ Unit tests reside in `ImagePromotingChatClientTests.cs`, with the fake client in
 
 ### Acceptance Criteria
 
-A unit test run passes when all fourteen scenarios below pass without error or exception beyond those
+A unit test run passes when all sixteen scenarios below pass without error or exception beyond those
 explicitly asserted. Any image that fails to reach a user message, any content instance that is
 copied rather than carried, any message dropped or reordered, any message added for a text-only
 tool result or for content that is not an image, any promoted message that does not land
@@ -85,6 +85,31 @@ and a placeholder naming `image/jpeg` second, with no `DataContent` left.
 `ImagePromotingChatClient_GetStreamingResponseAsync_ToolResultWithImage_ToolMessageCarriesPlaceholder`
 
 Asserts the streamed request's tool result is the placeholder, as on the non-streaming path.
+
+#### AgentKitCore-ImagePromotingChatClient-ToolResultCarriesNoImageBytes: Two Images in One Result Are Each Replaced in Place
+
+**Test**:
+`ImagePromotingChatClient_GetResponseAsync_ToolResultWithTwoImagesInList_EachReplacedInPlaceAndBothPromotedInOrder`
+
+A content list interleaving text with a 4-byte `image/png` and a 6-byte `image/jpeg`. Asserts the
+forwarded result keeps the same four positions: both text instances where they were, and each
+image replaced by its own placeholder naming its media type and size, with no `DataContent` left.
+Asserts the one promoted user message carries the announcement followed by both image instances in
+the order they appeared. Also linked to `AgentKitCore-ImagePromotingChatClient-PromoteImages`.
+
+#### AgentKitCore-ImagePromotingChatClient-ToolResultCarriesNoImageBytes: Parallel Image Results Are Each Replaced
+
+**Test**:
+`ImagePromotingChatClient_GetResponseAsync_ToolMessageWithParallelImageResults_EveryResultReplacedAndCallerUntouched`
+
+One tool message holding two function results, as a function-invocation loop produces for parallel
+calls: a lone image under `call-1` and a caption-then-image list under `call-2`. Asserts the
+forwarded copy keeps both call identifiers in order, that the first result is the `image/png`
+placeholder and the second is the same caption followed by the `image/jpeg` placeholder, that no
+`DataContent` remains in any result, and that one promoted user message carries both images in
+order. Also asserts the caller's tool message still holds the same contents list, the same two
+result instances and the same image and part-list instances, so this scenario is also linked to
+`AgentKitCore-ImagePromotingChatClient-CallerMessagesUnchanged`.
 
 #### AgentKitCore-ImagePromotingChatClient-CallerMessagesUnchanged: The Caller's Messages Are Not Modified
 

@@ -406,6 +406,149 @@ public class ImagePromotingChatClientTests
     }
 
     /// <summary>
+    ///     Proves that a content list carrying two images has each replaced in place by its own
+    ///     placeholder, and that both are promoted in the order they appeared.
+    /// </summary>
+    /// <remarks>
+    ///     A tool may return several images interleaved with text. Every image must leave the
+    ///     tool result, the surrounding text must keep its position, and the placeholders must
+    ///     be distinguishable so the model can match each one to the image it stands for.
+    /// </remarks>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task ImagePromotingChatClient_GetResponseAsync_ToolResultWithTwoImagesInList_EachReplacedInPlaceAndBothPromotedInOrder()
+    {
+        // Arrange: a tool result interleaving text with two images of different types and sizes
+        var png = new DataContent(SampleBytes, "image/png");
+        var jpeg = new DataContent(new byte[] { 0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10 }, "image/jpeg");
+        var first = new TextContent("Before:");
+        var second = new TextContent("After:");
+        var parts = new List<AIContent> { first, png, second, jpeg };
+        using var inner = new ScriptedChatClient();
+        using var client = new ImagePromotingChatClient(inner);
+        var messages = new List<ChatMessage>
+        {
+            new(ChatRole.User, "Compare them."),
+            ToolMessage(parts)
+        };
+
+        // Act: send the conversation through the decorator
+        await client.GetResponseAsync(messages, cancellationToken: TestContext.Current.CancellationToken);
+
+        // Assert: each image replaced in place by its own placeholder, the text kept where it was
+        Assert.Equal(3, inner.ReceivedMessages.Count);
+        var forwarded = Assert.IsType<FunctionResultContent>(Assert.Single(inner.ReceivedMessages[1].Contents));
+        Assert.Equal("call-1", forwarded.CallId);
+        var forwardedParts = Assert.IsAssignableFrom<IEnumerable<AIContent>>(forwarded.Result).ToList();
+        Assert.Equal(4, forwardedParts.Count);
+        Assert.Same(first, forwardedParts[0]);
+        Assert.Equal(
+            "[Image promoted to the following user message: image/png, 4 bytes.]",
+            Assert.IsType<TextContent>(forwardedParts[1]).Text);
+        Assert.Same(second, forwardedParts[2]);
+        Assert.Equal(
+            "[Image promoted to the following user message: image/jpeg, 6 bytes.]",
+            Assert.IsType<TextContent>(forwardedParts[3]).Text);
+        Assert.DoesNotContain(forwardedParts, part => part is DataContent);
+
+        // Assert: one user message announcing the attachments, then both images in their order
+        var promoted = inner.ReceivedMessages[2];
+        Assert.Equal(ChatRole.User, promoted.Role);
+        Assert.Equal(3, promoted.Contents.Count);
+        Assert.IsType<TextContent>(promoted.Contents[0]);
+        Assert.Same(png, promoted.Contents[1]);
+        Assert.Same(jpeg, promoted.Contents[2]);
+    }
+
+    /// <summary>
+    ///     Proves that a tool message carrying parallel function results, each holding an image,
+    ///     has every result replaced while the caller's message and results are left untouched.
+    /// </summary>
+    /// <remarks>
+    ///     A function-invocation loop running calls in parallel appends one tool message holding
+    ///     a result per call. Every result must be rewritten and keep its own call identifier,
+    ///     because a result paired with the wrong call is a different answer; the images must be
+    ///     promoted once, together, after that one tool message; and the caller's copy must still
+    ///     record what each tool actually returned.
+    /// </remarks>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task ImagePromotingChatClient_GetResponseAsync_ToolMessageWithParallelImageResults_EveryResultReplacedAndCallerUntouched()
+    {
+        // Arrange: one tool message with two results, a lone image and a caption-then-image list
+        var png = new DataContent(SampleBytes, "image/png");
+        var jpeg = new DataContent(new byte[] { 0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10 }, "image/jpeg");
+        var caption = new TextContent("A chart.");
+        var captionedParts = new List<AIContent> { caption, jpeg };
+        var firstResult = new FunctionResultContent("call-1", png);
+        var secondResult = new FunctionResultContent("call-2", captionedParts);
+        var originalContents = new List<AIContent> { firstResult, secondResult };
+        var toolMessage = new ChatMessage(ChatRole.Tool, originalContents);
+        using var inner = new ScriptedChatClient();
+        using var client = new ImagePromotingChatClient(inner);
+        var messages = new List<ChatMessage>
+        {
+            new(ChatRole.User, "Draw both."),
+            toolMessage
+        };
+
+        // Act: send the conversation through the decorator
+        await client.GetResponseAsync(messages, cancellationToken: TestContext.Current.CancellationToken);
+
+        // Assert: a forwarded copy whose results keep their call identifiers, in order
+        Assert.Equal(3, inner.ReceivedMessages.Count);
+        var forwarded = inner.ReceivedMessages[1];
+        Assert.NotSame(toolMessage, forwarded);
+        Assert.Equal(ChatRole.Tool, forwarded.Role);
+        var results = forwarded.Contents.Cast<FunctionResultContent>().ToList();
+        Assert.Equal(2, results.Count);
+        Assert.Equal(["call-1", "call-2"], results.Select(result => result.CallId));
+
+        // Assert: each result carries its placeholder in place of its image, and no image remains
+        Assert.Equal(
+            "[Image promoted to the following user message: image/png, 4 bytes.]",
+            Assert.IsType<string>(results[0].Result));
+        var secondParts = Assert.IsAssignableFrom<IEnumerable<AIContent>>(results[1].Result).ToList();
+        Assert.Equal(2, secondParts.Count);
+        Assert.Same(caption, secondParts[0]);
+        Assert.Equal(
+            "[Image promoted to the following user message: image/jpeg, 6 bytes.]",
+            Assert.IsType<TextContent>(secondParts[1]).Text);
+        Assert.DoesNotContain(forwarded.Contents, content => content is DataContent);
+        Assert.DoesNotContain(results, ContainsImageBytes);
+
+        // Assert: one user message after the tool message carrying both images in order
+        var promoted = inner.ReceivedMessages[2];
+        Assert.Equal(ChatRole.User, promoted.Role);
+        Assert.Equal(3, promoted.Contents.Count);
+        Assert.IsType<TextContent>(promoted.Contents[0]);
+        Assert.Same(png, promoted.Contents[1]);
+        Assert.Same(jpeg, promoted.Contents[2]);
+
+        // Assert: the caller's message, results and images are untouched
+        Assert.Equal(2, messages.Count);
+        Assert.Same(originalContents, toolMessage.Contents);
+        Assert.Equal(2, originalContents.Count);
+        Assert.Same(firstResult, originalContents[0]);
+        Assert.Same(secondResult, originalContents[1]);
+        Assert.Same(png, firstResult.Result);
+        Assert.Same(captionedParts, secondResult.Result);
+        Assert.Equal(2, captionedParts.Count);
+        Assert.Same(jpeg, captionedParts[1]);
+
+        // Reports whether a function result still carries image bytes, alone or in a content list
+        static bool ContainsImageBytes(FunctionResultContent result)
+        {
+            return result.Result switch
+            {
+                DataContent => true,
+                IEnumerable<AIContent> contents => contents.Any(content => content is DataContent),
+                _ => false
+            };
+        }
+    }
+
+    /// <summary>
     ///     Proves that the decorator cannot be created without a client to forward to.
     /// </summary>
     [Fact]
