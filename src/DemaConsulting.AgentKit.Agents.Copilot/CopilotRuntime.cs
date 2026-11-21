@@ -262,6 +262,42 @@ public sealed class CopilotRuntime : IAsyncDisposable
     }
 
     /// <summary>
+    ///     Deletes a conversation the runtime kept, with all of its persisted state.
+    /// </summary>
+    /// <remarks>
+    ///     <para>
+    ///     An agent's conversation is kept in the data directory after every run so it can resume, and
+    ///     deleting it is the host's decision. The host passes the conversation's
+    ///     <see cref="CopilotAgentSession.SessionId"/> here once it is finished with it. This is the
+    ///     one session operation the runtime exposes, because the runtime's client is never handed
+    ///     out: a host that could reach the client could also open a session outside AgentKit's
+    ///     confinement.
+    ///     </para>
+    ///     <para>
+    ///     Side effects: asks the runtime process to delete the session's persisted state. Safe to
+    ///     call concurrently with sessions open on other conversations. The runtime reports a session
+    ///     it does not hold, or a failure to delete one, through the SDK's own exception, which
+    ///     propagates unchanged.
+    ///     </para>
+    /// </remarks>
+    /// <param name="sessionId">
+    ///     The runtime session to delete, from <see cref="CopilotAgentSession.SessionId"/>. Must not be
+    ///     <see langword="null"/>, empty or whitespace.
+    /// </param>
+    /// <param name="cancellationToken">Cancels the deletion.</param>
+    /// <returns>A task that completes when the runtime has deleted the session.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="sessionId"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentException"><paramref name="sessionId"/> is empty or whitespace.</exception>
+    /// <exception cref="ObjectDisposedException">The runtime has been disposed.</exception>
+    /// <exception cref="OperationCanceledException">The deletion was canceled.</exception>
+    public Task DeleteSessionAsync(string sessionId, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sessionId);
+
+        return Client.DeleteSessionAsync(sessionId, cancellationToken);
+    }
+
+    /// <summary>
     ///     Disposes the client, which stops the runtime process.
     /// </summary>
     /// <remarks>

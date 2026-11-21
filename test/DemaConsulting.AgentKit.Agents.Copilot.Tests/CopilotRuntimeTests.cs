@@ -544,6 +544,40 @@ public class CopilotRuntimeTests
     }
 
     /// <summary>
+    ///     Proves a missing or blank session identifier is refused before the runtime is reached.
+    /// </summary>
+    [Fact]
+    public async Task CopilotRuntime_DeleteSessionAsync_BlankSessionId_Throws()
+    {
+        // Arrange: a runtime over a client that was never started
+        using var directory = new TemporaryDirectory();
+        await using var runtime = new CopilotRuntime(
+            new CopilotClient(CopilotRuntime.BuildClientOptions(new CopilotRuntimeOptions(directory.Path), directory.Path, new Hashtable())),
+            directory.Path);
+
+        // Act / Assert
+        await Assert.ThrowsAsync<ArgumentNullException>(() => runtime.DeleteSessionAsync(null!, TestContext.Current.CancellationToken));
+        await Assert.ThrowsAsync<ArgumentException>(() => runtime.DeleteSessionAsync(" ", TestContext.Current.CancellationToken));
+    }
+
+    /// <summary>
+    ///     Proves a session cannot be deleted through a runtime that has been disposed.
+    /// </summary>
+    [Fact]
+    public async Task CopilotRuntime_DeleteSessionAsync_AfterDisposal_Throws()
+    {
+        // Arrange
+        using var directory = new TemporaryDirectory();
+        var runtime = new CopilotRuntime(
+            new CopilotClient(CopilotRuntime.BuildClientOptions(new CopilotRuntimeOptions(directory.Path), directory.Path, new Hashtable())),
+            directory.Path);
+        await runtime.DisposeAsync();
+
+        // Act / Assert
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => runtime.DeleteSessionAsync("session", TestContext.Current.CancellationToken));
+    }
+
+    /// <summary>
     ///     A directory under the system temporary folder, deleted when disposed.
     /// </summary>
     private sealed class TemporaryDirectory : IDisposable

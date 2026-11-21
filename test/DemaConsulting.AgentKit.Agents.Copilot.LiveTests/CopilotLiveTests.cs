@@ -1262,7 +1262,7 @@ public sealed class CopilotLiveTests
     {
         if (session.SessionId is { } sessionId)
         {
-            await _live.Client.DeleteSessionAsync(sessionId, TestContext.Current.CancellationToken);
+            await _live.Runtime.DeleteSessionAsync(sessionId, TestContext.Current.CancellationToken);
         }
     }
 

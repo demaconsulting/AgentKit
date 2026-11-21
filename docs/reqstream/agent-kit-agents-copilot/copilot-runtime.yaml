@@ -137,6 +137,20 @@ sections:
               - CopilotRuntime_StartOwned_Succeeds_ReturnsTheClientUndisposed
               - CopilotRuntime_DisposeAsync_IsIdempotentAndClientIsThenUnavailable
 
+          - id: AgentKitAgentsCopilot-CopilotRuntime-DeletesAKeptConversation
+            title: >-
+              The runtime shall let the host delete a conversation the runtime kept, by its session
+              identifier, refusing a missing or blank identifier and a disposed runtime, without
+              exposing the runtime's client.
+            justification: |
+              An agent keeps its conversation in the data directory so it can resume, and deleting it
+              is the host's decision. The runtime's client is never handed out, because a host that
+              could reach it could open a session outside the confinement, so the one session
+              operation a host needs is offered on the runtime itself.
+            tests:
+              - CopilotRuntime_DeleteSessionAsync_BlankSessionId_Throws
+              - CopilotRuntime_DeleteSessionAsync_AfterDisposal_Throws
+
           - id: AgentKitAgentsCopilot-CopilotRuntime-RejectsInvalidOptions
             title: >-
               The runtime shall reject missing options and a missing or blank data directory as

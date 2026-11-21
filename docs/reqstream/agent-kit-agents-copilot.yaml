@@ -396,6 +396,7 @@ sections:
           - AgentKitAgentsCopilot-CopilotRuntime-OwnsACleanDataDirectory
           - AgentKitAgentsCopilot-CopilotRuntime-OffersOnlyNeutralOptions
           - AgentKitAgentsCopilot-CopilotRuntime-LeavesNoRuntimeBehind
+          - AgentKitAgentsCopilot-CopilotRuntime-DeletesAKeptConversation
           - AgentKitAgentsCopilot-CopilotRuntime-RejectsInvalidOptions
           - AgentKitAgentsCopilot-CopilotAgentFactory-RejectsNullRuntime
         tests:
