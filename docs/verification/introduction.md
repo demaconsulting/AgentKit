@@ -168,6 +168,9 @@ constituent software items, specifically:
   across a tool-calling turn
 - **ChatClientSummarizer (Unit)** — Consolidates history through an `IChatClient` of the
   application's choosing, out of the session being compacted
+- **ToolPackContextProvider (Unit)** — Contributes AgentKit tools and instructions to every run of a
+  host-built `ChatClientAgent`, composed once per conversation, with each conversation's retention
+  persisted in its session
 - **AgentKitAgentsCopilot (System)** — Builds a Microsoft Agent Framework agent of its own from a
   GitHub Copilot `CopilotClient`, suppressing the runtime's built-in tools by deriving a
   source-qualified session allow-list from the supplied tools, and carries an AgentKit session over

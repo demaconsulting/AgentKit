@@ -19,6 +19,12 @@ must stay free of any one of them.
   `ModelName` and `ContextLength`, which is the length the instance is actually running
 - The `IChatClient` implementation's carriage of a named chat option into the Ollama request's own
   options block — how the chosen context length reaches the server on every request
+- The `IChatClient` implementation's mapping of chat content to the request: a tool result's text
+  becomes the tool message's content, and a user message's image content becomes that message's
+  `images`. Image promotion in AgentKitAgentsChatClient relies on both. OllamaSharp writes image
+  content found in a tool result into the tool message as base64 text rather than `images` — the
+  reason promotion leaves only a placeholder there. A test-only reference in the ChatClient tests
+  exercises this mapping on the wire
 
 Not used: the model-metadata, embedding, pull and generation surfaces. The metadata query is
 deliberately not used: it reports what a model file could support, which is not what the instance is

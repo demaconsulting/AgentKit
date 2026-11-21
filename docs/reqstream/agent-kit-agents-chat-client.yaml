@@ -71,6 +71,73 @@ sections:
         tests:
           - AgentKitAgentsChatClient_ImagePromotion_BuilderExtension_PromotesBeneathFunctionInvocation
 
+      - id: AgentKitAgentsChatClient-ImagePromotion-NoImageBytesOnTheWire
+        title: >-
+          The library shall deliver a tool-returned image through OllamaSharp to the Ollama chat
+          request once, in a user message's images, with the tool message carrying only a short
+          placeholder and no image bytes.
+        justification: |
+          OllamaSharp serializes image content found in a tool result into the tool message as base64
+          text, which Ollama does not read as an image. Promotion alone delivered the image but left
+          that text in place: a 316 KB image became a 421,629-character tool message that truncated
+          the context and lost the user's question. Only the request body Ollama receives shows
+          whether the image travels once, so the guarantee is stated, and proven, at the wire.
+        children:
+          - AgentKit-OTS-OllamaSharp-ChatWire
+        tests:
+          - AgentKitAgentsChatClient_ImagePromotion_OverOllamaSharp_ToolMessageCarriesNoImageBytes
+
+      - id: AgentKitAgentsChatClient-ContextProvider-ToolsPerConversation
+        title: >-
+          The library shall contribute a composed set of AgentKit tools, and optional instructions,
+          to every run of a host-built chat-client agent, composing the tools once per conversation
+          with each conversation's own retention of large outputs.
+        justification: |
+          A host that builds its own Agent Framework agent wants AgentKit's tools without AgentKit's
+          factory, and the tools carry state that belongs to one conversation. The framework's context
+          provider hook contributes tools per run; composing once per conversation keeps each
+          conversation's retained outputs, task list and memory its own.
+        children:
+          - AgentKitAgentsChatClient-ToolPackContextProvider-ContributesToolsAndInstructions
+          - AgentKitAgentsChatClient-ToolPackContextProvider-ComposesOncePerSession
+          - AgentKitAgentsChatClient-ToolPackContextProvider-RetentionPerSession
+          - AgentKitAgentsChatClient-ToolPackContextProvider-GuardsForeignTools
+          - AgentKitAgentsChatClient-ToolPackContextProvider-RefusesOtherAgents
+          - AgentKitAgentsChatClient-ToolPackContextProvider-DeclaresStateKey
+          - AgentKitAgentsChatClient-ToolPackContextProvider-RejectsInvalidConfiguration
+          - AgentKit-OTS-MicrosoftAgentsAIAbstractions-AIContextProvider
+        tests:
+          - AgentKitAgentsChatClient_ContextProvider_ToolsReachTheProviderAndRun
+          - AgentKitAgentsChatClient_ContextProvider_ConversationsAreIsolated
+
+      - id: AgentKitAgentsChatClient-ContextProvider-RetentionSurvivesSessionSerialization
+        title: >-
+          The library shall keep a conversation's retained outputs readable after the agent
+          serializes and deserializes its session.
+        justification: |
+          Hosts persist conversations by serializing the agent session. A model's history then
+          holds references to retained outputs, and answering them "never retained" after a reload
+          would break the promise the preview made.
+        children:
+          - AgentKitAgentsChatClient-ToolPackContextProvider-PersistsRetention
+          - AgentKitAgentsChatClient-ToolPackContextProvider-PersistsCounterWhenContentsOptedOut
+          - AgentKit-OTS-MicrosoftAgentsAIAbstractions-SessionStateBag
+        tests:
+          - AgentKitAgentsChatClient_ContextProvider_DeserializedSession_PagesAnEarlierOutput
+
+      - id: AgentKitAgentsChatClient-HistoryReducer-PlugsIntoTheAgentFramework
+        title: >-
+          The library shall let a host-built chat-client agent reduce its stored history through
+          AgentKit's chat reducer in the agent framework's in-memory history provider.
+        justification: |
+          The chat reducer exists for hosts that own their history; the agent framework's in-memory
+          history provider is the hook such a host has. Proving the reducer works there is what makes
+          the option real rather than theoretical.
+        children:
+          - AgentKit-OTS-MicrosoftAgentsAIAbstractions-ChatHistoryReducerHook
+        tests:
+          - AgentKitAgentsChatClient_ChatReducer_InMemoryHistoryProvider_ReducesStoredHistory
+
       - id: AgentKitAgentsChatClient-SessionAdapter-CarriesACoreSession
         title: >-
           The library shall carry an AgentKit Core session over any Microsoft.Extensions.AI chat

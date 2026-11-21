@@ -45,7 +45,8 @@ System tests reside in `AgentKitAgentsChatClientTests.cs` within the
 
 - **Framework**: xUnit v3 running under the .NET SDK
 - **Execution**: `dotnet test` invoked by `build.ps1` and the CI pipeline
-- **External services**: None. No provider is contacted and **no network access is used**. The
+- **External services**: None. No provider is contacted and **no network access is used**; the
+  OllamaSharp wire scenario replaces the network with a capturing HTTP handler. The
   image-promotion scenario uses a scripted `IChatClient` that contacts nothing, and the session
   scenarios use a recording `IChatClient` answering from a script
 - **File system**: None; the image is a short byte array held in the test class
@@ -93,6 +94,49 @@ scripted to call the tool and then answer. Asserts the run returns the answer an
 request carried only the placeholder in the tool result and the same image instance on a user message
 — the agent's own function-invocation loop sits above the decorator, as the extension requires.
 
+### Image Promotion: Over OllamaSharp the Tool Message Carries No Image Bytes
+
+**Test**: `AgentKitAgentsChatClient_ImagePromotion_OverOllamaSharp_ToolMessageCarriesNoImageBytes`
+
+Verifies the promotion at the HTTP wire, where the defect it fixes lives. The real OllamaSharp chat
+client runs over `CapturingHttpHandler`, which records each request body and answers first with a
+call to an image tool returning a 300 KB PNG and then with text; a `ChatClientAgent` over
+`AsBuilder().UseImagePromotion()` drives it. Asserts the second `/api/chat` body's tool message is
+under 300 characters, contains no `base64` and names `image/png`, and that the next message is a user
+message whose `images` array holds one entry. Without the placeholder this body carried the image as
+base64 text in the tool message.
+
+### Context Provider: Tools Reach the Provider and Run
+
+**Test**: `AgentKitAgentsChatClient_ContextProvider_ToolsReachTheProviderAndRun`
+
+A tool-less `ChatClientAgent` with a `ToolPackContextProvider` over a pack. The recording provider
+calls one of the pack's tools; asserts the tools were offered, the call ran, its result reached the
+provider, and the run returned the answer.
+
+### Context Provider: Conversations Are Isolated
+
+**Test**: `AgentKitAgentsChatClient_ContextProvider_ConversationsAreIsolated`
+
+Two sessions of one agent with retention configured. The first retains `output-1`; reading it in the
+second is answered "never retained".
+
+### Context Provider: A Deserialized Session Pages an Earlier Output
+
+**Test**: `AgentKitAgentsChatClient_ContextProvider_DeserializedSession_PagesAnEarlierOutput`
+
+A session retains a report and is serialized and deserialized through the agent; a search of
+`output-1` in the reloaded session finds `250:report row 250`.
+
+### Chat Reducer: The In-Memory History Provider Reduces Through AgentKit's Reducer
+
+**Test**: `AgentKitAgentsChatClient_ChatReducer_InMemoryHistoryProvider_ReducesStoredHistory`
+
+An agent whose `InMemoryChatHistoryProvider` carries an `AgentKitChatReducer` over a
+`ChatClientSummarizer`, triggered before retrieval, runs four turns with long answers. Asserts the
+summarizing client was called and the stored history holds exactly one record carrying the code
+established in the first turn.
+
 ### Session Adapter: A Core Session Runs Over a Chat Client and Reports the Provider's Occupancy
 
 **Test**: `AgentKitAgentsChatClient_Session_AnswersAndReportsTheProvidersOccupancy`
@@ -127,11 +171,13 @@ output — so retention behaves through this adapter's function-invocation loop 
 
 ## Acceptance Criteria
 
-A system-level test run passes when all seven scenarios above pass without error or exception beyond
+A system-level test run passes when all twelve scenarios above pass without error or exception beyond
 those explicitly asserted. Any agent that fails to build, any wrong name, any agent built without the
 image-promoting decorator in its client chain, any tool-returned image that fails to reach the
 provider on a user message, any content instance copied rather than carried, any session occupancy
 that is not the provider's own figure against the stated window, any conversation that fails to
 rotate when the provider reports a filling window, any consolidation sent through the conversational
-client, any replacement session that fails to carry the consolidated record, or any retained output's preview or page
-altered on its way to the provider or the transcript constitutes a failure.
+client, any replacement session that fails to carry the consolidated record, any retained output's preview or page
+altered on its way to the provider or the transcript, any image bytes in an OllamaSharp tool message, any
+contributed tool not offered or run, any reference shared between conversations or lost across a session
+reload, or any stored history the reducer hook leaves unreduced constitutes a failure.

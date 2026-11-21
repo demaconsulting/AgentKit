@@ -92,6 +92,16 @@ requires the library to translate the provider-neutral option into Ollama's own 
 
 **Requirement coverage**: `AgentKit-OTS-OllamaSharp-ContextLengthOption`.
 
+#### AgentKitAgentsChatClient_ImagePromotion_OverOllamaSharp_ToolMessageCarriesNoImageBytes
+
+**Scenario**: The real OllamaSharp `IChatClient` runs under a `ChatClientAgent` with image promotion,
+over a capturing HTTP handler, through one tool call returning a 300 KB image.
+
+**Expected**: The second request body's tool message is a short placeholder with no base64, and the
+following user message carries one entry in `images`.
+
+**Requirement coverage**: `AgentKit-OTS-OllamaSharp-ChatWire`.
+
 ### Requirements Coverage
 
 - **`AgentKit-OTS-OllamaSharp-ModelReports`**:
@@ -102,3 +112,5 @@ requires the library to translate the provider-neutral option into Ollama's own 
   OllamaContextWindow_ReadAsync_NothingLoaded_AssumesTheOllamaDefault
 - **`AgentKit-OTS-OllamaSharp-ContextLengthOption`**:
   OllamaContextSizingChatClient_GetResponseAsync_ThroughTheRealClient_SendsTheContextLengthOnTheWire
+- **`AgentKit-OTS-OllamaSharp-ChatWire`**:
+  AgentKitAgentsChatClient_ImagePromotion_OverOllamaSharp_ToolMessageCarriesNoImageBytes

@@ -9,7 +9,10 @@ package AgentKitAgentsChatClient {
      * stateless provider family - and the summarizer a rotation consolidates through. Core's
      * image-promoting decorator is installed on every agent and every session it builds, so a
      * tool-returned image reaches the model on a provider that would otherwise drop it. It
-     * carries the Microsoft.Agents.AI runtime dependency that must be kept out of Core.
+     * carries the Microsoft.Agents.AI runtime dependency that must be kept out of Core. For a host
+     * that builds its own agent or pipeline, it offers a builder extension installing the same
+     * decorator and a context provider contributing AgentKit tools per conversation, with each
+     * conversation's retained outputs persisted in its session.
      */
 
     part def AgentKitAgentsChatClientSystem {
@@ -27,5 +30,6 @@ package AgentKitAgentsChatClient {
         part chatClientProviderSessionFactory : ChatClientProviderSessionFactory;
         part promptSizeRecordingChatClient : PromptSizeRecordingChatClient;
         part chatClientSummarizer : ChatClientSummarizer;
+        part toolPackContextProvider : ToolPackContextProvider;
     }
 }

@@ -168,6 +168,9 @@ software items, specifically:
   across a tool-calling turn
 - **ChatClientSummarizer (Unit)** — Consolidates history through an `IChatClient` of the
   application's choosing, out of the session being compacted
+- **ToolPackContextProvider (Unit)** — Contributes AgentKit tools and instructions to every run of a
+  host-built `ChatClientAgent`, composed once per conversation, with each conversation's retention
+  persisted in its session
 - **AgentKitAgentsCopilot (System)** — Gives a GitHub Copilot `CopilotClient` an agent of AgentKit's
   own — a Microsoft Agent Framework `AIAgent` over confined Copilot sessions, with the runtime's
   built-in tools suppressed by deriving the session allow-list from the supplied tools — and carries
@@ -345,9 +348,10 @@ Framework's own `ChatClientAgent`; the Copilot SDK ships no Agent Framework agen
 `AgentKitAgentsCopilot` carries eight units: that agent, its factory, the runtime it starts and owns,
 a provider session, its factory, a summarizer, the observer that
 reads occupancy from the runtime's event stream, and the internal turn channel that makes all of it
-testable without a live runtime. `AgentKitAgentsChatClient` holds five:
-that factory, a provider session, its factory, a summarizer, and the recorder that reads occupancy
-from the last request of a turn. Both are flat, and the two share no code and never reference each
+testable without a live runtime. `AgentKitAgentsChatClient` holds six:
+that factory, a provider session, its factory, a summarizer, the recorder that reads occupancy
+from the last request of a turn, and the context provider that contributes AgentKit tools to a
+host-built agent per conversation. Both are flat, and the two share no code and never reference each
 other.
 
 `AgentKitAgentsOllama` is the fifth system and the odd one out: it builds no agent and carries no
@@ -485,7 +489,8 @@ src/DemaConsulting.AgentKit.Agents.ChatClient/
 ├── ChatClientProviderSession.cs           — one Core session over an IChatClient
 ├── ChatClientProviderSessionFactory.cs    — creates those sessions, holding the client, the window and the pipeline
 ├── PromptSizeRecordingChatClient.cs       — records each request's prompt size, beneath the tool-calling loop
-└── ChatClientSummarizer.cs                — consolidates history through an IChatClient
+├── ChatClientSummarizer.cs                — consolidates history through an IChatClient
+└── ToolPackContextProvider.cs             — contributes AgentKit tools per conversation to a ChatClientAgent
 
 src/DemaConsulting.AgentKit.Agents.Copilot/
 ├── CopilotAgent.cs                   — AgentKit's AIAgent over confined Copilot sessions

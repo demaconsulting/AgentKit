@@ -63,9 +63,42 @@ runtime session.
 
 **Requirement coverage**: `AgentKit-OTS-MicrosoftAgentsAIAbstractions-AIAgent`.
 
+#### AgentKitAgentsChatClient_ContextProvider_ToolsReachTheProviderAndRun
+
+**Scenario**: A `ChatClientAgent` whose only tools come from an `AIContextProvider` runs once.
+
+**Expected**: The tools are offered on the request and the agent invokes one.
+
+**Requirement coverage**: `AgentKit-OTS-MicrosoftAgentsAIAbstractions-AIContextProvider`.
+
+#### AgentKitAgentsChatClient_ContextProvider_DeserializedSession_PagesAnEarlierOutput
+
+**Scenario**: A provider writes a value to the session state bag; the agent serializes and
+deserializes the session.
+
+**Expected**: The value is read back from the deserialized session's state bag.
+
+**Requirement coverage**: `AgentKit-OTS-MicrosoftAgentsAIAbstractions-SessionStateBag`.
+
+#### AgentKitAgentsChatClient_ChatReducer_InMemoryHistoryProvider_ReducesStoredHistory
+
+**Scenario**: An agent whose `InMemoryChatHistoryProvider` carries a `ChatReducer` runs four turns.
+
+**Expected**: The reducer is called and the stored history holds its result.
+
+**Requirement coverage**: `AgentKit-OTS-MicrosoftAgentsAIAbstractions-ChatHistoryReducerHook`.
+
 ### Requirements Coverage
 
 - **`AgentKit-OTS-MicrosoftAgentsAIAbstractions-AIAgent`**:
   AgentKitAgentsCopilot_Agent_RunsAndStreamsOnTheRuntime,
   CopilotAgent_Run_ReturnsTheStreamedContentAsOneResponse,
   CopilotAgent_SerializeSession_RoundTripsTheSessionIdAndStateBag
+- **`AgentKit-OTS-MicrosoftAgentsAIAbstractions-AIContextProvider`**:
+  AgentKitAgentsChatClient_ContextProvider_ToolsReachTheProviderAndRun,
+  ToolPackContextProvider_Run_ToolsAndInstructionsReachTheChatClient
+- **`AgentKit-OTS-MicrosoftAgentsAIAbstractions-SessionStateBag`**:
+  AgentKitAgentsChatClient_ContextProvider_DeserializedSession_PagesAnEarlierOutput,
+  ToolPackContextProvider_SerializeDeserializeSession_RetainedOutputPagesAfterRestore
+- **`AgentKit-OTS-MicrosoftAgentsAIAbstractions-ChatHistoryReducerHook`**:
+  AgentKitAgentsChatClient_ChatReducer_InMemoryHistoryProvider_ReducesStoredHistory

@@ -44,10 +44,19 @@ Framework and to Core, on both of which it depends. It does decide *where* the t
 sits, because that placement is what makes the occupancy figure honest, and an application asked to
 get it right would sometimes get it wrong silently.
 
-**Retention of large tool outputs needs nothing from this system.** Core retains an oversized output
-inside the tool itself (see *ToolOutputSpill Unit Design*), so the function-invocation loop this
-system installs carries the bounded preview and every page a reader returns as ordinary tool results,
-and the transcript records exactly those. No adapter code is involved, and none was added.
+**Retention of large tool outputs needs nothing from this system's agents and sessions.** Core retains
+an oversized output inside the tool itself (see *ToolOutputSpill Unit Design*), so the
+function-invocation loop this system installs carries the bounded preview and every page a reader
+returns as ordinary tool results, and the transcript records exactly those.
+
+**A host-built agent gets AgentKit's tools per conversation.** A host that builds its own
+`ChatClientAgent` rather than calling the factory adds a `ToolPackContextProvider` to the agent's
+context providers. The provider composes AgentKit's tools — from tool packs, or from any function list,
+bounded by the result ceilings — once per conversation, contributes them with optional instructions on
+every run, and keeps each conversation's `ToolOutputRetention` in the session's state bag so a
+reference survives the agent persisting and reloading the conversation. The framework merges
+contributed tools only for a `ChatClientAgent`, so the provider refuses any other agent. The same host
+can reduce its history with Core's `AgentKitChatReducer` in the framework's in-memory history provider.
 
 ## Dependency Isolation
 
@@ -62,7 +71,7 @@ reference on, the Copilot adapter.
 
 ## Structure
 
-The system is flat: five classes, no subsystem layer, mirroring how a small system is modeled
+The system is flat: six classes, no subsystem layer, mirroring how a small system is modeled
 elsewhere in the repository. A subsystem layer would add artifacts without reducing the units anyone
 has to review. The agent factory and the session adapter share a package rather than a code path:
 both exist to make one `IChatClient` usable, and neither calls the other.
@@ -81,6 +90,9 @@ both exist to make one `IChatClient` usable, and neither calls the other.
   rather than usage summed across a tool-calling turn.
 - **ChatClientSummarizer (Unit)** — consolidates history through an `IChatClient` of the
   application's choosing, out of the session being compacted.
+- **ToolPackContextProvider (Unit)** — the Agent Framework context provider that contributes AgentKit
+  tools and instructions to every run of a host-built `ChatClientAgent`, composed once per conversation,
+  with each conversation's retention persisted in its session.
 
 ## Folder Layout
 
@@ -90,18 +102,23 @@ src/DemaConsulting.AgentKit.Agents.ChatClient/
 ├── ChatClientProviderSession.cs           — one Core session over an IChatClient
 ├── ChatClientProviderSessionFactory.cs    — creates those sessions, holding the client, the window and the pipeline
 ├── PromptSizeRecordingChatClient.cs       — records each request's prompt size, beneath the tool-calling loop
-└── ChatClientSummarizer.cs                — consolidates history through an IChatClient
+├── ChatClientSummarizer.cs                — consolidates history through an IChatClient
+└── ToolPackContextProvider.cs             — contributes AgentKit tools per conversation to a ChatClientAgent
 ```
 
 ## Dependencies
 
-- **AgentKitCore** — supplies `ImagePromotingChatClient`, the decorator the factory installs, and the
+- **AgentKitCore** — supplies `ImagePromotingChatClient`, the decorator the factory installs,
+  `ToolPackBuilder`, `GuardedToolFactory.AsGuarded` and `ToolOutputRetention`, which the context
+  provider composes, and the
   session contracts the adapter implements: `IProviderSession`, `IProviderSessionFactory`,
   `ISummarizer`, `ProviderSessionSeed`, `ProviderTurn`, `TranscriptEntry`, `ContextUsage` and
   `ConsolidationPrompt`; see *AgentKitCore System Design*.
 - **Microsoft.Agents.AI** — supplies `AIAgent` and `ChatClientAgent`, and brings the chat-client
   extensions carrying `FunctionInvokingChatClient`, the tool-calling loop the session factory
-  installs; see *Microsoft.Agents.AI Design*.
+  installs, and `ChatClientBuilder`; see *Microsoft.Agents.AI Design*.
+- **Microsoft.Agents.AI.Abstractions** — supplies `AIContextProvider`, `AIContext`, `AgentSession` and
+  its state bag, reached through `Microsoft.Agents.AI`; see *Microsoft.Agents.AI.Abstractions Design*.
 - **Microsoft.Extensions.AI.Abstractions** — supplies `IChatClient`, `AIFunction` and
   `DelegatingChatClient`; reached transitively through Core and directly through
   `Microsoft.Agents.AI`.

@@ -1264,6 +1264,7 @@ reviews:
       - "docs/verification/introduction.md"                                     # verification introduction
       - "docs/verification/agent-kit-agents-chat-client.md"                     # system verification
       - "test/DemaConsulting.AgentKit.Agents.ChatClient.Tests/AgentKitAgentsChatClientTests.cs"  # integration tests
+      - "test/DemaConsulting.AgentKit.Agents.ChatClient.Tests/CapturingHttpHandler.cs"  # HTTP wire capture double
       - "test/DemaConsulting.AgentKit.Agents.ChatClient.Tests/XmlDocExampleTests.cs"  # documented-example compile tests
 
   # AgentKitAgentsChatClient-Design Review (one per system)
@@ -1311,6 +1312,7 @@ reviews:
       - "src/DemaConsulting.AgentKit.Agents.ChatClient/ChatClientAgentFactory.cs"       # unit source
       - "test/DemaConsulting.AgentKit.Agents.ChatClient.Tests/ChatClientAgentFactoryTests.cs"  # unit tests
       - "test/DemaConsulting.AgentKit.Agents.ChatClient.Tests/ScriptedChatClient.cs"    # scripted chat client test fake
+      - "test/DemaConsulting.AgentKit.Agents.ChatClient.Tests/RecordingChatClient.cs"   # recording chat client fake
 
   # AgentKitAgentsChatClient-ChatClientProviderSession Review (one per unit)
   #
@@ -1370,6 +1372,22 @@ reviews:
       - "docs/verification/agent-kit-agents-chat-client/prompt-size-recording-chat-client.md"  # unit verification
       - "src/DemaConsulting.AgentKit.Agents.ChatClient/PromptSizeRecordingChatClient.cs"       # unit source
       - "test/DemaConsulting.AgentKit.Agents.ChatClient.Tests/PromptSizeRecordingChatClientTests.cs"  # unit tests
+      - "test/DemaConsulting.AgentKit.Agents.ChatClient.Tests/RecordingChatClient.cs"  # recording chat client fake
+
+  # AgentKitAgentsChatClient-ToolPackContextProvider Review (one per unit)
+  - id: AgentKitAgentsChatClient-ToolPackContextProvider
+    title: Review that AgentKitAgentsChatClient ToolPackContextProvider Implementation is Correct
+    context:
+      - "docs/design/agent-kit-agents-chat-client.md"
+      - "docs/reqstream/agent-kit-agents-chat-client.yaml"
+      - "docs/design/agent-kit-core/tool-pack-builder.md"
+      - "docs/design/agent-kit-core/tool-output-retention.md"
+    paths:
+      - "docs/reqstream/agent-kit-agents-chat-client/tool-pack-context-provider.yaml"   # unit requirements
+      - "docs/design/agent-kit-agents-chat-client/tool-pack-context-provider.md"        # unit design
+      - "docs/verification/agent-kit-agents-chat-client/tool-pack-context-provider.md"  # unit verification
+      - "src/DemaConsulting.AgentKit.Agents.ChatClient/ToolPackContextProvider.cs"       # unit source
+      - "test/DemaConsulting.AgentKit.Agents.ChatClient.Tests/ToolPackContextProviderTests.cs"  # unit tests
       - "test/DemaConsulting.AgentKit.Agents.ChatClient.Tests/RecordingChatClient.cs"  # recording chat client fake
 
   # AgentKitAgentsChatClient-ChatClientSummarizer Review (one per unit)

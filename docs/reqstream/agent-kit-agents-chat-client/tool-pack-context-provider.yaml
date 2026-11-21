@@ -1,0 +1,114 @@
+---
+# Software Unit Requirements for ToolPackContextProvider
+#
+# These requirements describe the design-level behavior of the ToolPackContextProvider unit, the
+# Agent Framework context provider that contributes AgentKit tools to every run of a chat-client
+# agent, composed once per conversation, with each conversation's retention persisted in its session.
+
+sections:
+  - title: AgentKitAgentsChatClient Requirements
+    sections:
+      - title: ToolPackContextProvider Requirements
+        requirements:
+          - id: AgentKitAgentsChatClient-ToolPackContextProvider-ContributesToolsAndInstructions
+            title: >-
+              The context provider shall contribute its composed tools, and the instructions it was
+              configured with, to every run of a chat-client agent.
+            justification: |
+              A host that builds its own agent needs AgentKit's tools offered to the model on every
+              request without wiring them into the agent itself, and usually needs to tell the model
+              how to use them. The agent framework's context-provider hook is where both are
+              contributed per run.
+            tests:
+              - ToolPackContextProvider_Run_ToolsAndInstructionsReachTheChatClient
+              - ToolPackContextProvider_WithoutToolOutput_NoReaderTools
+
+          - id: AgentKitAgentsChatClient-ToolPackContextProvider-ComposesOncePerSession
+            title: >-
+              The context provider shall compose the tools once per conversation and reuse that
+              composition for every run of the conversation.
+            justification: |
+              AgentKit's tools carry per-conversation state — retained outputs, a task list, a memory
+              store. Composing per run would lose it between turns; composing once for all
+              conversations would share it between them.
+            tests:
+              - ToolPackContextProvider_TwoRunsOneSession_ComposeOnce
+
+          - id: AgentKitAgentsChatClient-ToolPackContextProvider-RetentionPerSession
+            title: >-
+              When retention of large outputs is configured, the context provider shall give every
+              conversation its own retention, contributing its reader tools, so a reference issued in
+              one conversation is never readable in another.
+            tags: [security]
+            justification: |
+              Conversations of one agent may belong to different users. A retained output is tool
+              output and must stay within the conversation that produced it.
+            tests:
+              - ToolPackContextProvider_TwoSessions_HaveIsolatedRetention
+
+          - id: AgentKitAgentsChatClient-ToolPackContextProvider-PersistsRetention
+            title: >-
+              The context provider shall persist each conversation's retained outputs in its session
+              after every run, and shall restore them when a persisted session is reloaded, so an
+              earlier reference still reads.
+            justification: |
+              An agent framework persists a conversation by serializing its session. Without this, a
+              reloaded conversation answered every reference in its history "never retained", even
+              though the model had been told it could page through the output.
+            tests:
+              - ToolPackContextProvider_SerializeDeserializeSession_RetainedOutputPagesAfterRestore
+
+          - id: AgentKitAgentsChatClient-ToolPackContextProvider-PersistsCounterWhenContentsOptedOut
+            title: >-
+              When the host opts out of persisting retained outputs, the context provider shall
+              persist only the reference counter, so a reference made before a reload is answered as
+              no longer retained and never re-issued.
+            justification: |
+              Retained outputs can be large and carry the conversation's data. A host may choose not
+              to persist them; references in the history must then fail honestly rather than alias new
+              content.
+            tests:
+              - ToolPackContextProvider_PersistDisabled_EarlierReferenceAnsweredNoLongerRetained
+
+          - id: AgentKitAgentsChatClient-ToolPackContextProvider-GuardsForeignTools
+            title: >-
+              The context provider shall bound every tool supplied as a function list by the ceilings
+              it was given.
+            tags: [security]
+            justification: |
+              A host composing tools it wrote itself, or took from another library, expects them to
+              be held to the same result ceilings as AgentKit's own when injected the same way.
+            tests:
+              - ToolPackContextProvider_DelegateConstructor_ForeignToolIsGuarded
+
+          - id: AgentKitAgentsChatClient-ToolPackContextProvider-RefusesOtherAgents
+            title: >-
+              The context provider shall refuse to run for an agent that is not, and does not wrap, a
+              chat-client agent.
+            justification: |
+              Only a chat-client agent merges contributed tools into its requests. Any other agent
+              would accept the provider and silently never offer the tools to the model, so the
+              mistake is refused with the reason and the alternative.
+            tests:
+              - ToolPackContextProvider_NonChatClientAgent_ThrowsInvalidOperationException
+
+          - id: AgentKitAgentsChatClient-ToolPackContextProvider-DeclaresStateKey
+            title: >-
+              The context provider shall declare the session state key it writes to, configurable by
+              the host.
+            justification: |
+              The agent framework detects two providers writing to one key only when each declares its
+              keys, and a host running two providers needs to separate them.
+            tests:
+              - ToolPackContextProvider_StateKeys_ContainsConfiguredKey
+
+          - id: AgentKitAgentsChatClient-ToolPackContextProvider-RejectsInvalidConfiguration
+            title: >-
+              The context provider shall reject at construction a missing policy, pack list, function
+              list or ceilings; an empty pack list or one composing no tool; a blank state key; and
+              retention requested over a result ceiling too small for it.
+            justification: |
+              Each is a composition mistake that would otherwise surface at the first run of the first
+              conversation, far from where the host wrote it.
+            tests:
+              - ToolPackContextProvider_Constructor_InvalidArguments_Throw

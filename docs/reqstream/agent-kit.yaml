@@ -84,6 +84,10 @@ sections:
           - AgentKitAgentsChatClient-AgentConstruction-FromChatClientAndTools
           - AgentKitAgentsChatClient-ImagePromotion-AlwaysInstalled
           - AgentKitAgentsChatClient-ImagePromotion-HostBuiltPipeline
+          - AgentKitAgentsChatClient-ImagePromotion-NoImageBytesOnTheWire
+          - AgentKitAgentsChatClient-ContextProvider-ToolsPerConversation
+          - AgentKitAgentsChatClient-ContextProvider-RetentionSurvivesSessionSerialization
+          - AgentKitAgentsChatClient-HistoryReducer-PlugsIntoTheAgentFramework
           - AgentKitAgentsChatClient-SessionAdapter-CarriesACoreSession
           - AgentKitAgentsChatClient-SessionAdapter-OccupancyFromTheProvider
           - AgentKitAgentsChatClient-Consolidation-ThroughASeparateChatClient
@@ -146,3 +150,4 @@ sections:
           - AgentKitAgentsOllama_ContextSizing_EveryRequestAsksTheServerForTheStatedWindow
           - OllamaContextWindow_ReadAsync_ModelLoaded_ReportsTheLengthTheServerEnforces
           - AgentKitAgentsChatClient_Session_RotatesOnTheProvidersUsage_AndSeedsTheReplacement
+          - AgentKitAgentsChatClient_ImagePromotion_OverOllamaSharp_ToolMessageCarriesNoImageBytes
