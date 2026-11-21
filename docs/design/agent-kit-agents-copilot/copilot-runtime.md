@@ -130,11 +130,16 @@ populated the path between the emptiness check and the marker, so the marker is 
 handle with `SetLength(0)` — touching only the file created here — then deleted as a best effort, and
 the directory is refused with the same not-created-by-AgentKit `InvalidOperationException` as any
 other foreign directory. A leftover marker after a failed delete is empty, so the next start refuses
-it as invalid rather than trusting it. A marker another writer created first is the reuse path: when
+it as invalid rather than trusting it. If the re-enumeration itself fails, the marker is emptied
+through the same handle as a best effort before the failure propagates and the delete is attempted,
+so a leftover is invalid too. A marker another writer created first is the reuse path: when
 valid it is accepted without enumerating, as on a later start — the call that writes the marker is
 the one that checks. For tests, an internal `PrepareDataDirectory(string, Action<string>?)` overload
 invokes a `beforeMark` callback with the full path just before the directory is marked, so a test can
-populate it as a concurrent writer could; the production overload passes `null`.
+populate it as a concurrent writer could; the production overload passes `null`. Likewise, an
+internal `MarkDataDirectory(string, Func<string, bool>, Action<string>)` overload takes the
+re-enumeration and the best-effort delete, so a test can make both fail; the production overload
+passes the real ones.
 
 **What the marker does and does not guarantee.** The marker guards against reusing a foreign Copilot
 home or a shared folder by mistake. It is not a security boundary against a process that can already

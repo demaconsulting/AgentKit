@@ -15,8 +15,10 @@ Copilot runtime:
   system temporary folder and deleted afterwards, because the behavior under test is what the
   directory holds. `MarkDataDirectory` is driven directly to reproduce a concurrent writer that
   created the marker first. `PrepareDataDirectory` takes a `beforeMark` callback so a test populates a
-  new or empty directory between the emptiness check and the marker, as a concurrent writer could. The
-  symbolic-link case is skipped on a Windows session that lacks the
+  new or empty directory between the emptiness check and the marker, as a concurrent writer could.
+  `MarkDataDirectory` also has an overload taking the re-enumeration and the best-effort delete, so a
+  test substitutes a failing enumeration and a failing delete to prove the marker left behind is
+  invalid. The symbolic-link case is skipped on a Windows session that lacks the
   privilege to create symbolic links; it runs on Linux, macOS and elevated or Developer Mode Windows,
   and a marker that is a directory covers the non-link refusal everywhere.
 - **`StartClientAsync` and `StartOwnedAsync`** take the start, and the creation and disposal, as
@@ -132,6 +134,7 @@ filtered environment rather than the host's.
 - `CopilotRuntime_PrepareDataDirectory_MissingPopulatedBeforeMarking_IsRefusedAndLeftUnmarked`
 - `CopilotRuntime_PrepareDataDirectory_EmptyPopulatedBeforeMarking_IsRefusedAndLeftUnmarked`
 - `CopilotRuntime_MarkDataDirectory_MarkerWrittenConcurrentlyValidWithContent_IsAccepted`
+- `CopilotRuntime_MarkDataDirectory_ReEnumerationAndDeleteFail_LeavesInvalidMarker`
 
 Normal operation and the error paths. A missing nested directory is created and marked, and its full
 path returned; an empty one is marked; in both cases the marker's bytes equal the format-1 marker,
@@ -155,7 +158,9 @@ left as it was.
 A directory a writer populates — with an `mcp-config.json`, or a subdirectory — after it was found
 new or empty and before it is marked is refused as not created by AgentKit, left without a marker,
 its content untouched, and refused again on the next start. A valid marker a concurrent writer
-created first is accepted with content beside it, as on reuse.
+created first is accepted with content beside it, as on reuse. When the re-enumeration after writing
+the marker fails and the delete fails too, the enumeration's exception propagates and the marker left
+behind is empty, so the next start refuses the directory as carrying an invalid marker.
 
 #### AgentKitAgentsCopilot-CopilotRuntime-OffersOnlyNeutralOptions: Nothing That Widens the Session
 

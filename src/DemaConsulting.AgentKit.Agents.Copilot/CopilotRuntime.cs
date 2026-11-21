@@ -492,9 +492,11 @@ public sealed class CopilotRuntime : IAsyncDisposable
     ///     <para>
     ///     When the marker was created here, the directory is enumerated again before the handle is
     ///     released; any entry besides the marker means another writer populated it, so the marker is
-    ///     emptied, deleted as a best effort, and the directory refused as foreign. A marker another
-    ///     writer created first is the reuse path: when valid it is accepted without enumerating, as
-    ///     on a later start.
+    ///     emptied, deleted as a best effort, and the directory refused as foreign. If the
+    ///     re-enumeration itself fails, the marker is emptied through the same handle as a best effort
+    ///     before the failure propagates and the delete is attempted, so a marker left behind is
+    ///     invalid. A marker another writer created first is the reuse path: when valid it is accepted
+    ///     without enumerating, as on a later start.
     ///     </para>
     /// </remarks>
     /// <param name="dataDirectory">The data directory's full path.</param>
@@ -504,7 +506,32 @@ public sealed class CopilotRuntime : IAsyncDisposable
     /// </exception>
     /// <exception cref="IOException">The marker could not be created or read.</exception>
     /// <exception cref="UnauthorizedAccessException">The directory is not writable, or the marker is not readable.</exception>
-    internal static void MarkDataDirectory(string dataDirectory)
+    internal static void MarkDataDirectory(string dataDirectory) =>
+        MarkDataDirectory(dataDirectory, HoldsAnythingButTheMarker, TryDeleteCreatedMarker);
+
+    /// <summary>
+    ///     Writes the ownership marker into a data directory known to be new or empty, with the
+    ///     re-enumeration and the best-effort delete supplied by the caller.
+    /// </summary>
+    /// <remarks>
+    ///     The production overload passes the real checks; tests substitute a failing enumeration and
+    ///     a failing delete to prove what a failed claim leaves behind.
+    /// </remarks>
+    /// <param name="dataDirectory">The data directory's full path.</param>
+    /// <param name="holdsAnythingButTheMarker">
+    ///     Reports whether the directory holds any entry other than the marker.
+    /// </param>
+    /// <param name="deleteCreatedMarker">Deletes the marker created here, as a best effort.</param>
+    /// <exception cref="InvalidOperationException">
+    ///     An entry another writer created is not the marker AgentKit writes, or the directory holds
+    ///     anything besides the marker just written.
+    /// </exception>
+    /// <exception cref="IOException">The marker could not be created or read.</exception>
+    /// <exception cref="UnauthorizedAccessException">The directory is not writable, or the marker is not readable.</exception>
+    internal static void MarkDataDirectory(
+        string dataDirectory,
+        Func<string, bool> holdsAnythingButTheMarker,
+        Action<string> deleteCreatedMarker)
     {
         var marker = Path.Combine(dataDirectory, OwnershipMarkerFileName);
 
@@ -540,7 +567,17 @@ public sealed class CopilotRuntime : IAsyncDisposable
                 // adopted. Checked while the handle is held, and a marker beside foreign content is
                 // emptied through that handle - only the file created here - so even if the delete
                 // below fails it is refused as invalid rather than trusted on the next start.
-                foreign = HoldsAnythingButTheMarker(dataDirectory);
+                try
+                {
+                    foreign = holdsAnythingButTheMarker(dataDirectory);
+                }
+                catch
+                {
+                    // Leave nothing a later start would trust if the delete below fails too.
+                    TryEmptyCreatedMarker(stream);
+                    throw;
+                }
+
                 if (foreign)
                 {
                     stream.SetLength(0);
@@ -549,13 +586,13 @@ public sealed class CopilotRuntime : IAsyncDisposable
         }
         catch
         {
-            TryDeleteCreatedMarker(marker);
+            deleteCreatedMarker(marker);
             throw;
         }
 
         if (foreign)
         {
-            TryDeleteCreatedMarker(marker);
+            deleteCreatedMarker(marker);
             throw Foreign(dataDirectory);
         }
     }
@@ -629,6 +666,27 @@ public sealed class CopilotRuntime : IAsyncDisposable
         return buffer.AsSpan(0, read).SequenceEqual(expected)
             ? null
             : "its content is not the marker AgentKit writes";
+    }
+
+    /// <summary>
+    ///     Empties a marker this call created, through the handle still held, as a best effort.
+    /// </summary>
+    /// <remarks>
+    ///     Used when the claim re-check fails, so a marker the delete then fails to remove is refused
+    ///     as invalid on the next start rather than trusted.
+    /// </remarks>
+    /// <param name="stream">The marker's open write handle.</param>
+    private static void TryEmptyCreatedMarker(FileStream stream)
+    {
+        try
+        {
+            stream.SetLength(0);
+            stream.Flush();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // The re-check failure is the one reported; the delete that follows is still attempted.
+        }
     }
 
     /// <summary>

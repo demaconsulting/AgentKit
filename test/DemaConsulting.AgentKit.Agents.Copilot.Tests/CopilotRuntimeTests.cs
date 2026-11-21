@@ -533,6 +533,32 @@ public class CopilotRuntimeTests
     }
 
     /// <summary>
+    ///     Proves that when the re-enumeration after writing the marker fails and the delete of the
+    ///     marker fails too, the failure propagates and the marker left behind is invalid, so the
+    ///     next start refuses the directory rather than trusting it.
+    /// </summary>
+    [Fact]
+    public void CopilotRuntime_MarkDataDirectory_ReEnumerationAndDeleteFail_LeavesInvalidMarker()
+    {
+        // Arrange: an empty data directory whose re-enumeration and marker delete will both fail
+        using var directory = new TemporaryDirectory();
+        var marker = Path.Combine(directory.Path, CopilotRuntime.OwnershipMarkerFileName);
+        const string message = "enumeration failed";
+
+        // Act
+        var failure = Assert.Throws<IOException>(
+            () => CopilotRuntime.MarkDataDirectory(directory.Path, _ => throw new IOException(message), _ => { }));
+
+        // Assert
+        Assert.Equal(message, failure.Message);
+        Assert.True(File.Exists(marker));
+        Assert.Equal(0, new FileInfo(marker).Length);
+        var nextStart = Assert.Throws<InvalidOperationException>(() => CopilotRuntime.PrepareDataDirectory(directory.Path));
+        Assert.Contains(directory.Path, nextStart.Message, StringComparison.Ordinal);
+        Assert.Contains(InvalidMarkerPhrase, nextStart.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     ///     Proves a data directory AgentKit marked earlier is accepted with the runtime's own content
     ///     in it, so conversations persist across restarts.
     /// </summary>
