@@ -217,7 +217,8 @@ The following OTS items are also covered:
 - **BuildMark** — build-notes documentation tool
 - **ApiMark** — public API surface tracking tool
 - **CanvasNet** — the runtime raster imaging library providing image header inspection including
-  decode feasibility, PNG and JPEG decoding, rectangular region extraction and PNG encoding
+  decode feasibility, PNG and JPEG decoding with PNG decompression bounded by the declared size,
+  rectangular region extraction and PNG encoding
 - **FileAssert** — document assertion tool
 - **Microsoft.Agents.AI** — the runtime library providing `ChatClientAgent`, which builds an
   `AIAgent` from an `IChatClient`

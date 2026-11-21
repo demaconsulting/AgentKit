@@ -320,6 +320,18 @@ so a unit that decoded before triaging would produce the undecodable refusal ins
 A file whose header reads cleanly and whose pixel data stops part-way. Asserts the refusal states
 the declared size, which is what tells the model the file is damaged rather than of the wrong kind.
 
+##### AgentKitTools-Image-CropTool-RefusesUndecodableContent: Pixel Data Inflating Past Its Size Is Refused
+
+**Test**: `ImageCropTool_Crop_PngInflatingBeyondItsDeclaredSize_IsRefusedWithoutInflatingIt`
+
+**The decompression bomb every check before decoding admits.** The fixture declares 16 by 16
+pixels and is a fraction of the binary ceiling, yet its pixel data inflates to half a gigabyte of
+zeros. Asserts the refusal is the undecodable one and states the declared size, and asserts the
+call allocated less than a quarter of the inflated size — the observation that the decoder rejected
+the data without inflating it, which is what keeps the header-based decode budget a bound on what
+decoding allocates. Run against CanvasNet 0.1.0 the same call allocated over a gigabyte and the
+scenario failed.
+
 ##### AgentKitTools-Image-CropTool-RefusesUndecodableContent: An Extension That Lies Is Refused Without a Size
 
 **Test**: `ImageCropTool_Crop_FileWhoseExtensionLiesAboutItsContent_ReturnsDenialWithoutDimensions`

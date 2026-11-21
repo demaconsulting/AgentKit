@@ -158,6 +158,7 @@ sections:
                   - ImageCropTool_Crop_FileWhoseExtensionLiesAboutItsContent_ReturnsDenialWithoutDimensions
                   - ImageCropTool_Crop_Adam7InterlacedPng_IsRefusedNamingTheDimensions
                   - ImageCropTool_Crop_TruncatedPngBody_ReturnsDenialNamingTheDeclaredDimensions
+                  - ImageCropTool_Crop_PngInflatingBeyondItsDeclaredSize_IsRefusedWithoutInflatingIt
                   - ImageCropTool_Crop_ZeroByteFile_ReturnsDenialWithoutThrowing
 
               - id: AgentKitTools-Image-CropTool-RefusesNonCroppableType

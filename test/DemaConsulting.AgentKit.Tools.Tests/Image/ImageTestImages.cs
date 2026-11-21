@@ -211,6 +211,56 @@ internal static class ImageTestImages
     }
 
     /// <summary>
+    ///     Builds a PNG declaring a small image whose compressed pixel data inflates to vastly more
+    ///     bytes than that image could hold.
+    /// </summary>
+    /// <remarks>
+    ///     <b>A decompression bomb inside every ceiling the family checks before decoding.</b> The
+    ///     header declares a size far inside the decode budget, and the file itself is a fraction
+    ///     of the binary ceiling, because a run of zero bytes compresses roughly a thousand to one.
+    ///     Only the decoder can stop this file: a decoder that inflated the whole stream before
+    ///     checking its length would allocate the full inflated size first, and one that bounds
+    ///     the inflation by the declared dimensions stops after a few hundred bytes. The zeros
+    ///     are compressed in fixed blocks so that building the fixture never holds the inflated
+    ///     stream in memory itself.
+    /// </remarks>
+    /// <param name="width">The width the header declares, in pixels.</param>
+    /// <param name="height">The height the header declares, in pixels.</param>
+    /// <param name="inflatedBytes">The number of zero bytes the pixel data inflates to.</param>
+    /// <returns>The encoded PNG file.</returns>
+    internal static byte[] InflatesBeyondDeclaredSizePng(int width, int height, long inflatedBytes)
+    {
+        using var compressed = new MemoryStream();
+
+        // Deflate compression, 32 KiB window, no preset dictionary.
+        compressed.WriteByte(0x78);
+        compressed.WriteByte(0x01);
+
+        var block = new byte[64 * 1024];
+        using (var deflate = new DeflateStream(compressed, CompressionLevel.Optimal, leaveOpen: true))
+        {
+            for (var remaining = inflatedBytes; remaining > 0; remaining -= block.Length)
+            {
+                deflate.Write(block, 0, (int)Math.Min(block.Length, remaining));
+            }
+        }
+
+        // The checksum of a run of zeros needs no pass over them: the low half stays at one and
+        // the high half gains one per byte, modulo the format's prime.
+        var adler = (uint)(inflatedBytes % 65521) << 16 | 1u;
+        compressed.WriteByte((byte)(adler >> 24));
+        compressed.WriteByte((byte)(adler >> 16));
+        compressed.WriteByte((byte)(adler >> 8));
+        compressed.WriteByte((byte)adler);
+
+        return Concat(
+            PngSignature,
+            HeaderChunk(width, height, colorType: 2, interlace: 0),
+            Chunk("IDAT", compressed.ToArray()),
+            Chunk("IEND", []));
+    }
+
+    /// <summary>
     ///     Builds a PNG whose header is sound but whose pixel data stops part-way through.
     /// </summary>
     /// <remarks>

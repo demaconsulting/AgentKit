@@ -6,7 +6,7 @@ This document describes the overall Off-The-Shelf (OTS) integration strategy for
 
 AgentKit Core carries exactly one runtime NuGet dependency,
 `Microsoft.Extensions.AI.Abstractions`. `AgentKitTools` carries one of its own, `CanvasNet`, the
-safe-managed-code raster imaging library the image family reads dimensions and extracts regions
+managed raster imaging library the image family reads dimensions and extracts regions
 with; it is a runtime dependency rather than a build-time one, so it is referenced without
 `PrivateAssets` and reaches a consuming application transitively. The three provider-specific
 packages each carry runtime dependencies of their own, deliberately kept out of Core:

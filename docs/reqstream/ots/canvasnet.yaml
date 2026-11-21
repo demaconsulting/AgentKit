@@ -48,6 +48,26 @@ sections:
               - ImageCropTool_Crop_PalettizedPng_ReturnsCroppedImageContent
               - ImageCropTool_Crop_PermittedJpeg_ReturnsPngContent
 
+          - id: AgentKit-OTS-CanvasNet-BoundedInflate
+            title: >-
+              CanvasNet shall reject PNG pixel data that would inflate beyond the size the file's
+              header declares without inflating it.
+            tags: [ots, security]
+            justification: |
+              The image family decides whether decoding an image is affordable from the
+              dimensions its header declares, and refuses one that is not before any pixel data
+              exists. That decision bounds what decoding costs only if the decoder never inflates
+              more than those dimensions imply: compressed pixel data can declare a small image
+              and still inflate to gigabytes, from a file well inside the binary ceiling, so a
+              decoder that inflated the whole stream before checking its length would let a model
+              exhaust a host's memory with an image every check before decoding had admitted.
+              AgentKit's own test, which offers the crop tool a PNG declaring sixteen by sixteen
+              pixels whose data inflates to half a gigabyte and asserts both the refusal and that
+              the call allocated a small fraction of that size, proves the bound holds; it fails
+              against the 0.1.0 release, which allocated over a gigabyte for that file.
+            tests:
+              - ImageCropTool_Crop_PngInflatingBeyondItsDeclaredSize_IsRefusedWithoutInflatingIt
+
           - id: AgentKit-OTS-CanvasNet-Crop
             title: >-
               CanvasNet shall produce an independent copy of a rectangular sub-region of a decoded
