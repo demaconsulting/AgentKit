@@ -487,6 +487,67 @@ reviews:
       - "src/DemaConsulting.AgentKit.Core/CompactingAgentSession.cs"    # unit source
       - "test/DemaConsulting.AgentKit.Core.Tests/CompactingAgentSessionTests.cs"  # unit tests
 
+  # AgentKitCore-ModelInfo Review (one per unit)
+  #
+  # The tool-pack design is context because the unit derives the host's vision declaration in that
+  # unit's vocabulary.
+  - id: AgentKitCore-ModelInfo
+    title: Review that AgentKitCore ModelInfo Implementation is Correct
+    context:
+      - "docs/design/agent-kit-core.md"
+      - "docs/reqstream/agent-kit-core.yaml"
+      - "docs/design/agent-kit-core/tool-pack.md"
+    paths:
+      - "docs/reqstream/agent-kit-core/model-info.yaml"             # unit requirements
+      - "docs/design/agent-kit-core/model-info.md"                  # unit design
+      - "docs/verification/agent-kit-core/model-info.md"            # unit verification
+      - "src/DemaConsulting.AgentKit.Core/ModelInfo.cs"              # unit source
+      - "test/DemaConsulting.AgentKit.Core.Tests/ModelInfoTests.cs"  # unit tests
+      - "test/DemaConsulting.AgentKit.Core.Tests/ModelTestData.cs"   # shared models and catalog doubles
+
+  # AgentKitCore-ModelCatalog Review (one per unit)
+  - id: AgentKitCore-ModelCatalog
+    title: Review that AgentKitCore ModelCatalog Implementation is Correct
+    context:
+      - "docs/design/agent-kit-core.md"
+      - "docs/reqstream/agent-kit-core.yaml"
+      - "docs/design/agent-kit-core/model-info.md"
+      - "docs/design/agent-kit-core/model-settings.md"
+    paths:
+      - "docs/reqstream/agent-kit-core/model-catalog.yaml"             # unit requirements
+      - "docs/design/agent-kit-core/model-catalog.md"                  # unit design
+      - "docs/verification/agent-kit-core/model-catalog.md"            # unit verification
+      - "src/DemaConsulting.AgentKit.Core/ModelCatalog.cs"              # unit source
+      - "test/DemaConsulting.AgentKit.Core.Tests/ModelCatalogTests.cs"  # unit tests
+
+  # AgentKitCore-ModelSettings Review (one per unit)
+  - id: AgentKitCore-ModelSettings
+    title: Review that AgentKitCore ModelSettings Implementation is Correct
+    context:
+      - "docs/design/agent-kit-core.md"
+      - "docs/reqstream/agent-kit-core.yaml"
+      - "docs/design/agent-kit-core/model-info.md"
+    paths:
+      - "docs/reqstream/agent-kit-core/model-settings.yaml"             # unit requirements
+      - "docs/design/agent-kit-core/model-settings.md"                  # unit design
+      - "docs/verification/agent-kit-core/model-settings.md"            # unit verification
+      - "src/DemaConsulting.AgentKit.Core/ModelSettings.cs"              # unit source
+      - "test/DemaConsulting.AgentKit.Core.Tests/ModelSettingsTests.cs"  # unit tests
+
+  # AgentKitCore-ModelSettingsChatClient Review (one per unit)
+  - id: AgentKitCore-ModelSettingsChatClient
+    title: Review that AgentKitCore ModelSettingsChatClient Implementation is Correct
+    context:
+      - "docs/design/agent-kit-core.md"
+      - "docs/reqstream/agent-kit-core.yaml"
+      - "docs/design/agent-kit-core/model-settings.md"
+    paths:
+      - "docs/reqstream/agent-kit-core/model-settings-chat-client.yaml"             # unit requirements
+      - "docs/design/agent-kit-core/model-settings-chat-client.md"                  # unit design
+      - "docs/verification/agent-kit-core/model-settings-chat-client.md"            # unit verification
+      - "src/DemaConsulting.AgentKit.Core/ModelSettingsChatClient.cs"              # unit source
+      - "test/DemaConsulting.AgentKit.Core.Tests/ModelSettingsChatClientTests.cs"  # unit tests
+
   # AgentKitTools-Architecture Review (one per system)
   - id: AgentKitTools-Architecture
     title: Review that AgentKitTools Architecture Satisfies Requirements
@@ -1618,6 +1679,24 @@ reviews:
       - "test/DemaConsulting.AgentKit.Agents.Copilot.Tests/CopilotTurnChannelTests.cs"  # release-policy tests
       - "test/DemaConsulting.AgentKit.Agents.Copilot.Tests/FakeCopilotTurnChannel.cs"  # scripted runtime fake
 
+  # AgentKitAgentsCopilot-CopilotModelCatalog Review (one per unit)
+  #
+  # The Core catalog design is context because this unit is a Core caching catalog and its
+  # validation is Core's; the runtime design is context because the unit reads through it.
+  - id: AgentKitAgentsCopilot-CopilotModelCatalog
+    title: Review that AgentKitAgentsCopilot CopilotModelCatalog Implementation is Correct
+    context:
+      - "docs/design/agent-kit-agents-copilot.md"
+      - "docs/reqstream/agent-kit-agents-copilot.yaml"
+      - "docs/design/agent-kit-core/model-catalog.md"
+      - "docs/design/agent-kit-agents-copilot/copilot-runtime.md"
+    paths:
+      - "docs/reqstream/agent-kit-agents-copilot/copilot-model-catalog.yaml"   # unit requirements
+      - "docs/design/agent-kit-agents-copilot/copilot-model-catalog.md"        # unit design
+      - "docs/verification/agent-kit-agents-copilot/copilot-model-catalog.md"  # unit verification
+      - "src/DemaConsulting.AgentKit.Agents.Copilot/CopilotModelCatalog.cs"     # unit source
+      - "test/DemaConsulting.AgentKit.Agents.Copilot.Tests/CopilotModelCatalogTests.cs"  # unit tests
+
   # AgentKitAgentsOllama-Architecture Review (one per system)
   - id: AgentKitAgentsOllama-Architecture
     title: Review that AgentKitAgentsOllama Architecture Satisfies Requirements
@@ -1685,7 +1764,7 @@ reviews:
       # The reading path, driven through the real Ollama client against a loopback HTTP server
       # replaying payloads captured verbatim from a live server.
       - "test/DemaConsulting.AgentKit.Agents.Ollama.Tests/OllamaContextWindowReadTests.cs"
-      - "test/DemaConsulting.AgentKit.Agents.Ollama.Tests/Fixtures/*.json"
+      - "test/DemaConsulting.AgentKit.Agents.Ollama.Tests/Fixtures/ps-*.json"
 
   # AgentKitAgentsOllama-OllamaContextSizingChatClient Review (one per unit)
   #
@@ -1710,6 +1789,30 @@ reviews:
       # unit tests, including the wire test that drives the real Ollama client
       - "test/DemaConsulting.AgentKit.Agents.Ollama.Tests/OllamaContextSizingChatClientTests.cs"
       - "test/DemaConsulting.AgentKit.Agents.Ollama.Tests/RecordingChatClient.cs"
+
+  # AgentKitAgentsOllama-OllamaModelCatalog Review (one per unit)
+  #
+  # The Core catalog design is context because this unit is a Core caching catalog; the window
+  # reading's design is context because the trained length this unit reports must never become the
+  # window that reading accounts against.
+  - id: AgentKitAgentsOllama-OllamaModelCatalog
+    title: Review that AgentKitAgentsOllama OllamaModelCatalog Implementation is Correct
+    context:
+      - "docs/design/agent-kit-agents-ollama.md"
+      - "docs/reqstream/agent-kit-agents-ollama.yaml"
+      - "docs/design/agent-kit-core/model-catalog.md"
+      - "docs/design/agent-kit-agents-ollama/ollama-context-window.md"
+    paths:
+      - "docs/reqstream/agent-kit-agents-ollama/ollama-model-catalog.yaml"   # unit requirements
+      - "docs/design/agent-kit-agents-ollama/ollama-model-catalog.md"        # unit design
+      - "docs/verification/agent-kit-agents-ollama/ollama-model-catalog.md"  # unit verification
+      - "src/DemaConsulting.AgentKit.Agents.Ollama/OllamaModelCatalog.cs"     # unit source
+      # unit tests, driven through the real Ollama client against payloads captured from a live
+      # server (license and model-file text elided) and their capability-less variants
+      - "test/DemaConsulting.AgentKit.Agents.Ollama.Tests/OllamaModelCatalogTests.cs"
+      - "test/DemaConsulting.AgentKit.Agents.Ollama.Tests/Fixtures/tags-*.json"
+      - "test/DemaConsulting.AgentKit.Agents.Ollama.Tests/Fixtures/show-*.json"
+      - "test/DemaConsulting.AgentKit.Agents.Ollama.Tests/Fixtures/synthetic-*.json"
 
   # OTS-ApiMark Review (one per OTS item)
   - id: OTS-ApiMark

@@ -33,6 +33,10 @@ input-files:
   - docs/design/agent-kit-core/provider-session.md
   - docs/design/agent-kit-core/in-memory-provider-session.md
   - docs/design/agent-kit-core/compacting-agent-session.md
+  - docs/design/agent-kit-core/model-info.md
+  - docs/design/agent-kit-core/model-catalog.md
+  - docs/design/agent-kit-core/model-settings.md
+  - docs/design/agent-kit-core/model-settings-chat-client.md
   - docs/design/agent-kit-core/agent-kit-chat-reducer.md
   - docs/design/agent-kit-tools.md
   - docs/design/agent-kit-tools/image.md
@@ -100,9 +104,11 @@ input-files:
   - docs/design/agent-kit-agents-copilot/copilot-session-observer.md
   - docs/design/agent-kit-agents-copilot/copilot-summarizer.md
   - docs/design/agent-kit-agents-copilot/copilot-turn-channel.md
+  - docs/design/agent-kit-agents-copilot/copilot-model-catalog.md
   - docs/design/agent-kit-agents-ollama.md
   - docs/design/agent-kit-agents-ollama/ollama-context-sizing-chat-client.md
   - docs/design/agent-kit-agents-ollama/ollama-context-window.md
+  - docs/design/agent-kit-agents-ollama/ollama-model-catalog.md
   - docs/design/ots.md
   - docs/design/ots/apimark.md
   - docs/design/ots/buildmark.md

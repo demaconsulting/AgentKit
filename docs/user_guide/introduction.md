@@ -111,6 +111,8 @@ carries the **session engine** — the part that keeps a long-running agent aliv
 own context, described under *Sessions* below. Neither is an add-on to the other: an agent whose
 tools are guarded but which runs out of context after twenty turns is not much use, and the two ship
 in one package for that reason.
+Core also describes the models a provider offers in one shared form, and validates a chosen
+model's settings before a session starts; see *Choosing a Model* below.
 
 Ready-made guarded tool families ship in
 `DemaConsulting.AgentKit.Tools` — the text file, file, markdown, image, todo, memory and
@@ -443,7 +445,9 @@ A package publishes its tools as a pack by implementing `IToolPack`, declaring t
 its tools carry and the `HostCapabilities` the host must provide. An application composes packs
 through `ToolPackBuilder`, declaring what its host supports and adding one pack per capability it
 wishes to attach. A pack whose required capabilities the host does not provide is never asked to
-create its tools at all, so the model is never offered a tool it cannot use.
+create its tools at all, so the model is never offered a tool it cannot use. With a model catalog,
+derive `Vision` from the selected model through `selection.HostCapabilities` rather than asserting it;
+the declaration stays the host's. See *Choosing a Model* below.
 
 The same reasoning applies one level finer, to individual tools. A pack is handed the access policy
 before it has any path to test, and may withhold those of its tools whose writes the policy
@@ -569,7 +573,8 @@ The text file (`TextFilePack`), file (`FilePack`), Markdown (`MarkdownPack`), to
 memory (`MemoryPack`) families require no host capability. Two families are gated. The image family
 (`ImagePack`) requires the `Vision` host capability, and the agent family (`AgentPack`) requires
 `Delegation`: unless the host declares the capability, the builder never asks the pack to create
-its tools, so a model is never offered a tool its host cannot use.
+its tools, so a model is never offered a tool its host cannot use. Where the model was chosen from a
+catalog, take the `Vision` declaration from the selected model; see *A Vision-Only Application*.
 
 The image family's three tools are one capability rather than three. `image_read` states the image's
 pixel dimensions alongside its content, and `image_crop` takes a region stated in pixels from the
@@ -698,6 +703,205 @@ agent is built from. *Sample: Research Assistant* below shows all three composed
 Adding `.WithToolOutputSpill()` to the builder composes retention of large tool outputs over the
 same list and appends `tool_output_read` and `tool_output_search` after every pack's tools; see
 *Large Tool Outputs* above. Without it the list is exactly the packs' tools.
+
+# Choosing a Model
+
+An application that lets its user choose the model needs three things from the provider: the list of
+models, what each one can do, and a check that a saved choice still holds. AgentKit Core describes
+models the same way on every provider, and each adapter package reads its provider's own list.
+
+## Listing Models
+
+A model catalog lists the models a provider offers. Each adapter ships one:
+
+```csharp
+using DemaConsulting.AgentKit.Agents.Ollama;
+using DemaConsulting.AgentKit.Core;
+using OllamaSharp;
+
+var ollama = new OllamaApiClient(new Uri("http://localhost:11434"));
+IModelCatalog catalog = new OllamaModelCatalog(ollama);
+
+// Every model AgentKit can run, in the provider's order.
+var models = await catalog.ListAsync();
+
+// Only models that can see and call tools, with the ones AgentKit cannot run included too.
+var visionModels = await catalog.ListAsync(new ModelQuery
+{
+    Require = ModelCapabilities.Vision | ModelCapabilities.ToolCalls,
+    IncludeUnusable = true,
+});
+```
+
+On Copilot, `new CopilotModelCatalog(runtime)` takes the `CopilotRuntime` AgentKit started, and lists
+the models the service offers the signed-in user. A catalog that cannot reach the service fails with
+an `InvalidOperationException` that says to sign in to GitHub Copilot.
+
+A catalog reads its provider once and keeps the list for five minutes, so a picker that lists on every
+keystroke costs one read. It is safe for concurrent use: callers that arrive during a read share it.
+A read that fails is not kept, so the next call reads again. `RefreshAsync` reads again at once, for
+example after the user was granted a new model.
+
+What a listed model carries:
+
+- **`IsUsable` and `UnusableReason`.** A model AgentKit cannot run is listed only when the query sets
+  `IncludeUnusable`, so a picker can show it grayed out with the reason.
+- **`Notices`.** Messages the provider attached. A notice of kind `Required`, such as a
+  data-retention statement, must be shown to the user before the model is chosen.
+- **`Category` and `BillingMultiplier`.** Copilot groups its models (for example `lightweight`,
+  `versatile` and `powerful`) and states each model's cost as a multiplier. Ollama sets neither.
+- **`ContextWindowTokens`.** The largest window the model provides: on Ollama, the length it was
+  trained for; on Copilot, its largest window. It is a **ceiling**, not the window a session runs at.
+
+Copilot also lists an `auto` entry, which lets the service choose a model per request. AgentKit does
+not list it, because it cannot promise a capability the application requires.
+
+## What a Model Description Means
+
+A capability flag is set only when the provider reports it. A provider that says nothing about vision
+has not said the model can see, so `Vision` stays clear and a vision application does not offer the
+model. Both catalogs follow this rule for vision.
+
+Each provider has one rule of its own:
+
+- **Copilot tool calling** is treated as supported unless the service says otherwise. The service
+  reports no tool-calling flag for any model, and its runtime is itself a tool-calling agent runtime.
+  A model the service reports as unable to call tools is unusable.
+- **Ollama capabilities** come from the server's own report, which Ollama 0.6.4 and later provide. A
+  model is usable when it reports both completion and tools. On an older server, vision is inferred
+  from the model file and the model is unusable, because tool support cannot be confirmed.
+
+## Choosing Effort, Tier and Window
+
+`ModelSettings` holds what the user chose: the model, and optionally a reasoning effort, a context
+tier, a context window and an output limit. It is plain data, so an application saves it as it is.
+`ModelSettings.DefaultsFor(model)` gives the starting point a picker shows.
+
+- **Reasoning effort.** The identifiers are the provider's own, from `model.ReasoningEfforts`.
+  `DefaultReasoningEffort` is `null` when the provider names none, which means the provider's own
+  default applies; AgentKit invents none. Copilot efforts such as `max` and `minimal` have no
+  provider-neutral equivalent, so they apply on Copilot only. An Ollama thinking model offers `none`,
+  `low`, `medium` and `high`; the level is a hint the model interprets.
+- **Context tier (Copilot).** A Copilot model offers `default`, labeled "Standard", and often
+  `long_context`, labeled "Long context". AgentKit chose those labels; the service publishes the
+  tiers through billing. A tier's `WindowTokens` is its **total** window. A live session reports the
+  smaller prompt budget it enforces — for example 100,000 for a Standard tier described as 228,000 —
+  and the session accounts against what the runtime reports.
+- **Context window on Copilot.** A window you state is a ceiling only. It lowers the window a session
+  accounts against and is never sent to the runtime.
+- **Context window on Ollama.** A window you state is the exact `num_ctx` the server is asked to load
+  the model at. It must not exceed the length the model was trained for, and a larger value is
+  refused. A reasonable choice is the smaller of the trained length and 32,768 — a long window costs
+  memory on the server. AgentKit sets no default: with none stated, the server's own choice is read
+  back, as *Where the Window Comes From* describes.
+
+## Validating at Session Start
+
+`settings.Validate(model, required)` lists every problem without throwing, so a picker can explain
+them as the user chooses. Each message is written to be shown as it is.
+
+Every time a session starts from saved settings, pass them through the catalog. `SelectAsync` looks the
+model up as the provider describes it **now** and validates the settings against it:
+
+```csharp
+const ModelCapabilities required = ModelCapabilities.Vision | ModelCapabilities.ToolCalls;
+
+try
+{
+    var selection = await catalog.SelectAsync(persisted, required, cancellationToken);
+    // Start the session on the selection.
+}
+catch (ModelSettingsException exception)
+{
+    foreach (var problem in exception.Problems)
+    {
+        Console.WriteLine(problem);
+    }
+}
+```
+
+A model may have been withdrawn, lost a capability, or stopped accepting an effort, a tier or a
+window. Each of those fails here, with every problem listed in `ModelSettingsException.Problems`,
+rather than as a provider error part-way through a conversation. For example:
+
+> Model 'text-small' does not support vision, which this application requires.
+
+The result is a `ModelSelection`. Only validation creates one, so holding one proves the check ran.
+The factories take a model choice as a `ModelSelection`, never as raw settings, and apply it once when
+a session starts; the settings do not change for the life of that session.
+
+## A Vision-Only Application
+
+An application that offers only models that can see follows four steps:
+
+1. **List** with `ModelQuery.Require` set to `Vision | ToolCalls`, so the picker shows only models
+   that can see and call tools.
+2. **Select** with `SelectAsync(settings, required)` at every session start, with the same
+   requirement, so a model that lost the capability since is refused rather than run.
+3. **Declare** the host's capabilities from the selection, by passing `selection.HostCapabilities` to
+   `WithHostCapabilities`. The image tools are then offered because the chosen model can see.
+4. **Override** where needed. The declaration is still the host's, so a host can narrow it — for
+   example to switch the image tools off — or declare `HostCapabilities.Vision` itself where no
+   catalog describes the model.
+
+```csharp
+using DemaConsulting.AgentKit.Tools.Image;
+using DemaConsulting.AgentKit.Tools.TextFile;
+using Microsoft.Extensions.AI;
+
+var offered = await catalog.ListAsync(new ModelQuery { Require = required }, cancellationToken);
+var selection = await catalog.SelectAsync(persisted, required, cancellationToken);
+
+IList<AIFunction> tools =
+[
+    .. new ToolPackBuilder(policy)
+        .WithHostCapabilities(selection.HostCapabilities)
+        .Add(new TextFilePack())
+        .Add(new ImagePack())
+        .Build()
+];
+```
+
+Then hand the selection to the factory that builds the agent or session. On any `IChatClient`
+provider, including Ollama:
+
+```csharp
+using DemaConsulting.AgentKit.Agents.ChatClient;
+using DemaConsulting.AgentKit.Agents.Ollama;
+
+// Ollama: the selection's window is the stated window, asked for on every request.
+var window = await OllamaContextWindow.ReadAsync(ollama, selection, cancellationToken);
+IChatClient sized = new OllamaContextSizingChatClient(ollama, window.Tokens);
+
+// The model, effort and output limit ride on every request.
+var agent = ChatClientAgentFactory.Create(sized, tools, selection: selection);
+var providerSessions = new ChatClientProviderSessionFactory(sized, window.Tokens, selection);
+
+// A pipeline you build yourself.
+IChatClient pipeline = sized.AsBuilder()
+    .UseFunctionInvocation()
+    .UseImagePromotion()
+    .UseModelSettings(selection)
+    .Build();
+```
+
+An `IChatClient` cannot apply a context tier, or an effort with no provider-neutral equivalent, so a
+selection carrying either is refused with an `ArgumentException` rather than dropped.
+
+On Copilot, from a `CopilotModelCatalog`:
+
+```csharp
+using DemaConsulting.AgentKit.Agents.Copilot;
+
+var copilotAgent = CopilotAgentFactory.Create(runtime, tools, selection: selection);
+var copilotSessions = new CopilotProviderSessionFactory(runtime, selection: selection);
+var summarizer = new CopilotSummarizer(runtime, selection: summarizerSelection);
+```
+
+The effort and tier are set on every session the agent creates or resumes, and only when chosen. A
+summarizer may run on a cheaper model, chosen and validated the same way. Pass either a model name or
+a selection, never both; each factory refuses both with an `ArgumentException`, and also refuses a
+selection made from another provider's catalog.
 
 # Building an Agent
 
@@ -1528,10 +1732,12 @@ be right in the first place, because Ollama's default depends on available memor
 `OLLAMA_CONTEXT_LENGTH`. Asking for the number in hand is what makes it true, and it forces no load
 that the first chat request would not force anyway.
 
-What a model *file* publishes as its maximum is deliberately never reported. It describes what the
-file could support, not what the instance is running: one live server published 262,144 tokens for a
-model it was running at 4,096. Accounting against the larger figure would keep a session talking
-long after the server had begun discarding the start of the conversation.
+What a model *file* publishes as its maximum is deliberately never reported as the window to account
+against. It describes what the file could support, not what the instance is running: one live server
+published 262,144 tokens for a model it was running at 4,096. Accounting against the larger figure
+would keep a session talking long after the server had begun discarding the start of the
+conversation. The model catalog reports it as `ContextWindowTokens`, but only as the ceiling a chosen
+window is checked against.
 
 To choose the window rather than discover it, state it to the same call — nothing else changes:
 
@@ -1541,6 +1747,16 @@ const int windowTokens = 32768;
 var window = await OllamaContextWindow.ReadAsync(ollamaClient, model, windowTokens, cancellationToken);
 IChatClient sized = new OllamaContextSizingChatClient(ollamaClient, window.Tokens);
 var providerSessions = new ChatClientProviderSessionFactory(sized, window.Tokens);
+```
+
+A user who chose a model from the catalog chose its window too, already checked against the length the
+model was trained for. Pass the selection instead, and its window is the stated one; with no window
+chosen, the running instance is read as before:
+
+```csharp
+var window = await OllamaContextWindow.ReadAsync(ollamaClient, selection, cancellationToken);
+IChatClient sized = new OllamaContextSizingChatClient(ollamaClient, window.Tokens);
+var providerSessions = new ChatClientProviderSessionFactory(sized, window.Tokens, selection);
 ```
 
 The decorator names the size on **every** request it forwards, not only the first, and a summarizer
