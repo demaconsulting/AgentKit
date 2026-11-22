@@ -3,7 +3,8 @@
 The repository ships a runnable sample under `samples/document-assistant` that puts the pieces
 described earlier in this guide together into a working console application. It grants an agent two
 locations — a workspace folder of documents and a separate session folder for the artifacts the agent
-produces — hands it the text-file, file, Markdown, and image tool packs, and runs the same conversation against either
+produces — hands it the text-file, file, Markdown, image and diagram tool packs, and runs the same
+conversation against either
 the GitHub Copilot runtime or an Ollama model. Refer to the sample's own README for the full option
 reference and a catalog of things to try.
 
@@ -60,6 +61,10 @@ behaviors this guide describes:
   from the **selected model's** vision.
   Running the sample with `--no-vision` removes `image_read`, `image_crop`, `image_auto_crop` and
   `image_view` from the tools the model is offered — they are never presented, not merely refused.
+- **Preview that follows the host.** The diagram tools are offered with or without vision:
+  `DiagramPack.For` gives a host that can see the picture of each drawing, and a host that cannot a
+  description of it in words. The sample appends the pack's `Instructions` paragraph to its own
+  instructions; the pack never adds it itself.
 - **Model choice.** The sample lists only the models that can see, and validates the chosen effort,
   tier and window against the provider's catalog before the session starts.
 - **Both grants in one call.** With a destination, `image_crop` reads the image under the workspace
@@ -149,7 +154,7 @@ nothing describes its choice, so the sample declares vision itself; the effort a
 ## Demonstrating Capability Gating
 
 The `--no-vision` flag omits both the image pack and the `Vision` host capability, and the sample then
-stops requiring a vision model. Ask the agent to
+stops requiring a vision model; the diagram pack stays, in text preview. Ask the agent to
 list its tools with and without the flag to see the difference:
 
 ```bash
@@ -164,12 +169,12 @@ With vision enabled the agent lists `text_file_search`, `text_file_read`, `text_
 `text_file_paste_lines`,
 `file_list`, `file_copy`,
 `file_move`, `file_delete`, `file_create_directory`, `file_move_directory`,
-`file_delete_directory`, `markdown_outline`, `image_read`, `image_crop`, `image_auto_crop`, and
-`image_view` — twenty tools;
-with `--no-vision`
-all four image tools
-are absent, because the builder never asks a pack for tools whose required capability the host has not
-declared.
+`file_delete_directory`, `markdown_outline`, `image_read`, `image_crop`, `image_auto_crop`,
+`image_view`, `diagram_help` and `diagram_render` — twenty-two tools. With `--no-vision` all four
+image tools are absent, because the builder never asks a pack for tools whose required capability
+the host has not declared, while the two diagram tools remain in text preview, which requires no
+capability. The `--no-diagrams` flag removes the two diagram tools and the pack's paragraph from
+the instructions.
 
 ## Demonstrating Containment
 
@@ -272,3 +277,35 @@ file already at that name is never replaced. Whether the model picks the rectang
 holds `FALCON-4297` is a property of the model, in exactly the sense described under *Verifying
 vision honestly* in the sample's own README — and it is checkable in exactly the same way, by
 opening the produced `code.png` and reading the code back yourself.
+
+## Demonstrating Diagramming a Document
+
+The workspace holds `release-process.md`, a short release process written as numbered steps with
+one decision in it — a natural flowchart. Ask the agent to draw it:
+
+```bash
+dotnet run --project samples/document-assistant -- \
+  --workspace samples/document-assistant/workspace \
+  --provider ollama --host http://your-ollama-host:11434 --model gemma4:26b \
+  --prompt "Diagram the release process described in release-process.md."
+```
+
+The sample composes `DiagramPack.For(host)` from the same host capabilities it declares on the
+builder, and appends the pack's `Instructions` to its own instructions explicitly, followed by a
+sentence of its own describing the workflow: read the document, write the diagram as Mermaid source
+into the session folder as `release-process.mmd`, draw it with `diagram_render` and `save_as` set to
+the session folder's absolute path ending in `release-process.png`, check the result and fix the
+source, then link the picture from the Markdown it writes. The printed tool calls show each step,
+including any `diagram_help` topic the agent reads first.
+
+When the run ends, the session folder holds `release-process.mmd` and `release-process.png`. The
+session folder is the destination because it is the only location writable in both workspace
+modes; `save_as` replaces an earlier picture of the same name, so the agent can save on every
+attempt. A source that cannot be drawn comes back with its line, its column, the offending line
+with a caret and the `diagram_help` topic to read, so the agent can fix it rather than guess.
+
+Run the same prompt with `--no-vision` to see text preview. `diagram_render` then requires
+`save_as`, and the model receives the picture's size, the labels and features it contains and its
+dominant colors instead of the picture. As with figure preparation, the tools decide where the
+picture may be written and guarantee that the saved file is what was drawn; whether the flowchart
+is a good one is a property of the model, checked by opening `release-process.png`.

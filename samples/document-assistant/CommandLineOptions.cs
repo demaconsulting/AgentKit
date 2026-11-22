@@ -172,6 +172,19 @@ public sealed class CommandLineOptions
     public bool VisionEnabled { get; init; } = true;
 
     /// <summary>
+    ///     Gets a value indicating whether the diagram tools are offered. When
+    ///     <see langword="false"/>, the diagram pack is omitted, so neither <c>diagram_help</c> nor
+    ///     <c>diagram_render</c> is offered to the model, and its paragraph is left out of the
+    ///     instructions.
+    /// </summary>
+    /// <remarks>
+    ///     Set by <c>--no-diagrams</c>. Independent of <see cref="VisionEnabled"/>: with vision off the
+    ///     diagram tools are still offered, in text preview, where each drawing is saved and the
+    ///     model is told what it contains instead of being shown it.
+    /// </remarks>
+    public bool DiagramsEnabled { get; init; } = true;
+
+    /// <summary>
     ///     Gets the reasoning effort to run the model at, or <see langword="null"/> to leave it to the
     ///     provider. Set by <c>--reasoning-effort</c>.
     /// </summary>
@@ -262,6 +275,7 @@ public sealed class CommandLineOptions
         var host = DefaultOllamaHost;
         string? model = null;
         var visionEnabled = true;
+        var diagramsEnabled = true;
         string? prompt = null;
         string? effort = null;
         string? tier = null;
@@ -303,6 +317,10 @@ public sealed class CommandLineOptions
 
                 case "--no-vision":
                     visionEnabled = false;
+                    break;
+
+                case "--no-diagrams":
+                    diagramsEnabled = false;
                     break;
 
                 case "--reasoning-effort":
@@ -359,6 +377,7 @@ public sealed class CommandLineOptions
             Host = host,
             Model = model,
             VisionEnabled = visionEnabled,
+            DiagramsEnabled = diagramsEnabled,
             Prompt = prompt,
             ReasoningEffort = effort,
             ContextTier = tier,
@@ -430,8 +449,8 @@ public sealed class CommandLineOptions
          document-assistant — chat with an agent granted exactly two locations.
 
          The agent reads text files and (with vision) looks at images in a workspace folder, and
-         writes whatever it produces into a separate session folder. A path outside those two
-         locations is refused, not merely discouraged.
+         writes whatever it produces — summaries, cropped figures, drawn diagrams — into a separate
+         session folder. A path outside those two locations is refused, not merely discouraged.
 
          The two locations are orthogonal ideas working together. The workspace is the working
          directory — the single anchor a relative path resolves against — and it is also granted,
@@ -452,7 +471,9 @@ public sealed class CommandLineOptions
            --host <url>              Ollama server URL (default: {DefaultOllamaHost}; ollama only).
            --model <name>            Model to back the agent (default: the Copilot runtime's own
                                      choice for --provider copilot, {DefaultOllamaModel} for ollama).
-           --no-vision               Omit the image tool and the Vision capability entirely.
+           --no-vision               Omit the image tools and the Vision capability entirely; the
+                                     diagram tools stay, describing each drawing in words.
+           --no-diagrams             Omit the diagram tools (diagram_help, diagram_render).
            --list-models             List the models that can run this sample (vision models unless
                                      --no-vision), grouped by category, and exit. No --workspace needed.
            --reasoning-effort <id>   Reasoning effort, from the model's list (see --list-models).
@@ -476,5 +497,8 @@ public sealed class CommandLineOptions
                                       session folder, and the agent recover by writing there)
            --prompt "Read ../outside-workspace.txt"      (watch containment refuse it)
            --prompt "Use text_file_read on diagram.png"  (watch the binary guard redirect to image_read)
+           --prompt "Diagram the release process described in release-process.md"
+                                     (watch the agent draw a flowchart, look at it, fix it, and save
+                                      release-process.png into the session folder)
          """;
 }

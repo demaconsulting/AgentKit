@@ -1,4 +1,6 @@
 using DemaConsulting.AgentKit.Core;
+using DemaConsulting.AgentKit.Tools.Visual.Diagram;
+using Microsoft.Extensions.AI;
 
 namespace DemaConsulting.AgentKit.Samples.DocumentAssistant.Tests;
 
@@ -9,7 +11,8 @@ namespace DemaConsulting.AgentKit.Samples.DocumentAssistant.Tests;
 /// <remarks>
 ///     The sample is a vision application: with vision on it lists and selects only models that can
 ///     see, and it validates the effort, tier and window a user typed before any session starts.
-///     These scenarios pin the parsing, the requirement and the listing without contacting a
+///     These scenarios pin the parsing, the requirement, the listing and the tools each choice
+///     composes — the image and diagram tools following the host — without contacting a
 ///     provider.
 /// </remarks>
 public class ModelSelectionTests
@@ -112,6 +115,142 @@ public class ModelSelectionTests
         // Assert
         Assert.Contains(seeing, tool => tool.Name == "image_read");
         Assert.DoesNotContain(blind, tool => tool.Name.StartsWith("image_", StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    ///     Proves the diagram tools are offered by default and <c>--no-diagrams</c> turns them off,
+    ///     independently of <c>--no-vision</c>.
+    /// </summary>
+    [Fact]
+    public void CommandLineOptions_Parse_NoDiagrams_DisablesOnlyTheDiagrams()
+    {
+        // Arrange / Act
+        var defaults = CommandLineOptions.Parse(["--workspace", "ws"]);
+        var noDiagrams = CommandLineOptions.Parse(["--workspace", "ws", "--no-diagrams"]);
+        var noVision = CommandLineOptions.Parse(["--workspace", "ws", "--no-vision"]);
+
+        // Assert: each switch removes only what it names
+        Assert.Multiple(
+            () => Assert.True(defaults.DiagramsEnabled),
+            () => Assert.False(noDiagrams.DiagramsEnabled),
+            () => Assert.True(noDiagrams.VisionEnabled),
+            () => Assert.True(noVision.DiagramsEnabled));
+    }
+
+    /// <summary>
+    ///     Proves the diagram pack's preview follows the host and the switch removes it.
+    /// </summary>
+    [Fact]
+    public void AgentComposition_CreateDiagramPack_FollowsTheHostAndTheSwitch()
+    {
+        // Arrange / Act
+        var seeing = AgentComposition.CreateDiagramPack(HostCapabilities.Vision, true);
+        var blind = AgentComposition.CreateDiagramPack(HostCapabilities.None, true);
+        var off = AgentComposition.CreateDiagramPack(HostCapabilities.Vision, false);
+
+        // Assert: a host that can see is shown each drawing, one that cannot is told about it
+        Assert.Multiple(
+            () => Assert.Equal(DiagramPreview.Image, seeing?.Preview),
+            () => Assert.Equal(DiagramPreview.Text, blind?.Preview),
+            () => Assert.Null(off));
+    }
+
+    /// <summary>
+    ///     Proves a vision host is offered the diagram tools alongside <c>image_view</c>.
+    /// </summary>
+    [Fact]
+    public void AgentComposition_BuildTools_VisionHostWithDiagrams_OffersTheDiagramAndViewTools()
+    {
+        // Arrange
+        var root = Path.GetTempPath();
+        var diagrams = AgentComposition.CreateDiagramPack(HostCapabilities.Vision, true);
+
+        // Act
+        var tools = AgentComposition.BuildTools(root, root, false, HostCapabilities.Vision, diagrams);
+
+        // Assert
+        Assert.Multiple(
+            () => Assert.Contains(tools, tool => tool.Name == "diagram_help"),
+            () => Assert.Contains(tools, tool => tool.Name == "diagram_render"),
+            () => Assert.Contains(tools, tool => tool.Name == "image_view"));
+    }
+
+    /// <summary>
+    ///     Proves a host that cannot see keeps the diagram tools, in text preview, without any image
+    ///     tool.
+    /// </summary>
+    [Fact]
+    public void AgentComposition_BuildTools_BlindHostWithDiagrams_OffersTheDiagramToolsOnly()
+    {
+        // Arrange
+        var root = Path.GetTempPath();
+        var diagrams = AgentComposition.CreateDiagramPack(HostCapabilities.None, true);
+
+        // Act
+        var tools = AgentComposition.BuildTools(root, root, false, HostCapabilities.None, diagrams);
+
+        // Assert: the session folder is writable, so text preview's render tool is published
+        Assert.Multiple(
+            () => Assert.Contains(tools, tool => tool.Name == "diagram_help"),
+            () => Assert.Contains(tools, tool => tool.Name == "diagram_render"),
+            () => Assert.DoesNotContain(tools, tool => tool.Name.StartsWith("image_", StringComparison.Ordinal)));
+    }
+
+    /// <summary>
+    ///     Proves a run without a diagram pack offers no diagram tool.
+    /// </summary>
+    [Fact]
+    public void AgentComposition_BuildTools_NoDiagramPack_OffersNoDiagramTool()
+    {
+        // Arrange
+        var root = Path.GetTempPath();
+        var diagrams = AgentComposition.CreateDiagramPack(HostCapabilities.Vision, false);
+
+        // Act
+        var tools = AgentComposition.BuildTools(root, root, false, HostCapabilities.Vision, diagrams);
+
+        // Assert
+        Assert.DoesNotContain(tools, tool => tool.Name.StartsWith("diagram_", StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    ///     Proves the composed <c>diagram_render</c> saves a drawing of the release process into the
+    ///     session folder, under a read-only workspace, which is the sample's diagram scenario.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task AgentComposition_BuildTools_DiagramRender_SavesThePictureIntoTheSessionFolder()
+    {
+        // Arrange: a read-only workspace and a separate writable session folder, as the sample grants
+        var root = Path.Combine(Path.GetTempPath(), "document-assistant-tests-" + Guid.NewGuid().ToString("N"));
+        var workspace = Directory.CreateDirectory(Path.Combine(root, "workspace")).FullName;
+        var session = Directory.CreateDirectory(Path.Combine(root, "session")).FullName;
+        try
+        {
+            var diagrams = AgentComposition.CreateDiagramPack(HostCapabilities.Vision, true);
+            var tools = AgentComposition.BuildTools(workspace, session, true, HostCapabilities.Vision, diagrams);
+            var render = tools.Single(tool => tool.Name == "diagram_render");
+            var target = Path.Combine(session, "release-process.png");
+
+            // Act: draw a flowchart and save it under the session folder's absolute path
+            var result = await render.InvokeAsync(
+                new AIFunctionArguments
+                {
+                    ["format"] = "mermaid",
+                    ["source"] = "flowchart TD\n  A[Create release branch] --> B{Tests pass?}\n  B -- yes --> C[Tag and publish]\n  B -- no --> A\n",
+                    ["save_as"] = target,
+                },
+                TestContext.Current.CancellationToken);
+
+            // Assert: the picture came back to look at and the saved file is a PNG
+            Assert.IsType<List<AIContent>>(result);
+            var saved = await File.ReadAllBytesAsync(target, TestContext.Current.CancellationToken);
+            Assert.Equal([0x89, (byte)'P', (byte)'N', (byte)'G'], saved[..4]);
+        }
+        finally
+        {
+            Directory.Delete(root, true);
+        }
     }
 
     /// <summary>
