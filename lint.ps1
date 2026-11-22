@@ -7,12 +7,12 @@
 #
 #   To auto-fix formatting issues, run fix.ps1 instead.
 #
-# EXTENSION POINTS:
-#   Search for "[PROJECT-SPECIFIC]" comments to add project-specific checks.
-#
-# MODIFICATION POLICY:
-#   Only modify this file to add project-specific operations at the designated
-#   [PROJECT-SPECIFIC] extension points, or to update tool versions as needed.
+# CUSTOMIZATION:
+#   This script belongs to the project: extend it as the project grows. Add steps at the
+#   [PROJECT-SPECIFIC] points, update tool versions, and add optional parameters that focus
+#   a run (for example -Project <name> in a multi-library repository).
+#   Run with no arguments it must still run every check (CI relies on that), and never
+#   remove or weaken a check to make it pass.
 
 function Get-VenvActivateScript {
     if (Test-Path ".venv/Scripts/Activate.ps1") { return ".venv/Scripts/Activate.ps1" }
@@ -90,12 +90,24 @@ if (-not $skipDotnetTools) {
     dotnet reviewmark --lint
     if ($LASTEXITCODE -ne 0) { $lintError = $true }
 
-    # 'reviewmark --lint' validates the configuration but does NOT detect files that require
-    # review yet belong to no review-set. Only the review plan reports those, and it exits 0
-    # whether or not gaps exist, so the plan must be written to a scratch file and inspected.
-    # The success sentence is asserted rather than the failure text matched, so an unrecognized
-    # plan format fails closed instead of passing silently. Capability requirement:
-    # AgentKit-OTS-ReviewMark-PlanCoverage.
+    if (Test-Path docs/sysml2) {
+        dotnet sysml2tools lint --strict-unresolved 'docs/sysml2/**/*.sysml'
+        if ($LASTEXITCODE -ne 0) { $lintError = $true }
+    }
+}
+
+# [PROJECT-SPECIFIC] Add additional dotnet tool checks here.
+
+# [PROJECT-SPECIFIC] Review-plan coverage.
+#
+# 'reviewmark --lint' validates the configuration but does NOT detect files that require
+# review yet belong to no review-set. Only the review plan reports those, and it exits 0
+# whether or not gaps exist, so the plan must be written to a scratch file and inspected.
+# The success sentence is asserted rather than the failure text matched, so an unrecognized
+# plan format fails closed instead of passing silently. Capability requirement:
+# AgentKit-OTS-ReviewMark-PlanCoverage.
+Write-Host "Linting: review-plan coverage..."
+if (-not $skipDotnetTools) {
     $reviewPlan = Join-Path ([System.IO.Path]::GetTempPath()) "reviewmark-coverage-$PID.md"
     dotnet reviewmark --plan $reviewPlan > $null
     if ($LASTEXITCODE -ne 0) { $lintError = $true }
@@ -110,15 +122,7 @@ if (-not $skipDotnetTools) {
         $lintError = $true
     }
     Remove-Item $reviewPlan -ErrorAction SilentlyContinue
-
-    if (Test-Path docs/sysml2) {
-        dotnet sysml2tools lint 'docs/sysml2/**/*.sysml'
-        if ($LASTEXITCODE -ne 0) { $lintError = $true }
-    }
 }
-
-# [PROJECT-SPECIFIC] Add additional dotnet tool checks here.
-
 
 # [PROJECT-SPECIFIC] Document-set completeness.
 #
