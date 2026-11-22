@@ -1,4 +1,4 @@
-package AgentKitCore {
+package AgentKitCore_GuardedToolFactory {
     private import SoftwareItemMetadata::*;
 
     part def GuardedToolFactory {

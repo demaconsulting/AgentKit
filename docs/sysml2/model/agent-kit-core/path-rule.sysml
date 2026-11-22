@@ -1,4 +1,4 @@
-package AgentKitCore {
+package AgentKitCore_PathRule {
     private import SoftwareItemMetadata::*;
 
     part def PathRule {

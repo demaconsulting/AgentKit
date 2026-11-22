@@ -1,4 +1,4 @@
-package AgentKitTools {
+package AgentKitTools_ImageCropTool {
     private import SoftwareItemMetadata::*;
 
     part def ImageCropTool {

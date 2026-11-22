@@ -1,4 +1,4 @@
-package AgentKitTools {
+package AgentKitTools_FileCreateDirectoryTool {
     private import SoftwareItemMetadata::*;
 
     part def FileCreateDirectoryTool {

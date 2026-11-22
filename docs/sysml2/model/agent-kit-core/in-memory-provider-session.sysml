@@ -1,4 +1,4 @@
-package AgentKitCore {
+package AgentKitCore_InMemoryProviderSession {
     private import SoftwareItemMetadata::*;
 
     part def InMemoryProviderSession {

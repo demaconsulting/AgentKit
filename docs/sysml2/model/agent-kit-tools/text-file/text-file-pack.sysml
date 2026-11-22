@@ -1,4 +1,4 @@
-package AgentKitTools {
+package AgentKitTools_TextFilePack {
     private import SoftwareItemMetadata::*;
 
     part def TextFilePack {

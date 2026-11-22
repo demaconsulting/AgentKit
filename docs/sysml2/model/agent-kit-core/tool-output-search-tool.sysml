@@ -1,4 +1,4 @@
-package AgentKitCore {
+package AgentKitCore_ToolOutputSearchTool {
     private import SoftwareItemMetadata::*;
 
     part def ToolOutputSearchTool {

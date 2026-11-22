@@ -1,4 +1,4 @@
-package AgentKitTools {
+package AgentKitTools_MemoryStore {
     private import SoftwareItemMetadata::*;
 
     part def MemoryStore {

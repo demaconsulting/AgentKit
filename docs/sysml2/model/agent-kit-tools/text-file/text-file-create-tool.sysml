@@ -1,4 +1,4 @@
-package AgentKitTools {
+package AgentKitTools_TextFileCreateTool {
     private import SoftwareItemMetadata::*;
 
     part def TextFileCreateTool {

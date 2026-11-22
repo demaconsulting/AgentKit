@@ -6,16 +6,17 @@ throughout the repository.
 - **project-name**: AgentKit
 - **organization**: DEMA Consulting
 - **project-tagline**: Safe agent tools for .NET
-- **description**: AgentKit is a family of .NET libraries providing hardened,
+- **description**: AgentKit is a family of .NET libraries providing guarded,
   provider-neutral agent tools. It exists so that a developer can hand an AI agent a set
-  of capabilities that are safe by construction, where an unsafe operation is not refused
-  at call time but is impossible to express. An application author decides which tools an
-  agent receives and configures the controls those tools carry; AgentKit ensures each tool
-  behaves correctly and predictably within them. It does not provide an agent runtime or a provider
+  of capabilities confined to what the application grants: each tool is guarded by the
+  application's path grants and limits, and a call that names a path outside those grants is
+  refused with a reason the model can act on. An application author decides which tools an
+  agent receives and configures the controls those tools carry; AgentKit checks each tool call
+  against them. It does not provide an agent runtime or a provider
   abstraction — Microsoft Agent Framework supplies those, and AgentKit's tools work with it, with
   the GitHub Copilot SDK, and with any `IChatClient` alike — but it does provide its own session
-  lifecycle with tiered context compaction, so a long-running agent behaves the same way on every
-  provider.
+  lifecycle with tiered context compaction, so a long-running agent keeps working within the
+  model's context window on each supported provider.
 - **languages**: `C#`
 - **technologies**: `.NET`, `Microsoft.Extensions.AI`
 
@@ -170,7 +171,17 @@ requires it and the modification preserves the documented design intent:
 
 - `.reviewmark.yaml`, `.textlint.yaml`, `.editorconfig`
 - `.lintmark.yaml`, `.yamllint.yaml`
-- `requirements.yaml`, `fix.ps1`, `lint.ps1`
+- `requirements.yaml`
+
+# Project Scripts
+
+`build.ps1`, `lint.ps1`, and `fix.ps1` belong to the project: extend them as it grows. Add project-specific
+steps, update tool versions, and add optional parameters that focus a run (for example one library in a
+multi-library repository, or headless tests without GUI automation). Two rules keep them trustworthy:
+
+- Run with no arguments, each script still does its full job (CI and the agents rely on that); slow or
+  environment-dependent test tiers may be opt-in switches of `build.ps1`.
+- Never remove or weaken a check to make lint or tests pass.
 
 # Continuous Compliance Overview
 

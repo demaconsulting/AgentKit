@@ -1,4 +1,4 @@
-package AgentKitCore {
+package AgentKitCore_ContextLayout {
     private import SoftwareItemMetadata::*;
 
     part def ContextLayout {

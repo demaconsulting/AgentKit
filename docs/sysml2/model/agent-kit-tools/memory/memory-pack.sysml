@@ -1,4 +1,4 @@
-package AgentKitTools {
+package AgentKitTools_MemoryPack {
     private import SoftwareItemMetadata::*;
 
     part def MemoryPack {

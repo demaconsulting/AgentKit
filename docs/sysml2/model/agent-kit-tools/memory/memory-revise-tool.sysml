@@ -1,4 +1,4 @@
-package AgentKitTools {
+package AgentKitTools_MemoryReviseTool {
     private import SoftwareItemMetadata::*;
 
     part def MemoryReviseTool {

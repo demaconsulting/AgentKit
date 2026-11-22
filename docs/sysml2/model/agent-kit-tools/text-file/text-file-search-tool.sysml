@@ -1,4 +1,4 @@
-package AgentKitTools {
+package AgentKitTools_TextFileSearchTool {
     private import SoftwareItemMetadata::*;
 
     part def TextFileSearchTool {

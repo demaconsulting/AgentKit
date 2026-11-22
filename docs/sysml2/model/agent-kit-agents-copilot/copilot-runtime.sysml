@@ -1,4 +1,4 @@
-package AgentKitAgentsCopilot {
+package AgentKitAgentsCopilot_CopilotRuntime {
     private import SoftwareItemMetadata::*;
 
     part def CopilotRuntime {

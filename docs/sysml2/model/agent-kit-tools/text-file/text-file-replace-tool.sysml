@@ -1,4 +1,4 @@
-package AgentKitTools {
+package AgentKitTools_TextFileReplaceTool {
     private import SoftwareItemMetadata::*;
 
     part def TextFileReplaceTool {

@@ -1,4 +1,4 @@
-package AgentKitCore {
+package AgentKitCore_ToolOutputRetention {
     private import SoftwareItemMetadata::*;
 
     part def ToolOutputRetention {

@@ -1,4 +1,4 @@
-package AgentKitCore {
+package AgentKitCore_CompactingAgentSession {
     private import SoftwareItemMetadata::*;
 
     part def CompactingAgentSession {

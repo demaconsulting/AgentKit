@@ -1,4 +1,4 @@
-package AgentKitCore {
+package AgentKitCore_ToolOutputStore {
     private import SoftwareItemMetadata::*;
 
     part def ToolOutputStore {

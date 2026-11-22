@@ -1,4 +1,4 @@
-package AgentKitTools {
+package AgentKitTools_MemoryRecallTool {
     private import SoftwareItemMetadata::*;
 
     part def MemoryRecallTool {

@@ -1,4 +1,4 @@
-package AgentKitCore {
+package AgentKitCore_ToolLimits {
     private import SoftwareItemMetadata::*;
 
     part def ToolLimits {

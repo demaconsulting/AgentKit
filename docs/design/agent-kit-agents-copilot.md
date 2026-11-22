@@ -36,7 +36,7 @@ none of it. Owning the agent also removes a seam the confinement used to cross: 
 stands between the configuration AgentKit builds and the session the runtime creates from it.
 
 **The system carries a second job: an AgentKit provider session.** Core's compaction engine is what
-lets a long-running agent behave the same way on every provider, and it reaches a provider through
+keeps a long-running agent within its context window on each supported provider, and it reaches a provider through
 an adapter. Until this increment there was one adapter, for the stateless `IChatClient` family — and
 the Copilot SDK exposes no `IChatClient` anywhere, so the engine could not run on Copilot at all.
 That mattered more than the count suggests: Copilot is the provider this project's continuous
@@ -276,7 +276,7 @@ When the host supplies no handler, every session carries one that:
 
 Measured against the live runtime, and re-verified by the opt-in live suite, every call to a custom
 tool raises a custom-tool permission request, so the handler is on the hot path of every tool call and
-approving the host's own tools is its intended outcome. Those tools are safe by construction — they
+approving the host's own tools is its intended outcome. Those tools are guarded — they
 enforce their own path policy — and the runtime's permission layer is a second, independent gate that
 refuses everything else. A grant is approve-once rather than approve-for-session, so every call is
 adjudicated individually and no grant outlives the call. A handler is always installed, because a

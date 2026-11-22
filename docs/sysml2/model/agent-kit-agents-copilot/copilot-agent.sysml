@@ -1,5 +1,6 @@
-package AgentKitAgentsCopilot {
+package AgentKitAgentsCopilot_CopilotAgent {
     private import SoftwareItemMetadata::*;
+    private import AgentKitAgentsCopilot_CopilotTurnChannel::*;
 
     part def CopilotAgent {
         doc /* AgentKit's own Microsoft Agent Framework AIAgent over confined Copilot sessions, because the Copilot SDK ships no Agent Framework agent: creates a runtime session on a conversation's first run and records its identity on the public CopilotAgentSession, resumes that session under an identically confined, freshly built configuration on every later run, and releases it after every run without deleting it, so the conversation stays resumable while no handle outlives a run; deletes the session of a run made without a conversation; streams the root agent's text deltas, tool calls and results, and per-request usage, failing a run the runtime reports a session error for; sends inline data as in-memory attachments; serializes a conversation as its session identity and state bag; and serializes concurrent runs on one conversation so it can never fork. */

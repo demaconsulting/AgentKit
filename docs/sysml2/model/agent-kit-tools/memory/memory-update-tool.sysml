@@ -1,4 +1,4 @@
-package AgentKitTools {
+package AgentKitTools_MemoryUpdateTool {
     private import SoftwareItemMetadata::*;
 
     part def MemoryUpdateTool {

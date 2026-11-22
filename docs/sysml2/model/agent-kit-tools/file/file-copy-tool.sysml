@@ -1,4 +1,4 @@
-package AgentKitTools {
+package AgentKitTools_FileCopyTool {
     private import SoftwareItemMetadata::*;
 
     part def FileCopyTool {

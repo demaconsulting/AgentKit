@@ -1,4 +1,4 @@
-package AgentKitCore {
+package AgentKitCore_AgentKitChatReducer {
     private import SoftwareItemMetadata::*;
 
     part def AgentKitChatReducer {

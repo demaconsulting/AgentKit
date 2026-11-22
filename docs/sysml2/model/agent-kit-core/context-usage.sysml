@@ -1,4 +1,4 @@
-package AgentKitCore {
+package AgentKitCore_ContextUsage {
     private import SoftwareItemMetadata::*;
 
     part def ContextUsage {

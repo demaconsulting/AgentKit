@@ -1,4 +1,4 @@
-# AgentKit
+# ![AgentKit: Safe agent tools for .NET][hero]
 
 <!-- IMPORTANT: All links in this file must be absolute URLs.
      This file is distributed in packages and relative links will not resolve. -->
@@ -11,27 +11,24 @@
 [![Quality Gate][badge-quality]][link-quality]
 [![Security][badge-security]][link-security]
 [![NuGet][badge-nuget]][link-nuget]
-![AgentKit banner: the AgentKit name with the tagline 'Every tool, guarded. Every chat, compacted.' and the C# call 'new ToolPackBuilder(policy).Add(new FilePack()).Build()'. A model's tool calls such as text_file_read on notes.md, the application's read-write and read-only path grants, tool limits such as a 64 KB read ceiling, and long chats flow on curved arrows into the AgentKit .NET library, and arrows lead out to what it produces: confined results where a permitted read returns and a path outside every grant is refused, a guarded tool list, a session compacted into a verbatim tail and three tiers of consolidated records, and agents on any provider such as an IChatClient or GitHub Copilot. A footnote reads 'Unsafe calls cannot be expressed.'][hero]
 
 ## Overview
 
-AgentKit is a family of .NET libraries that give an AI agent hardened, provider-neutral tools that are
-safe by construction: an unsafe operation is not refused at call time, it cannot be expressed. The
-application decides which tools an agent receives and the controls they carry, and AgentKit makes each
-tool behave predictably within them. It also gives the agent a session of its own that compacts its
-context, so a long-running agent behaves the same way on every provider.
+AgentKit is a family of .NET libraries that gives an AI agent provider-neutral tools confined to what the
+application grants. The application decides which tools an agent receives and the path grants and limits they
+carry; each tool checks every call against them and refuses one that falls outside, with a reason the model can act
+on. AgentKit also provides an agent session that compacts its own context, so a long-running agent keeps working
+within the model's context window on each supported provider.
 
 ## Features
 
-- 🛡️ **Safe by Construction**: Operations the policy forbids cannot be expressed, not merely refused at call time
-- 🎛️ **Application-Set Controls**: Path grants, tool limits, and host capabilities bound every tool
+- 🛡️ **Application-Set Controls**: Path grants, tool limits, and host capabilities; a path outside the grants is refused
 - 🧰 **Ready-Made Tool Families**: Text file, file, Markdown, image, todo, memory, and agent delegation
 - 🧩 **Custom Tools**: Build your own tools through the same guarded factory and publish them as packs
-- 🔌 **Provider-Neutral**: Plain `AIFunction` tools that keep their limits in any agent, Copilot, or `IChatClient`
-- 🧠 **Self-Compacting Sessions**: Tiered context compaction keeps a long conversation alive on any provider
-- 🗄️ **Large Output Retention**: Opt-in, any provider; held in memory for `tool_output_read` and `tool_output_search`
-- 📏 **Honest Context Windows**: Sessions account against the window a provider really runs, Ollama included
-- 🖼️ **Images That Arrive**: Tool-returned images reach the model even on providers that would drop them
+- 🔌 **Provider-Neutral**: Plain `AIFunction` tools that keep their limits on any `IChatClient` or on GitHub Copilot
+- 🧠 **Self-Compacting Sessions**: Tiered compaction keeps a long conversation within the window the provider runs
+- 🗄️ **Large Output Retention**: Opt-in; oversized tool output is held in memory and paged through by reference
+- 🖼️ **Tool Image Delivery**: Tool-returned images reach the model on providers that would otherwise drop them
 - 🧪 **Testable Offline**: An in-memory provider session exercises the whole session lifecycle without a model
 - 📚 **Agent-Readable API Reference**: Every package ships a gradually-disclosed Markdown API reference
 - 🖥️ **Multi-Platform Support**: Builds and runs on Windows, Linux, and macOS, targeting .NET 8, 9, and 10

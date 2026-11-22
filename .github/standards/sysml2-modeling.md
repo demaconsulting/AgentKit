@@ -31,15 +31,15 @@ docs/sysml2/
 ├── common/
 │   └── software-items.sysml           # shared SoftwareItemMetadata::SoftwareInfo metadata def
 ├── model/
-│   ├── {system-name}.sysml            # system-level part def only (no subsystems/units inline)
+│   ├── {system-name}.sysml            # package {SystemName}; system-level part def only (no subsystems/units inline)
 │   ├── {system-name}/
-│   │   ├── {subsystem-name}.sysml     # subsystem part def; nests further for sub-subsystems
+│   │   ├── {subsystem-name}.sysml     # package {SystemName}_{SubsystemName}Subsystem; nests further for sub-subsystems
 │   │   └── {subsystem-name}/
-│   │       └── {unit-name}.sysml      # one file per unit
-│   ├── ots.sysml                      # OTS dependency parts (optional; if OTS items exist)
-│   └── shared.sysml                   # Shared Package parts (optional; if Shared Packages exist)
+│   │       └── {unit-name}.sysml      # package {SystemName}_{UnitName}; one file per unit
+│   ├── ots.sysml                      # package OtsDependencies: OTS parts (optional; if OTS items exist)
+│   └── shared.sysml                   # package SharedPackages: Shared Package parts (optional; if Shared Packages exist)
 └── views/
-    └── design-views.sysml             # named view usages rendered for the design document
+    └── design-views.sysml             # package {RepoName}DesignViews; named view usages rendered for the design document
 ```
 
 `docs/sysml2/common/software-items.sysml` defines the `SoftwareItemMetadata::SoftwareInfo`
@@ -62,14 +62,42 @@ so no single alias name would generalize. Agents discover the system(s) present 
 `docs/sysml2/**/*.sysml`, not by assuming a fixed name.
 
 Always pass the full set of `.sysml` files (or an equivalent glob) to every `sysml2tools`
-invocation — the model spans multiple files and cross-references between them; files sharing
-the same `package Name { ... }` merge into one namespace automatically with no `import`
-required, as long as all files are passed together. As of `sysml2tools` 0.1.0-beta.5,
+invocation — the model spans multiple files and cross-references between them, and a
+reference only resolves when the file declaring its target is loaded (see Package Structure
+below for how files reference each other). As of `sysml2tools` 0.1.0-beta.5,
 `lint` and `render` both expand `*`/`**` glob patterns internally (recursing correctly into
 subdirectories), so pass a single **quoted** glob string (e.g. `'docs/sysml2/**/*.sysml'`)
 and let the tool resolve it — do not rely on the shell to expand it, and do not quote-strip
 the pattern before it reaches the tool. Quoting keeps the behavior identical across
 PowerShell and bash, since neither shell needs to (or reliably does) expand `**` itself.
+
+## Package Structure
+
+SysML v2 has no package merging: each file is its own root namespace, and two root packages
+with the same name are duplicate members of the global namespace (the OMG Pilot
+Implementation reports "Duplicate of other owned member name" for each, and references across
+the halves do not resolve). A model that only loads because a tool is lenient is not portable,
+so:
+
+- Each `.sysml` file declares **exactly one uniquely named package**, and a package is never
+  declared (or "reopened") in more than one file.
+- Name each package from its place in the hierarchy, joined with an underscore:
+  `{SystemName}` for the system file, `{SystemName}_{SubsystemName}Subsystem` for a subsystem
+  (including a nested sub-subsystem, which is not prefixed with its parent subsystem), and
+  `{SystemName}_{UnitName}` for a unit. The system prefix keeps names unique across systems.
+  The shared files use `OtsDependencies` and `SharedPackages`, and the single views file uses
+  one repository-level package, `{RepoName}DesignViews` (not one per system).
+- Package names must be unique **repository-wide**. The short forms above are the default;
+  when one would collide (two `Storage` subsystems in different branches, or two units named
+  `Cache` in different subsystems), qualify it with the owning subsystem path, for example
+  `{SystemName}_{SubsystemName}_{UnitName}` (`Acme_Ingest_Cache` and `Acme_Query_Cache`).
+- Reference other files with an explicit `private import {PackageName}::*;` (a system or
+  subsystem file imports the package of each direct member so its `part` usages resolve; every
+  file that applies `SoftwareInfo` imports `SoftwareItemMetadata::*`).
+- Where an import would form a cycle (for example a unit that depends on a package that
+  already imports it), or for a one-off reference into another system, use the qualified name
+  instead, e.g. `dependency {UnitName} to {SystemName}_{OtherUnit}::{OtherUnit};`.
+  Import cycles raise a lint warning; qualified references do not.
 
 ## Model Content
 
@@ -146,15 +174,22 @@ not-yet-scheduled change.)
 - Add a one-line comment above each unit's dependency block stating *why*, not just *what*.
 - Source each Unit's dependency list from that Unit's own design doc, not a Subsystem-level
   summary diagram (which may omit real edges, e.g. re-entrant calls).
-- Consume dependencies by **querying**, not by rendering a dedicated diagram: `sysml2tools query
-  uses`/`used-by`/`dependencies --element {QualifiedName}` return every `dependency` edge (in
-  addition to structural typing/containment references) directly from the model — see the
-  `sysml2tools-query` skill. Do not declare a dedicated `DependencyView`/
-  `{SubsystemName}DependencyView` diagram for this purpose: `render asInterconnectionDiagram`
-  ignores `dependency` edges entirely (only renders `connect`), and an earlier `asGeneralDiagram`-
-  based dependency-diagram approach was abandoned as unmaintainable at scale (unreadable/clipped
-  canvases once a system has more than a handful of cross-unit dependencies). Model `dependency`
-  statements purely as queryable facts, never as a rendering target.
+- `sysml2tools query uses`/`used-by`/`dependencies --element {QualifiedName}` remain the
+  **primary** way to consume dependencies: they return every `dependency` edge (in addition to
+  structural typing/containment references) directly from the model — see the
+  `sysml2tools-query` skill.
+- Focused dependency views are also allowed in the design docs (requires `sysml2tools`
+  0.3.0-beta.4+, which draws part trees and `«depend»` edge labels, and scales oversized PNGs
+  instead of clipping them). A dependency edge renders only when both ends are exposed, so each
+  view must follow these rules:
+  - Expose one subsystem's units plus the suppliers named in their `dependency` statements, so
+    the `«depend»` edges render.
+  - Keep each view to at most about 12–15 dependency edges; split a large subsystem into themed
+    views.
+  - Omit hub suppliers that most units depend on from unit-level views. State the omission in
+    each view's `doc`; hub usage may be shown once in a small shared view.
+  - No view should need PNG downscaling: beta.4 scales PNGs over 8192 px and prints a warning,
+    which is a signal that the view is too big.
 
 ## Attribute Modeling
 
@@ -174,11 +209,13 @@ Views control what gets rendered into diagrams for the design document. Use name
 **usages** (not `view def` **definitions**) — `expose` is only valid inside a usage:
 
 ```sysml
-package {SystemName} {
+package {RepoName}DesignViews {
     private import StandardViewDefinitions::*;
+    private import {SystemName}::*;
+    private import {SystemName}_{SubsystemName}Subsystem::*;
 
     view SoftwareStructureView : InterconnectionView {
-        expose {SystemName}::**;     // all members, recursively: system + subsystems + units
+        expose {SystemName}::{SystemName}System;  // system part def: system frame with its direct subsystem usages
     }
 
     view {SystemName}View {
@@ -186,15 +223,17 @@ package {SystemName} {
     }
 
     view {SubsystemName}View {
-        expose {SubsystemName};      // one subsystem def only
+        expose {SubsystemName}Subsystem;      // one subsystem def only
     }
 }
 ```
 
+Views import (or qualify) every package whose members they expose, like any other file.
+
 Type `SoftwareStructureView` by a standard view definition from the SysML v2 Views library
-(`GeneralView`, `InterconnectionView`, ...; requires `sysml2tools` 0.3.0-beta.3+). The view
+(`GeneralView`, `InterconnectionView`, ...; requires `sysml2tools` 0.3.0-beta.4+). The view
 definition selects the diagram notation; `InterconnectionView` draws the system as nested
-containment boxes, which is the clearest full-detail overview for a single system.
+containment boxes, which is the clearest system-level overview.
 
 **Critical distinction** (do not confuse these — this cost significant trial-and-error to
 discover): `expose <name>;` is what scopes a rendered diagram's content (the union of the
@@ -202,7 +241,9 @@ named element's containment subtree). The view definition (or a `render <kind>;`
 selects a rendering *style* — it has **no effect on scope**. `expose` is only legal inside a named
 `view Name { ... }` **usage**; it is a syntax/semantic error inside a `view def Name { ... }`
 **definition**. `expose` targets must be `::`-qualified or locally-resolvable names, not
-dotted member-access chains (`expose foo.bar;` is invalid — use `expose Bar;`).
+dotted member-access chains (`expose foo.bar;` is invalid — use `expose Bar;`). A `render <kind>;`
+member such as `render asInterconnectionDiagram;` needs `private import Views::*;` in the views package,
+or `lint --strict-unresolved` reports it as an unresolved reference.
 
 **Exposing a package needs a membership wildcard.** `expose {Package};` exposes only the
 package element itself, which renders as an empty package symbol. To show what a package
@@ -213,35 +254,44 @@ and `{SubsystemName}View` do) is fine: its own parts are its structure.
 **Naming convention** — one `View` suffix per rendered diagram, no `System`/`Subsystem`
 suffix duplication:
 
-- `SoftwareStructureView` - full detail: every system, subsystem, and unit in one diagram
+- `SoftwareStructureView` - system-level overview: every system as a frame with its direct
+  subsystem usages (unit detail lives in the per-system and per-subsystem views)
 - `{SystemName}View` - one per system, direct members only (not expanded into subsystems)
 - `{SubsystemName}View` - one per subsystem (at any nesting depth), that subsystem's own
   members only
+- `{SubsystemName}{Theme}View` - optional focused dependency views for a large subsystem (see
+  Dependency Relationships), each exposing the units of one theme plus their suppliers
+- `OtsView` - optional, the OTS items from `ots.sysml` kept apart from the system overview
 
-There is no dedicated `DependencyView`/`{SubsystemName}DependencyView` diagram convention —
-`dependency` relationships are consumed via `sysml2tools query` (see Dependency Relationships
-above), not rendered.
-
-When a repository has multiple systems, type `SoftwareStructureView` by `GeneralView`,
-expose each system package's members, and filter out documentation so the overview stays
-readable — the general view draws one package frame per system, while an interconnection
-view places all systems in a single row:
+When a repository has multiple systems, type `SoftwareStructureView` by
+`InterconnectionView` and expose each system's part def. Each system renders as a frame with
+its subsystem part usages nested inside (beta.4 draws a part def's interior). Keep OTS
+dependencies out of the overview in a separate small `OtsView`, and exclude metadata defs such
+as `SoftwareInfo` from overviews by not exposing the package that declares them. Use
+`GeneralView` for part-tree, composition-style views and for the dependency views above;
+filter out documentation so each diagram stays readable:
 
 ```sysml
 package {RepoName}DesignViews {
     private import StandardViewDefinitions::*;
 
-    view SoftwareStructureView : GeneralView {
-        expose {SystemNameA}::**;
-        expose {SystemNameB}::**;
-        filter not @SysML::Documentation;
+    view SoftwareStructureView : InterconnectionView {
+        expose {SystemNameA}::{SystemNameA}System;
+        expose {SystemNameB}::{SystemNameB}System;
+        filter not (@SysML::Documentation);
+    }
+
+    view OtsView : GeneralView {
+        expose OtsDependencies::*;
+        filter not (@SysML::Documentation);
     }
 }
 ```
 
 Documentation (`doc`) is exposed with its owner and drawn as a `doc` compartment unless a
-view filters it out; use `filter not @SysML::Documentation;` wherever doc text would clutter
-a diagram.
+view filters it out; use `filter not (@SysML::Documentation);` wherever doc text would clutter
+a diagram. The parentheses are required: the SysML v2 grammar does not accept the unparenthesized
+`filter not @SysML::Documentation;`.
 
 ## Diagram Embedding
 
@@ -264,7 +314,7 @@ in one invocation, one file per view, using each view's own name as the filename
 Embed diagrams in `docs/design/` per this rule: every design doc for an item embeds the
 diagram for the narrowest view that still shows that item's own immediate structure —
 
-- `docs/design/introduction.md` — `SoftwareStructureView.svg` (the full-detail overview)
+- `docs/design/introduction.md` — `SoftwareStructureView.svg` (the system-level overview)
 - `docs/design/{system-name}.md` and every unit doc for a unit directly under the system
   (no subsystem parent) — `{SystemName}View.svg`
 - `docs/design/{system-name}/{subsystem-name}.md` and every unit doc nested under that
@@ -273,16 +323,17 @@ diagram for the narrowest view that still shows that item's own immediate struct
 Place the image directly under the file's top-level heading, before its first prose
 subsection, e.g. `![{Name} Structure]({ViewName}.svg)`.
 
-Document dependencies in prose instead of a diagram: each System/Subsystem design doc's
-"Dependencies" section should be generated/maintained from `sysml2tools query dependencies
---element {QualifiedName}` output (Markdown format), not an embedded image.
+Each System/Subsystem design doc's "Dependencies" section should be generated/maintained from
+`sysml2tools query dependencies --element {QualifiedName}` output (Markdown format); it may
+also embed that subsystem's focused dependency view(s) alongside the query output.
 
 ## Build and Lint Integration
 
 - `sysml2tools lint` belongs in `lint.ps1`'s compliance-tools section, **not** as a separate
   step in the CI design-document job — `lint.ps1` gates every later job (including document
   generation) transitively, so linting the model there is both earlier and non-duplicated.
-  Pass a single quoted recursive glob, e.g. `dotnet sysml2tools lint 'docs/sysml2/**/*.sysml'`
+  Pass a single quoted recursive glob and `--strict-unresolved` (0.3.0-beta.4+, which fails the lint on unresolved
+  references), e.g. `dotnet sysml2tools lint --strict-unresolved 'docs/sysml2/**/*.sysml'`
   — `sysml2tools` (0.1.0-beta.5+) expands and recurses this itself, so no
   `Get-ChildItem`/shell-side globbing is needed.
 - The CI design-document job renders the views (see the render command above) before running Pandoc, so generated SVGs
@@ -290,8 +341,8 @@ Document dependencies in prose instead of a diagram: each System/Subsystem desig
   definition. Pass the common, model, and views globs as separate quoted arguments (e.g.
   `'docs/sysml2/common/**/*.sysml' 'docs/sysml2/model/**/*.sysml' 'docs/sysml2/views/design-views.sysml'`) — plain
   PowerShell (the default shell) is sufficient; no `shell: bash`/`shopt -s globstar` workaround is needed.
-- Add `sysml2tools` to `.config/dotnet-tools.json` (`demaconsulting.sysml2tools.tool`) and to
-  `.versionmark.yaml`'s captured tool list.
+- Add `sysml2tools` to `.config/dotnet-tools.json` (`demaconsulting.sysml2tools.tool`, minimum
+  version 0.3.0-beta.4) and to `.versionmark.yaml`'s captured tool list.
 
 ## Fallback
 
@@ -313,11 +364,19 @@ sync.
   `sourceFiles`; the purpose statement appears only in the `doc` comment, never in `SoftwareInfo`
 - [ ] `docs/sysml2/views/design-views.sysml` uses `view Name { expose ...; }` usages, not
   `view def` definitions
+- [ ] Each `.sysml` file declares exactly one uniquely named package (never the same package
+  in two files), named per Package Structure, and references other files through
+  `private import` or qualified names (qualified where an import would form a cycle)
 - [ ] View names follow the `SoftwareStructureView` / `{SystemName}View` /
-  `{SubsystemName}View` convention (no dedicated `DependencyView`)
+  `{SubsystemName}View` convention (plus optional `{SubsystemName}{Theme}View` dependency
+  views and `OtsView`)
+- [ ] A multi-system `SoftwareStructureView` is an `InterconnectionView` exposing the system
+  part defs, with OTS items in a separate `OtsView` and no metadata defs (`SoftwareInfo`)
 - [ ] Each Unit's real collaborators are captured as `dependency A to B;` statements, and each
   System/Subsystem design doc's "Dependencies" section reflects `sysml2tools query
-  dependencies` output rather than an embedded diagram
+  dependencies` output
+- [ ] Each focused dependency view has at most about 12–15 dependency edges, omits hub
+  suppliers (stated in its `doc`), and renders without PNG downscaling warnings
 - [ ] `sysml2tools lint` passes on all `.sysml` files
 - [ ] Rendered diagrams are embedded in every design doc per the Diagram Embedding rule
 - [ ] `sysml2tools` is present in `lint.ps1`, `.config/dotnet-tools.json`, and

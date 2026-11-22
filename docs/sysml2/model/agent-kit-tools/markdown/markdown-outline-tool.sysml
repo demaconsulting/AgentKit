@@ -1,4 +1,4 @@
-package AgentKitTools {
+package AgentKitTools_MarkdownOutlineTool {
     private import SoftwareItemMetadata::*;
 
     part def MarkdownOutlineTool {

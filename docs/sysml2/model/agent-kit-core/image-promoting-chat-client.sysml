@@ -1,4 +1,4 @@
-package AgentKitCore {
+package AgentKitCore_ImagePromotingChatClient {
     private import SoftwareItemMetadata::*;
 
     part def ImagePromotingChatClient {

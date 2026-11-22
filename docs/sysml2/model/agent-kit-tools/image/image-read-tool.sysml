@@ -1,4 +1,4 @@
-package AgentKitTools {
+package AgentKitTools_ImageReadTool {
     private import SoftwareItemMetadata::*;
 
     part def ImageReadTool {

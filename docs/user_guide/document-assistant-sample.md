@@ -47,7 +47,7 @@ too, so the two are complementary; naming it outright is simply the simpler path
 
 The sample prints every tool call and every tool result as it happens, so the safety model is
 something you watch rather than something you assume. In one short session you can observe each of the
-guarantees this guide describes:
+behaviors this guide describes:
 
 - **Containment.** Reading, writing, and listing are confined to the two granted locations. A path
   outside them is refused by the tool with guidance, not returned. The sample includes a sibling file

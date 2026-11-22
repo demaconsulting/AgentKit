@@ -1,4 +1,4 @@
-package AgentKitTools {
+package AgentKitTools_TextFileReadTool {
     private import SoftwareItemMetadata::*;
 
     part def TextFileReadTool {

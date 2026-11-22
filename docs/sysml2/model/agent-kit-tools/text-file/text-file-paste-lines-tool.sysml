@@ -1,4 +1,4 @@
-package AgentKitTools {
+package AgentKitTools_TextFilePasteLinesTool {
     private import SoftwareItemMetadata::*;
 
     part def TextFilePasteLinesTool {

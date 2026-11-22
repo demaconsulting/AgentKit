@@ -2,10 +2,11 @@
 
 ## Purpose
 
-This document is the user guide for AgentKit, a family of .NET libraries providing hardened,
+This document is the user guide for AgentKit, a family of .NET libraries providing guarded,
 provider-neutral agent tools. It exists so that a developer can hand an AI agent a set of
-capabilities that are safe by construction — where the unsafe operation is not refused at call
-time, but cannot be expressed.
+capabilities confined to what the application grants: every tool is guarded by the application's
+path grants and limits, and a call that names a path outside those grants is refused with a reason
+the model can act on.
 
 ## Scope
 
@@ -95,15 +96,15 @@ API the code does not have.
 AgentKit does not provide an agent runtime or a provider abstraction: Microsoft Agent Framework
 supplies those, and AgentKit's tools work with it, with the GitHub Copilot SDK, and with any
 `IChatClient` alike. What AgentKit provides is the part those runtimes leave to the application:
-tools that are safe by construction, and a session that manages its own context window so a
-long-running agent behaves the same way on every provider.
+tools guarded by the application's path grants and limits, and a session that manages its own
+context window so a long-running agent keeps working within it on each supported provider.
 
 AgentKit Core is the contract package, and it carries two things. It defines the safety model that
 every AgentKit tool, and every tool an application writes for itself, is built against. It also
 carries the **session engine** — the part that keeps a long-running agent alive by compacting its
-own context, described under *Sessions* below. Neither is an add-on to the other: an agent that is
-safe by construction and runs out of context after twenty turns is not much use, and the two ship in
-one package for that reason.
+own context, described under *Sessions* below. Neither is an add-on to the other: an agent whose
+tools are guarded but which runs out of context after twenty turns is not much use, and the two ship
+in one package for that reason.
 
 Ready-made guarded tool families ship in
 `DemaConsulting.AgentKit.Tools` — the text file, file, markdown, image, todo, memory and
@@ -374,21 +375,22 @@ list; compose per conversation to keep them apart. A host that adds tools to a c
 time, or persists conversations, owns a `ToolOutputRetention` per conversation instead — see
 *Retaining Outputs per Conversation*.
 
-**Without the opt-in nothing changes.** Every refusal is the same text it always was, no reader is
-offered, and a custom tool's oversized result still reaches the provider unbounded unless it is bounded
-with `AsGuarded`. Retention works
-the same way on every provider, because it lives in the tools themselves; on GitHub Copilot the
-readers are published, allow-listed and approved like any other supplied tool. A list assembled
-without a builder can be composed the same way with `ToolOutputSpill.Apply(tools, limits)`.
+**Without the opt-in nothing changes.** Every refusal is the same text it always was, no reader is offered, and a custom
+tool's oversized result still reaches the provider unbounded unless it is bounded with `AsGuarded`. Retention runs
+inside the tool wrappers rather than in the provider, so it behaves the same with each supported adapter (`IChatClient`
+agents and GitHub Copilot); on GitHub Copilot the readers are published, allow-listed and approved like any other
+supplied tool. A list assembled without a builder can be composed the same way with
+`ToolOutputSpill.Apply(tools, limits)`.
 
-## Delivering Images to Any Provider
+## Delivering Tool Images to the Model
 
 Providers differ in where they accept image content, and the difference is silent. Some deliver an
 image a tool returned straight to the model. Others accept images on messages but not in tool
 responses: the content is preserved all the way through the framework and then discarded at the
 wire, after which the model describes a picture it never received and nothing reports an error.
 
-`ImagePromotingChatClient` makes delivery independent of the provider. It must sit **beneath** the
+`ImagePromotingChatClient` delivers such an image on an `IChatClient` provider that would otherwise
+drop it. It must sit **beneath** the
 function-invocation loop, so that it observes the conversation after tool results have been
 appended. It then carries any image a tool result holds onto a following user message, announced as
 coming from the tool, and leaves a short placeholder in the tool result in its place —
@@ -713,10 +715,10 @@ var agent = ChatClientAgentFactory.Create(
 ```
 
 The factory installs `ImagePromotingChatClient` on **every** agent it builds, beneath the
-function-invocation loop, and offers no option to disable it. A provider reached through an
-`IChatClient` preserves an image a tool returns and then drops it at the wire, after which the model
-describes a picture it never received. The adapter makes that mistake impossible: because the
-decorator cannot be turned off, it cannot be forgotten. You do not wrap the client yourself.
+function-invocation loop, and offers no option to disable it. Some providers reached through an
+`IChatClient` preserve an image a tool returns and then drop it at the wire, after which the model
+describes a picture it never received. The adapter does not leave that step to you: the decorator
+cannot be turned off, so it cannot be forgotten. You do not wrap the client yourself.
 
 This package also carries the provider side of the session engine for the whole `IChatClient`
 family — `ChatClientProviderSession`, `ChatClientProviderSessionFactory` and `ChatClientSummarizer`.
@@ -1102,7 +1104,7 @@ IReadOnlyList<AIFunction> tools = new ToolPackBuilder(policy)
 
 **A Microsoft Agent Framework agent you build.** `ChatClientAgent` takes `IList<AITool>`, so spread
 the list. Install image promotion beneath the agent's own function-invocation loop when the provider
-needs it (Ollama through OllamaSharp does; see *Delivering Images to Any Provider*):
+needs it (Ollama through OllamaSharp does; see *Delivering Tool Images to the Model*):
 
 ```csharp
 var agent = new ChatClientAgent(
@@ -1289,8 +1291,8 @@ hook it has.
 A conversation eventually fills the provider's context window. What happens then is the provider's
 decision unless the application takes it — and the provider's decision differs by provider, is
 usually undocumented, and is never something an agent's author can reason about. AgentKit takes that
-decision, in the same package as the tool contract, because an agent that is safe by construction
-and forgets its own work after twenty turns is not much use.
+decision, in the same package as the tool contract, because an agent whose tools are guarded but
+which forgets its own work after twenty turns is not much use.
 
 The session is an AgentKit-owned object. It keeps its own transcript **out of session**, never
 asking the live conversation to summarize itself — doing that spends the context the summary exists

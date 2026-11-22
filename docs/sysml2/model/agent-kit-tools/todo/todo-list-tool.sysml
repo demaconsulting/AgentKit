@@ -1,4 +1,4 @@
-package AgentKitTools {
+package AgentKitTools_TodoListTool {
     private import SoftwareItemMetadata::*;
 
     part def TodoListTool {

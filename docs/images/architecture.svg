@@ -69,7 +69,7 @@
     <text x="592" y="265" font-size="12" fill="#1e40af" text-anchor="end">own AIAgent; owns its runtime</text>
     <rect x="336" y="286" width="268" height="32" rx="6" fill="#ffffff" stroke="#2563eb"/>
     <text x="348" y="307" font-size="13" font-family="Consolas, monospace" font-weight="600" fill="#1e3a8a">.Ollama</text>
-    <text x="592" y="307" font-size="12" fill="#1e40af" text-anchor="end">optional: the real window</text>
+    <text x="592" y="307" font-size="12" fill="#1e40af" text-anchor="end">optional: reads the window</text>
 
     <!-- Packages depend on the core -->
     <line x1="150" y1="338" x2="150" y2="378" stroke="#475569" stroke-width="2" marker-end="url(#a)"/>
@@ -108,8 +108,8 @@
       <text x="785" y="436">Tools are plain AIFunction instances,</text>
       <text x="785" y="454">so they work with any of these.</text>
       <text x="785" y="490">AgentKit is not an agent runtime: it</text>
-      <text x="785" y="508">supplies safe tools and a session that</text>
-      <text x="785" y="526">behaves the same on every provider.</text>
+      <text x="785" y="508">supplies guarded tools and a session</text>
+      <text x="785" y="526">that compacts its own context.</text>
     </g>
 
     <!-- Each adapter builds on its runtime or provider: .ChatClient on Microsoft Agent Framework and any IChatClient,

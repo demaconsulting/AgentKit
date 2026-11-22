@@ -1,4 +1,4 @@
-package AgentKitTools {
+package AgentKitTools_TodoRemoveTool {
     private import SoftwareItemMetadata::*;
 
     part def TodoRemoveTool {

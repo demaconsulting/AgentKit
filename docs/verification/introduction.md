@@ -1,7 +1,7 @@
 # Introduction
 
 This document provides the verification design for AgentKit, a family of .NET libraries providing
-hardened, provider-neutral agent tools.
+guarded, provider-neutral agent tools.
 
 ## Purpose
 

@@ -1,5 +1,12 @@
 package AgentKitTools {
     private import SoftwareItemMetadata::*;
+    private import AgentKitTools_TextFileSubsystem::*;
+    private import AgentKitTools_FileSubsystem::*;
+    private import AgentKitTools_MarkdownSubsystem::*;
+    private import AgentKitTools_ImageSubsystem::*;
+    private import AgentKitTools_TodoSubsystem::*;
+    private import AgentKitTools_MemorySubsystem::*;
+    private import AgentKitTools_AgentSubsystem::*;
 
     doc
     /*
