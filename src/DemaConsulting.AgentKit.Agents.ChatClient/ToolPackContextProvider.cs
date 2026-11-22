@@ -33,6 +33,11 @@ public sealed class ToolPackContextProviderOptions
     ///     Gets the host capabilities declared when composing tool packs. Used only by the pack
     ///     constructor; defaults to <see cref="HostCapabilities.None"/>.
     /// </summary>
+    /// <remarks>
+    ///     Where the model was chosen from a catalog, derive this from the selection —
+    ///     <c>HostCapabilities = selection.HostCapabilities</c> — so the image family is offered only
+    ///     to a model that accepts images. See <see cref="ModelSelection.HostCapabilities"/>.
+    /// </remarks>
     public HostCapabilities HostCapabilities { get; init; } = HostCapabilities.None;
 
     /// <summary>

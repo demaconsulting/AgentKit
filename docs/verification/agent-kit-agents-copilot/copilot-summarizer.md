@@ -52,8 +52,9 @@ explicitly asserted. Any prompt that is not the composed consolidation prompt, a
 session carrying a tool or a non-empty allow-list, any session built with the runtime's own
 compaction left at the runtime's default, any session reused between consolidations, any session left
 unreleased on either the successful or the failing path, any empty answer turned into an exception or
-into invented text, or any session opened for a consolidation that was already canceled constitutes a
-failure.
+into invented text, any session opened for a consolidation that was already canceled, any
+consolidation not run on a selection's model and chosen effort, or any model named both ways, or
+any selection carrying a context window or an output limit, that is accepted constitutes a failure.
 
 ### Test Scenarios
 
@@ -129,3 +130,20 @@ conversation this exists to prolong. Both assert exactly one release.
 The remainder are error paths. A missing request is refused where the engine composed it; a
 consolidation canceled before it began opens nothing, so a canceled rotation leaves nothing behind on
 the runtime; and a missing runtime is refused where the application composed its provider.
+
+#### AgentKitAgentsCopilot-CopilotSummarizer-AppliesASelection: A Consolidation Runs on the Chosen Model
+
+**Test**: `CopilotSummarizer_Consolidate_Selection_RunsOnTheSelectedModel`
+
+A summarizer built on a selection with the effort `low` and no tier performs one consolidation. Its
+session options name the selected model, carry the effort `low`, and set no tier, because none was
+chosen. A summarizer given both a model name and the selection is refused with `ArgumentException`.
+
+#### AgentKitAgentsCopilot-CopilotSummarizer-RefusesWhatItCannotApply: A Window or Output Limit Is Refused
+
+**Test**: `CopilotSummarizer_Constructor_SelectionWithAWindowOrOutputLimit_Throws`
+
+Error paths. A selection carrying a 4,000-token window is refused at construction with
+`ArgumentException` whose message says `ContextWindowTokens` cannot be applied here, and a selection
+of a hand-built Copilot model description carrying an output limit is refused with one saying
+`MaxOutputTokens` cannot be applied on Copilot. No session is opened by either.

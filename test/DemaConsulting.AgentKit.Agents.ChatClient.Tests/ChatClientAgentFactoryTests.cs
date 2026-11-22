@@ -145,6 +145,159 @@ public class ChatClientAgentFactoryTests
     }
 
     /// <summary>
+    ///     Proves an agent built with a model selection sends the selected model and effort on its
+    ///     requests.
+    /// </summary>
+    [Fact]
+    public async Task ChatClientAgentFactory_Create_WithSelection_RequestsCarryTheSelection()
+    {
+        // Arrange: a client that records what it was asked, and a validated selection
+        var client = RecordingChatClient.Answering("answer", inputTokens: 10);
+        var selection = new ModelSettings("vision-large") { ReasoningEffort = "low", MaxOutputTokens = 500 }
+            .Bind(SelectableModel());
+        var agent = ChatClientAgentFactory.Create(client, [MakeTool("tool_one")], selection: selection);
+
+        // Act
+        await agent.RunAsync("hello", cancellationToken: TestContext.Current.CancellationToken);
+
+        // Assert
+        var options = Assert.Single(client.Requests).Options;
+        Assert.NotNull(options);
+        Assert.Equal("vision-large", options.ModelId);
+        Assert.Equal(ReasoningEffort.Low, options.Reasoning?.Effort);
+        Assert.Equal(500, options.MaxOutputTokens);
+    }
+
+    /// <summary>
+    ///     Proves a selection an <see cref="IChatClient"/> cannot apply is refused when the agent is
+    ///     built rather than dropped.
+    /// </summary>
+    [Fact]
+    public void ChatClientAgentFactory_Create_SelectionWithATier_Throws()
+    {
+        // Arrange
+        var selection = new ModelSettings("vision-large") { ContextTier = "default" }.Bind(SelectableModel());
+
+        // Act / Assert
+        Assert.Throws<ArgumentException>(
+            () => ChatClientAgentFactory.Create(new ScriptedChatClient(), [MakeTool("tool_one")], selection: selection));
+    }
+
+    /// <summary>
+    ///     Proves a selection carrying a context window is refused when the client does not apply
+    ///     that window, rather than the window being dropped, and accepted when it does.
+    /// </summary>
+    [Fact]
+    public void ChatClientAgentFactory_Create_SelectionWithAnUnappliedWindow_Throws()
+    {
+        // Arrange
+        var selection = new ModelSettings("vision-large") { ContextWindowTokens = 8192 }.Bind(SelectableModel());
+
+        // Act
+        var failure = Assert.Throws<ArgumentException>(
+            () => ChatClientAgentFactory.Create(
+                new ScriptedChatClient(),
+                [MakeTool("tool_one")],
+                selection: selection));
+        var agent = ChatClientAgentFactory.Create(
+            new WindowApplyingChatClient(new ScriptedChatClient(), 8192),
+            [MakeTool("tool_one")],
+            selection: selection);
+
+        // Assert: the refusal names the setting; the same selection over a client applying it builds
+        Assert.Contains("ContextWindowTokens", failure.Message, StringComparison.Ordinal);
+        Assert.NotNull(agent);
+    }
+
+    /// <summary>
+    ///     Proves the builder extension installs the selection in a host-built pipeline.
+    /// </summary>
+    [Fact]
+    public async Task ChatClientAgentFactory_UseModelSettings_HostPipeline_RequestsCarryTheSelection()
+    {
+        // Arrange
+        var client = RecordingChatClient.Answering("answer", inputTokens: 10);
+        var selection = new ModelSettings("vision-large") { ReasoningEffort = "low" }.Bind(SelectableModel());
+        using var pipeline = client.AsBuilder().UseModelSettings(selection).Build();
+
+        // Act
+        await pipeline.GetResponseAsync("hello", cancellationToken: TestContext.Current.CancellationToken);
+
+        // Assert
+        var options = Assert.Single(client.Requests).Options;
+        Assert.Equal("vision-large", options?.ModelId);
+        Assert.Equal(ReasoningEffort.Low, options?.Reasoning?.Effort);
+    }
+
+    /// <summary>
+    ///     Proves a host-built pipeline given a selection carrying a context window is refused when it
+    ///     is built if no client beneath applies that window, and builds when one does.
+    /// </summary>
+    [Fact]
+    public void ChatClientAgentFactory_UseModelSettings_SelectionWithAWindow_NeedsItAppliedBeneath()
+    {
+        // Arrange
+        var selection = new ModelSettings("vision-large") { ContextWindowTokens = 8192 }.Bind(SelectableModel());
+
+        // Act
+        var failure = Assert.Throws<ArgumentException>(
+            () => new ScriptedChatClient().AsBuilder().UseModelSettings(selection).Build());
+        using var pipeline = new WindowApplyingChatClient(new ScriptedChatClient(), 8192)
+            .AsBuilder()
+            .UseModelSettings(selection)
+            .Build();
+
+        // Assert: the refusal names the setting; the pipeline over a window-applying client builds
+        Assert.Contains("ContextWindowTokens", failure.Message, StringComparison.Ordinal);
+        Assert.NotNull(pipeline);
+    }
+
+    /// <summary>
+    ///     Proves a missing builder or selection is a programming error.
+    /// </summary>
+    [Fact]
+    public void ChatClientAgentFactory_UseModelSettings_NullArguments_Throw()
+    {
+        // Arrange
+        var selection = new ModelSettings("vision-large").Bind(SelectableModel());
+
+        // Act / Assert
+        Assert.Throws<ArgumentNullException>(() => ChatClientAgentFactory.UseModelSettings(null!, selection));
+        Assert.Throws<ArgumentNullException>(() => new ScriptedChatClient().AsBuilder().UseModelSettings(null!));
+    }
+
+    /// <summary>
+    ///     Builds a model an application might describe for an <see cref="IChatClient"/> provider.
+    /// </summary>
+    /// <returns>The model.</returns>
+    internal static ModelInfo SelectableModel() => new()
+    {
+        Provider = "test",
+        Id = "vision-large",
+        DisplayName = "Vision Large",
+        Capabilities = ModelCapabilities.ToolCalls | ModelCapabilities.Vision,
+        Adjustments = ModelAdjustments.ReasoningEffort
+            | ModelAdjustments.ContextTier
+            | ModelAdjustments.ContextWindow
+            | ModelAdjustments.MaxOutputTokens,
+        ReasoningEfforts = [new ModelReasoningEffort("low", "Low", ReasoningEffort.Low)],
+        ContextTiers = [new ModelContextTier("default", "Standard", null)],
+    };
+
+    /// <summary>
+    ///     A delegating client that reports it applies a context window, standing in for a
+    ///     provider's sizing client such as Ollama's.
+    /// </summary>
+    /// <param name="inner">The client requests are forwarded to.</param>
+    /// <param name="window">The window this client reports it applies.</param>
+    internal sealed class WindowApplyingChatClient(IChatClient inner, int window)
+        : DelegatingChatClient(inner), IContextWindowChatClient
+    {
+        /// <inheritdoc/>
+        public int ContextWindowTokens { get; } = window;
+    }
+
+    /// <summary>
     ///     Builds a no-op tool carrying the given name.
     /// </summary>
     /// <param name="name">The tool name.</param>

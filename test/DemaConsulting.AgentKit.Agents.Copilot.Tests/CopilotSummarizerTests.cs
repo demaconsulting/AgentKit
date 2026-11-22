@@ -61,6 +61,52 @@ public class CopilotSummarizerTests
     }
 
     /// <summary>
+    ///     Proves a consolidation runs on the selected model with the chosen effort, and a model named
+    ///     twice is refused.
+    /// </summary>
+    [Fact]
+    public async Task CopilotSummarizer_Consolidate_Selection_RunsOnTheSelectedModel()
+    {
+        // Arrange
+        var runtime = Runtime("a record");
+        var selection = CopilotModelCatalogTests.Selection(effort: "low");
+        var summarizer = new CopilotSummarizer(runtime.Opener, model: null, selection);
+
+        // Act
+        await summarizer.ConsolidateAsync(Request(), TestContext.Current.CancellationToken);
+
+        // Assert
+        var config = Assert.Single(runtime.Configs);
+        Assert.Equal("claude-haiku-5.5", config.Model);
+        Assert.Equal("low", config.Inference?.ReasoningEffort);
+        Assert.Null(config.Inference?.ContextTier);
+        Assert.Throws<ArgumentException>(() => new CopilotSummarizer(runtime.Opener, "gpt-6", selection));
+    }
+
+    /// <summary>
+    ///     Proves a selection carrying a context window or an output limit is refused, because a
+    ///     consolidation session is accounted against no window and the runtime takes no output
+    ///     limit, so neither would be applied.
+    /// </summary>
+    [Fact]
+    public void CopilotSummarizer_Constructor_SelectionWithAWindowOrOutputLimit_Throws()
+    {
+        // Arrange
+        var runtime = Runtime("a record");
+        var windowed = CopilotModelCatalogTests.Selection(window: 4000);
+        var limited = CopilotAgentFactoryTests.HandBuiltSelectionWithAnOutputLimit();
+
+        // Act
+        var window = Assert.Throws<ArgumentException>(() => new CopilotSummarizer(runtime.Opener, null, windowed));
+        var output = Assert.Throws<ArgumentException>(() => new CopilotSummarizer(runtime.Opener, null, limited));
+
+        // Assert: each refusal names the setting it could not apply
+        Assert.Contains("ContextWindowTokens cannot be applied here", window.Message, StringComparison.Ordinal);
+        Assert.Contains("MaxOutputTokens cannot be applied on Copilot", output.Message, StringComparison.Ordinal);
+        Assert.Empty(runtime.Configs);
+    }
+
+    /// <summary>
     ///     Proves a consolidation session carries the engine path's infinite-session configuration
     ///     too, rather than the runtime's default. A consolidation is one prompt and one answer; a
     ///     runtime that reshaped the material mid-consolidation would produce a record of something

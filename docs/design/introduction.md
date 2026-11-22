@@ -82,6 +82,16 @@ software items, specifically:
 - **AgentKitChatReducer (Unit)** — A chat reducer for a host that owns its chat history,
   consolidating older messages through the summarizer while keeping the system messages and a
   verbatim tail
+- **ModelInfo (Unit)** — The provider-neutral description of a model: its capabilities, the settings
+  it accepts, its efforts and tiers, its ceiling window, whether it is usable, and its notices; and the
+  conversion of its capabilities into host capabilities
+- **ModelCatalog (Unit)** — The catalog contract, the query, and the caching base: a five-minute
+  lifetime, one shared read at a time, no cached failures, a refresh on request, and the `SelectAsync`
+  gate a session starts through
+- **ModelSettings (Unit)** — The persistable settings a user chooses, their validation against a
+  model, and the validated `ModelSelection` a provider factory accepts
+- **ModelSettingsChatClient (Unit)** — The decorator that applies a selection to each request through an
+  `IChatClient` pipeline without overriding what the caller set
 - **AgentKitTools (System)** — A general-purpose capability package of guarded tool families
   built on the AgentKitCore contract, organized as one subsystem per tool family
 - **TextFile (Subsystem)** — The text file tool family: policy-governed searching, reading,
@@ -204,17 +214,21 @@ software items, specifically:
   turn's tool traffic, and any sign the runtime rewrote history itself
 - **CopilotSummarizer (Unit)** — Consolidates history on a short-lived, tool-free Copilot session,
   out of the session being compacted
+- **CopilotModelCatalog (Unit)** — Describes the models the Copilot service offers the signed-in user,
+  read through the runtime AgentKit started
 - **CopilotTurnChannel (Unit)** — The internal seam over the SDK's sealed session types, which is
   what makes everything above it testable without a live Copilot runtime, and the production channel
   that creates or resumes a session and on release deletes it or keeps it
 - **AgentKitAgentsOllama (System)** — Makes the context window a compacting session accounts against
   the window the Ollama instance is actually using, by asking the server for a size and by reading
-  back what a running instance reports
+  back what a running instance reports, and describes the models the server holds as a model catalog
 - **OllamaContextWindow (Unit)** — The discovered window and its source, the conservative fallback,
   the reading of the server, and the pure precedence function that chooses among what it reported
 - **OllamaContextSizingChatClient (Unit)** — The decorator that names the application's chosen
   context length on every request, so the instance Ollama runs is the one the session accounts
   against
+- **OllamaModelCatalog (Unit)** — Describes the models an Ollama server holds: their capabilities,
+  whether an agent can run on them, their efforts, and their trained length as a ceiling
 
 The following OTS items are also covered:
 
@@ -230,11 +244,14 @@ The following OTS items are also covered:
   `AIAgent` and `AgentSession` base types and the `AgentResponseUpdate` a streamed run produces
 - **Microsoft.Copilot.SDK** — the GitHub Copilot SDK providing `CopilotClient`, the create and
   resume session options, the permission RPC, the session lifecycle, the session event stream, and
-  the build-time provisioning of the native Copilot runtime
+  the build-time provisioning of the native Copilot runtime, the model listing, and the per-session
+  inference options (reasoning effort and context tier)
 - **Microsoft.Extensions.AI.Abstractions** — the runtime library providing the
-  `AIFunction`/`AIContent` tool currency
+  `AIFunction`/`AIContent` tool currency, and the request options (reasoning, output limit and model
+  identifier) a model selection travels on
 - **OllamaSharp** — the Ollama client library providing the loaded-model report carrying a running
-  instance's context length, and the carriage of a context-length option onto the wire
+  instance's context length, the carriage of a context-length option onto the wire, the model listing
+  and per-model description, and the mapping of a reasoning effort to Ollama's `think` option
 - **Pandoc** — Markdown-to-HTML conversion tool
 - **ReqStream** — requirements traceability tool
 - **ReviewMark** — file review enforcement tool
@@ -253,6 +270,12 @@ it rests on. The Ollama capability is delivered through the same `IChatClient` a
 because that is how Ollama reaches an application — there is no Ollama session, agent or summarizer —
 and what `AgentKitAgentsOllama` adds beneath it is making the context window that adapter must be
 told the one the Ollama instance is actually running.
+
+A fourth product requirement, `AgentKit-ModelSelection`, promises that an application can list a
+provider's models, filter them by capability, and start a session on a validated selection: the Copilot
+and Ollama adapters list their providers' models, and an `IChatClient` application can validate against a
+model description it builds itself. Core and the three adapters deliver it jointly, and the chapter
+records that too.
 
 Version applicability: This design applies to all versions of the AgentKit.
 
@@ -294,12 +317,13 @@ diagram or the prose below.
 
 ![Software Structure](SoftwareStructureView.svg)
 
-`AgentKitCore` is flat: its twenty-seven units sit directly under the system with no intervening
+`AgentKitCore` is flat: its thirty-one units sit directly under the system with no intervening
 subsystems. That is now a decision rather than a consequence of smallness, and the system design
-chapter records what those twenty-seven units actually look like: three path-safety units, four
-tool-contract units, two pack-contract units, six tool-output units, ten session units, and two
+chapter records what those thirty-one units actually look like: three path-safety units, four
+tool-contract units, two pack-contract units, six tool-output units, ten session units, two
 provider-compatibility units — `ImagePromotingChatClient` and `AgentKitChatReducer` — which stand apart
-from the rest.
+from the rest, and four model-selection units — `ModelInfo`, `ModelCatalog`, `ModelSettings` and
+`ModelSettingsChatClient`.
 
 No single boundary divides that into coherent halves. A subsystem layer would therefore not draw one
 line but four or five, and each would cost a requirements file, a design document, a verification
@@ -350,9 +374,9 @@ justified by runtime dependencies that must be kept out of Core: `AgentKitAgents
 `Microsoft.Agents.AI.Abstractions`. `AgentKitAgentsChatClient` builds its agent through the Agent
 Framework's own `ChatClientAgent`; the Copilot SDK ships no Agent Framework agent, so
 `AgentKitAgentsCopilot` carries an agent of its own over confined Copilot sessions.
-`AgentKitAgentsCopilot` carries nine units: that agent, its factory, the runtime it starts and owns,
-the installed CLI that runtime runs by default, a provider session, its factory, a summarizer, the
-observer that
+`AgentKitAgentsCopilot` carries ten units: that agent, its factory, the runtime it starts and owns,
+the installed CLI that runtime runs by default, a provider session, its factory, a summarizer, a model
+catalog, the observer that
 reads occupancy from the runtime's event stream, and the internal turn channel that makes all of it
 testable without a live runtime. `AgentKitAgentsChatClient` holds six:
 that factory, a provider session, its factory, a summarizer, the recorder that reads occupancy
@@ -365,8 +389,10 @@ session. It exists for the single thing Ollama needs that the chat-client adapte
 a context window the instance is actually running, which an `IChatClient` publishes nowhere and
 which is only reachable through Ollama's own APIs. It is a package of its own because that work
 needs `OllamaSharp`, and the chat-client adapter serves every provider in its family and must stay
-free of any one of them. Two units — one that reads the window, one that asks for it — no dependency
-on Core, and nothing of its own appears in the session an application goes on to build.
+free of any one of them. Three units — one that reads the window, one that asks for it, and one that
+describes the models the server holds. It depends on Core only for the provider-neutral model
+description its catalog returns, and nothing of its own appears in the session an application goes
+on to build.
 
 The `SoftwareStructureView.svg` above renders all five systems.
 
@@ -391,6 +417,10 @@ src/DemaConsulting.AgentKit.Core/
 ├── GuardedToolFactory.cs       — the only supported way to construct a tool
 ├── ImagePromotingChatClient.cs — promotes a tool-returned image onto a user message
 ├── InMemoryProviderSession.cs  — a provider session that contacts nothing, and its factory
+├── ModelCatalog.cs             — the catalog contract, the query, the caching base and SelectAsync
+├── ModelInfo.cs                — the provider-neutral model description and its capability flags
+├── ModelSettings.cs            — persistable settings, their validation, and the validated selection
+├── ModelSettingsChatClient.cs  — applies a selection to each request through an IChatClient pipeline
 ├── PathPolicy.cs               — the working-directory anchor, access grants, the single
 │                                 containment decision, and the limits it carries
 ├── PathRule.cs                 — one access grant: unrestricted or rooted, read-only or
@@ -505,6 +535,7 @@ src/DemaConsulting.AgentKit.Agents.Copilot/
 ├── CopilotCli.cs                     — finds the installed Copilot CLI and checks its version
 ├── CopilotCliProcessTree.cs          — stops what a timed-out or canceled version probe started
 ├── CopilotCliSearchResult.cs         — what discovery found, searched and passed over
+├── CopilotModelCatalog.cs            — describes the service's models for the signed-in user
 ├── CopilotProviderSession.cs         — one Core session over one Copilot session
 ├── CopilotProviderSessionFactory.cs  — creates one seeded Copilot session per rotation
 ├── CopilotRuntime.cs                 — the runtime AgentKit starts, confines and owns
@@ -520,12 +551,13 @@ src/DemaConsulting.AgentKit.Agents.Copilot/
 unit; `CopilotCli.cs`, `CopilotCliSearchResult.cs` and `CopilotCliProcessTree.cs` the `CopilotCli`
 unit; every other file in the Copilot tree is one unit.
 
-`AgentKitAgentsOllama` is a two-file tree, one file per unit:
+`AgentKitAgentsOllama` is a three-file tree, one file per unit:
 
 ```text
 src/DemaConsulting.AgentKit.Agents.Ollama/
 ├── OllamaContextSizingChatClient.cs  — names the chosen context length on every request
-└── OllamaContextWindow.cs            — the discovered window, its source, the reading and the precedence
+├── OllamaContextWindow.cs            — the discovered window, its source, the reading and the precedence
+└── OllamaModelCatalog.cs             — describes the models the server holds
 ```
 
 The demonstration samples live under `samples/`, one folder per sample. They are not software
@@ -556,6 +588,7 @@ environment:
 test/DemaConsulting.AgentKit.Agents.Copilot.LiveTests/
 ├── CopilotLiveFixture.cs   — one started client in Empty mode, and a sandbox of granted and denied files
 ├── CopilotLiveTests.cs     — the scenarios, measured against the live Copilot runtime
+├── CopilotModelCatalogLiveTests.cs — listing, tiers, effort and refusal against the live service
 └── TestPng.cs              — generates the image the image-delivery scenarios read
 ```
 
@@ -569,6 +602,7 @@ server, named with its model in the environment:
 test/DemaConsulting.AgentKit.Agents.ChatClient.LiveTests/
 ├── OllamaLiveFixture.cs     — the run's settings, log and sandbox of granted and denied files
 ├── OllamaLiveTests.cs       — the scenarios, asserted on what OllamaSharp sends on the wire
+├── OllamaModelCatalogLiveTests.cs — listing, think and num_ctx on the wire, trained-length refusal
 ├── TestPng.cs               — generates the image the image-promotion scenarios read
 └── WireRecordingHandler.cs  — records every request and applies the run's window and thinking setting
 ```

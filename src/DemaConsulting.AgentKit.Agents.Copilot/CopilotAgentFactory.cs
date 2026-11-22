@@ -3,6 +3,7 @@ using Microsoft.Agents.AI;
 using Microsoft.Copilot;
 using Microsoft.Copilot.Rpc;
 using Microsoft.Extensions.AI;
+using ModelSelection = DemaConsulting.AgentKit.Core.ModelSelection;
 
 namespace DemaConsulting.AgentKit.Agents.Copilot;
 
@@ -256,6 +257,17 @@ public static class CopilotAgentFactory
     ///     validated here: the runtime resolves it when a session is created. It grants nothing —
     ///     what the agent may read or write is decided by the tools' own path policy.
     /// </param>
+    /// <param name="selection">
+    ///     The model the user chose from a <see cref="CopilotModelCatalog"/>, validated, or
+    ///     <see langword="null"/>. It names the model every session of the agent runs on, and its
+    ///     reasoning effort and context tier — each only when chosen — are set on every session it
+    ///     creates or resumes, so the settings hold for the life of the conversation. A selection
+    ///     carrying a context window is refused: this agent's sessions are accounted against no
+    ///     window, so there is nothing for a ceiling to lower; use
+    ///     <see cref="CopilotProviderSessionFactory"/> to cap the window a conversation accounts
+    ///     against. A selection carrying an output limit is refused because the runtime takes none.
+    ///     Pass this or <paramref name="model"/>, not both.
+    /// </param>
     /// <returns>An agent that runs on the supplied runtime with only the supplied tools available.</returns>
     /// <exception cref="ArgumentNullException">
     ///     <paramref name="runtime"/> or <paramref name="tools"/> is <see langword="null"/>, or a
@@ -265,7 +277,10 @@ public static class CopilotAgentFactory
     /// <exception cref="ArgumentException">
     ///     <paramref name="tools"/> is empty, two tools carry the same name, or a tool carries the
     ///     name of one of the Copilot runtime's built-in tools — <c>view</c>, <c>powershell</c>,
-    ///     <c>bash</c> and the like, compared case-insensitively. Rename such a tool.
+    ///     <c>bash</c> and the like, compared case-insensitively. Rename such a tool. Also thrown when
+    ///     both <paramref name="model"/> and <paramref name="selection"/> are passed, or the
+    ///     selection names another provider's model, or it carries a context window or an output
+    ///     limit, neither of which this agent can apply.
     /// </exception>
     /// <example>
     ///     <para>
@@ -317,10 +332,12 @@ public static class CopilotAgentFactory
         Func<PermissionRequest, PermissionInvocation, Task<PermissionDecision>>? onPermissionRequest = null,
         string? name = null,
         string? model = null,
-        string? workingDirectory = null)
+        string? workingDirectory = null,
+        ModelSelection? selection = null)
     {
         ArgumentNullException.ThrowIfNull(runtime);
         runtime.ThrowIfDisposed();
+        ValidateSelection(model, selection, windowAccounted: false);
 
         // A conversation's sessions are kept when released, because the conversation continues on
         // the next run; a run made without a conversation deletes its session, because nothing could
@@ -336,7 +353,8 @@ public static class CopilotAgentFactory
             workingDirectory,
             CopilotSessionChannel.OpenRetained(runtime),
             CopilotSessionChannel.Resume(runtime),
-            CopilotSessionChannel.Open(runtime));
+            CopilotSessionChannel.Open(runtime),
+            selection: selection);
     }
 
     /// <summary>
@@ -368,6 +386,9 @@ public static class CopilotAgentFactory
     ///     Creates the runtime session for a run made without a conversation, which is deleted when
     ///     the run ends; <see langword="null"/> to use <paramref name="opener"/>.
     /// </param>
+    /// <param name="selection">
+    ///     A validated model selection, or <see langword="null"/>: the model and any chosen effort and tier.
+    /// </param>
     /// <returns>The agent.</returns>
     /// <exception cref="ArgumentNullException">
     ///     <paramref name="tools"/> is <see langword="null"/>, or contains a <see langword="null"/> entry.
@@ -384,7 +405,8 @@ public static class CopilotAgentFactory
         string? workingDirectory,
         CopilotChannelOpener opener,
         CopilotChannelResumer resumer,
-        CopilotChannelOpener? ephemeralOpener = null)
+        CopilotChannelOpener? ephemeralOpener = null,
+        ModelSelection? selection = null)
     {
         ValidateTools(tools);
 
@@ -393,8 +415,8 @@ public static class CopilotAgentFactory
         IList<AIFunction> published = [.. tools];
 
         return new CopilotAgent(
-            () => BuildSessionConfig(published, instructions, onPermissionRequest, model, workingDirectory),
-            () => BuildResumeSessionConfig(published, instructions, onPermissionRequest, model, workingDirectory),
+            () => BuildSessionConfig(published, instructions, onPermissionRequest, model, workingDirectory, selection),
+            () => BuildResumeSessionConfig(published, instructions, onPermissionRequest, model, workingDirectory, selection),
             opener,
             ephemeralOpener ?? opener,
             resumer,
@@ -436,6 +458,9 @@ public static class CopilotAgentFactory
     ///     The session's working directory, or <see langword="null"/>/blank to leave it to the
     ///     runtime. Defaulted for the same reason as <paramref name="model"/>.
     /// </param>
+    /// <param name="selection">
+    ///     A validated model selection, or <see langword="null"/>: the model and any chosen effort and tier.
+    /// </param>
     /// <returns>The configured session.</returns>
     /// <exception cref="ArgumentNullException">
     ///     <paramref name="tools"/> is <see langword="null"/>, or contains a <see langword="null"/> entry.
@@ -448,11 +473,12 @@ public static class CopilotAgentFactory
         string? instructions,
         Func<PermissionRequest, PermissionInvocation, Task<PermissionDecision>>? onPermissionRequest,
         string? model = null,
-        string? workingDirectory = null)
+        string? workingDirectory = null,
+        ModelSelection? selection = null)
     {
         ValidateTools(tools);
 
-        var config = CreateSessionConfig(tools, instructions, onPermissionRequest, model, workingDirectory);
+        var config = CreateSessionConfig(tools, instructions, onPermissionRequest, model, workingDirectory, selection);
         config.Events.Streaming = true;
 
         return config;
@@ -481,6 +507,9 @@ public static class CopilotAgentFactory
     /// <param name="onPermissionRequest">The permission handler, or <see langword="null"/> for the safe default.</param>
     /// <param name="model">The model to back the session, or <see langword="null"/>/blank for the runtime's default.</param>
     /// <param name="workingDirectory">The session's working directory, or <see langword="null"/>/blank for the runtime's default.</param>
+    /// <param name="selection">
+    ///     A validated model selection, or <see langword="null"/>: the model and any chosen effort and tier.
+    /// </param>
     /// <returns>The configuration to resume the session with.</returns>
     /// <exception cref="ArgumentNullException">
     ///     <paramref name="tools"/> is <see langword="null"/>, or contains a <see langword="null"/> entry.
@@ -493,14 +522,15 @@ public static class CopilotAgentFactory
         string? instructions,
         Func<PermissionRequest, PermissionInvocation, Task<PermissionDecision>>? onPermissionRequest,
         string? model = null,
-        string? workingDirectory = null)
+        string? workingDirectory = null,
+        ModelSelection? selection = null)
     {
         ValidateTools(tools);
 
         var config = new ResumeSessionOptions();
 
         ApplyConfinement(config, tools, onPermissionRequest);
-        ApplySessionSettings(config, instructions, model, workingDirectory);
+        ApplySessionSettings(config, instructions, model, workingDirectory, selection);
         config.Events.Streaming = true;
 
         return config;
@@ -560,6 +590,9 @@ public static class CopilotAgentFactory
     ///     The session's working directory, or <see langword="null"/>/blank to leave it to the
     ///     runtime. A consolidation session, which offers no tools, passes none.
     /// </param>
+    /// <param name="selection">
+    ///     A validated model selection, or <see langword="null"/>: the model and any chosen effort and tier.
+    /// </param>
     /// <returns>
     ///     The configured session, with the runtime's own compaction threshold raised clear of the
     ///     engine's rotation point.
@@ -572,11 +605,12 @@ public static class CopilotAgentFactory
         IList<AIFunction> tools,
         string? instructions,
         string? model,
-        string? workingDirectory = null)
+        string? workingDirectory = null,
+        ModelSelection? selection = null)
     {
         ValidateToolNames(tools);
 
-        var config = CreateSessionConfig(tools, instructions, onPermissionRequest: null, model, workingDirectory);
+        var config = CreateSessionConfig(tools, instructions, onPermissionRequest: null, model, workingDirectory, selection);
 
         // Enabled = false does not work, and is set anyway: measured against the live runtime, a
         // session created with it still compacted as soon as the threshold was crossed, identically
@@ -617,18 +651,22 @@ public static class CopilotAgentFactory
     /// <param name="onPermissionRequest">The permission handler, or <see langword="null"/> for the safe default.</param>
     /// <param name="model">The model to back the session, or <see langword="null"/>/blank for the runtime's default.</param>
     /// <param name="workingDirectory">The session's working directory, or <see langword="null"/>/blank for the runtime's default.</param>
+    /// <param name="selection">
+    ///     A validated model selection, or <see langword="null"/>: the model and any chosen effort and tier.
+    /// </param>
     /// <returns>The configured session.</returns>
     private static CreateSessionOptions CreateSessionConfig(
         IList<AIFunction> tools,
         string? instructions,
         Func<PermissionRequest, PermissionInvocation, Task<PermissionDecision>>? onPermissionRequest,
         string? model,
-        string? workingDirectory)
+        string? workingDirectory,
+        ModelSelection? selection)
     {
         var config = new CreateSessionOptions();
 
         ApplyConfinement(config, tools, onPermissionRequest);
-        ApplySessionSettings(config, instructions, model, workingDirectory);
+        ApplySessionSettings(config, instructions, model, workingDirectory, selection);
 
         return config;
     }
@@ -651,15 +689,42 @@ public static class CopilotAgentFactory
     /// <param name="instructions">The system instructions, if any.</param>
     /// <param name="model">The model to back the session, or <see langword="null"/>/blank for the runtime's default.</param>
     /// <param name="workingDirectory">The session's working directory, or <see langword="null"/>/blank for the runtime's default.</param>
+    /// <param name="selection">
+    ///     A validated model selection, or <see langword="null"/>. When supplied it names the model in
+    ///     place of <paramref name="model"/>, and its reasoning effort and context tier — each only
+    ///     when chosen — are set on the session's inference options. An effort or tier not chosen
+    ///     leaves the inference options untouched, so the runtime's own default applies. Its context
+    ///     window is not set here: the provider-session factory applies it as a ceiling, and every
+    ///     other caller refuses it in <see cref="ValidateSelection"/>.
+    /// </param>
     private static void ApplySessionSettings(
         SessionOptionsBase config,
         string? instructions,
         string? model,
-        string? workingDirectory)
+        string? workingDirectory,
+        ModelSelection? selection = null)
     {
-        if (!string.IsNullOrWhiteSpace(model))
+        var chosenModel = selection?.Model.Id ?? model;
+        if (!string.IsNullOrWhiteSpace(chosenModel))
         {
-            config.Model = model;
+            config.Model = chosenModel;
+        }
+
+        // The selection's adjustments are applied by the identifiers the catalog published, and
+        // only when chosen: an inference option this method never set is the runtime's to decide.
+        if (selection is not null)
+        {
+            if (CanonicalEffort(selection) is { } effort)
+            {
+                config.Inference ??= new SessionInferenceOptions();
+                config.Inference.ReasoningEffort = effort;
+            }
+
+            if (CanonicalTier(selection) is { } tier)
+            {
+                config.Inference ??= new SessionInferenceOptions();
+                config.Inference.ContextTier = new ContextTier(tier);
+            }
         }
 
         if (!string.IsNullOrWhiteSpace(workingDirectory))
@@ -830,6 +895,106 @@ public static class CopilotAgentFactory
     /// <param name="name">The tool's wire name.</param>
     /// <returns>The name as <c>custom:&lt;name&gt;</c>.</returns>
     internal static string QualifyCustomToolName(string name) => $"custom:{name}";
+
+    /// <summary>
+    ///     Refuses a model choice that names the model twice, names another provider's model, or
+    ///     carries a setting the calling path cannot apply.
+    /// </summary>
+    /// <remarks>
+    ///     <para>
+    ///     Shared by every public entry point that accepts a selection, so each refuses the same
+    ///     mistakes with the same words. A model name beside a selection would leave which one backs
+    ///     the session to a precedence rule nobody reads; refusing both makes the composition say one
+    ///     thing. A selection of another provider's model was validated against that provider's
+    ///     offering, not Copilot's.
+    ///     </para>
+    ///     <para>
+    ///     A setting a path cannot apply is refused rather than dropped. The runtime takes no output
+    ///     limit, so <see cref="Core.ModelSettings.MaxOutputTokens"/> is refused on every path; the
+    ///     catalog never offers it, so only a hand-built model description can carry one. A context
+    ///     window is applied only as the ceiling a provider-session engine accounts against, so it is
+    ///     refused where AgentKit accounts against no window: the plain agent and the summarizer.
+    ///     </para>
+    /// </remarks>
+    /// <param name="model">The model name the caller passed, if any.</param>
+    /// <param name="selection">The selection the caller passed, if any.</param>
+    /// <param name="windowAccounted">
+    ///     <see langword="true"/> when the caller accounts its sessions against a window the
+    ///     selection's context window can lower; <see langword="false"/> when it accounts against none.
+    /// </param>
+    /// <exception cref="ArgumentException">
+    ///     Both a non-blank <paramref name="model"/> and a <paramref name="selection"/> were passed;
+    ///     the selection names a model from a provider other than Copilot; it carries an output limit;
+    ///     or it carries a context window and <paramref name="windowAccounted"/> is
+    ///     <see langword="false"/>.
+    /// </exception>
+    internal static void ValidateSelection(string? model, ModelSelection? selection, bool windowAccounted)
+    {
+        if (selection is null)
+        {
+            return;
+        }
+
+        if (!string.IsNullOrWhiteSpace(model))
+        {
+            throw new ArgumentException("Pass either a model name or a model selection, not both.", nameof(selection));
+        }
+
+        if (!string.Equals(selection.Model.Provider, CopilotModelCatalog.ProviderId, StringComparison.Ordinal))
+        {
+            throw new ArgumentException(
+                $"The selection names a model from provider '{selection.Model.Provider}', not '{CopilotModelCatalog.ProviderId}'.",
+                nameof(selection));
+        }
+
+        if (selection.Settings.MaxOutputTokens is not null)
+        {
+            throw new ArgumentException(
+                "The selection's MaxOutputTokens cannot be applied on Copilot: the runtime takes no output limit. "
+                + "Select without one.",
+                nameof(selection));
+        }
+
+        if (!windowAccounted && selection.Settings.ContextWindowTokens is not null)
+        {
+            throw new ArgumentException(
+                "The selection's ContextWindowTokens cannot be applied here: AgentKit accounts this Copilot "
+                + "session against no window, so there is nothing for a ceiling to lower. Use "
+                + "CopilotProviderSessionFactory to cap the window a conversation accounts against, or select "
+                + "without a window.",
+                nameof(selection));
+        }
+    }
+
+    /// <summary>
+    ///     Returns the chosen effort as the catalog spelled it, or <see langword="null"/> when none
+    ///     was chosen.
+    /// </summary>
+    /// <param name="selection">The selection.</param>
+    /// <returns>The effort identifier to send.</returns>
+    private static string? CanonicalEffort(ModelSelection selection)
+    {
+        var chosen = selection.Settings.ReasoningEffort;
+        return chosen is null
+            ? null
+            : selection.Model.ReasoningEfforts
+                .FirstOrDefault(effort => string.Equals(effort.Id, chosen, StringComparison.OrdinalIgnoreCase))?.Id ?? chosen;
+    }
+
+    /// <summary>
+    ///     Returns the chosen tier as the catalog spelled it, or <see langword="null"/> when none was
+    ///     chosen.
+    /// </summary>
+    /// <param name="selection">The selection.</param>
+    /// <returns>The tier identifier to send.</returns>
+    private static string? CanonicalTier(ModelSelection selection)
+    {
+        var chosen = selection.Settings.ContextTier;
+        return chosen is null
+            ? null
+            : selection.Model.ContextTiers
+                .FirstOrDefault(tier => string.Equals(tier.Id, chosen, StringComparison.OrdinalIgnoreCase))?.Id ?? chosen;
+    }
 
     /// <summary>
     ///     Names the tool a permission request concerns, for a rejection message and diagnostics.

@@ -3,6 +3,7 @@ package AgentKitAgentsCopilot {
     private import AgentKitAgentsCopilot_CopilotAgent::*;
     private import AgentKitAgentsCopilot_CopilotAgentFactory::*;
     private import AgentKitAgentsCopilot_CopilotCli::*;
+    private import AgentKitAgentsCopilot_CopilotModelCatalog::*;
     private import AgentKitAgentsCopilot_CopilotProviderSession::*;
     private import AgentKitAgentsCopilot_CopilotProviderSessionFactory::*;
     private import AgentKitAgentsCopilot_CopilotRuntime::*;
@@ -34,6 +35,8 @@ package AgentKitAgentsCopilot {
      * Microsoft.Agents.AI.Abstractions dependencies that must be kept out of Core; the SDK's
      * RID-specific native runtime is provisioned only by a host application that opts into the bundled
      * runtime, never by this library.
+     * It also describes the models the service offers the signed-in user as a model catalog, and
+     * applies a validated model selection to every session it configures.
      */
 
     part def AgentKitAgentsCopilotSystem {
@@ -49,6 +52,7 @@ package AgentKitAgentsCopilot {
         part copilotAgent : CopilotAgent;
         part copilotAgentFactory : CopilotAgentFactory;
         part copilotCli : CopilotCli;
+        part copilotModelCatalog : CopilotModelCatalog;
         part copilotProviderSession : CopilotProviderSession;
         part copilotProviderSessionFactory : CopilotProviderSessionFactory;
         part copilotRuntime : CopilotRuntime;

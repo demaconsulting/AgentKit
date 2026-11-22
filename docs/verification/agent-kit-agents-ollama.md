@@ -4,7 +4,7 @@ This document describes the system-level verification strategy for the AgentKitA
 
 ## Verification Approach
 
-The AgentKitAgentsOllama system is verified through two system-level tests that exercise the package
+The AgentKitAgentsOllama system is verified through three system-level tests that exercise the package
 as a consumer meets it. The first covers reading: given what an Ollama server reported, the package
 must answer with the window a conversation should be accounted against and with an honest account of
 where that number came from, across the three states a real server moves between over a
@@ -12,6 +12,11 @@ conversation's life — the model loaded and running a length, the model known b
 application that stated the size it asked for. The second covers asking: the figure reported as
 stated must be the figure every request actually asks the server for, proven by reading it back off
 the bodies the real Ollama client sent.
+
+A third covers choosing: a model chosen from the server's own catalog, with a window and an effort,
+must run at exactly those. The catalog's listing and each model's description are replayed from
+payloads captured from a live Ollama 0.34.2 server, and the window and the thinking option are read
+back off the chat request the real client sent.
 
 The precedence is verified rather than trusted because its failure mode is silent. A session told a
 window larger than the instance is running keeps going until the provider has already truncated the
@@ -34,7 +39,9 @@ server: the captured payloads are replayed rather than re-fetched, so a future O
 the shape of the loaded-model report would not be detected until the payloads were captured again.
 Nor is it automated that an Ollama server *honors* a requested context length — that was measured by
 hand and is recorded in *OllamaContextWindow Unit Verification Design*; what the tests prove is that
-the request carries it.
+the request carries it. A live catalog run — the real listing, `think` and `num_ctx` received by a real
+server, and the refusal of a window above the trained length — is recorded by the opt-in live suite and
+described in *OllamaModelCatalog Unit Verification Design*; it is supplementary.
 
 System tests reside in `AgentKitAgentsOllamaTests.cs` within the
 `DemaConsulting.AgentKit.Agents.Ollama.Tests` project.
@@ -54,11 +61,12 @@ System tests reside in `AgentKitAgentsOllamaTests.cs` within the
 
 ## Acceptance Criteria
 
-A system-level test run passes when both scenarios below pass without error or exception beyond
+A system-level test run passes when all three scenarios below pass without error or exception beyond
 those explicitly asserted. Any window reported under a source it did not come from, any figure other
 than the conservative default when no instance was described, any assumed figure presented as
-measured, and any request reaching the server without the size the package reported as stated
-constitutes a failure.
+measured, any request reaching the server without the size the package reported as stated, any
+window above the trained length accepted, and any chosen window or effort missing from the wire as
+`num_ctx` or `think` constitutes a failure.
 
 ## Test Scenarios
 
@@ -84,3 +92,17 @@ reading reports it as stated, two ordinary turns are then held through that clie
 asserts that both request bodies the server received asked for exactly that size. An implementation
 that reported a figure it never asked for, or that asked only on the first turn, fails here — and
 that second failure is the one nothing downstream could otherwise detect.
+
+### Model Selection: The Chosen Model Runs With Its Window and Effort
+
+**Test**: `AgentKitAgentsOllama_ModelSelection_ChosenModelRunsWithItsWindowAndEffort`
+
+Verifies `AgentKitAgentsOllama-ModelCatalog-ListsWhatTheServerCanRun` and
+`AgentKitAgentsOllama-ModelSelection-RunsAsChosen`, over HTTP through the real client. A WireMock
+server replays the captured listing and descriptions and answers chat requests. An
+`OllamaModelCatalog` over it selects `gemma4:e4b` with an 8,192-token window and the effort `none`,
+requiring `Vision | ToolCalls`. `OllamaContextWindow.ReadAsync(ollama, selection, …)` reports 8,192
+sourced as `Stated`, and one turn through a `ModelSettingsChatClient` over an
+`OllamaContextSizingChatClient` sends a chat request naming the model, `num_ctx` 8,192 and
+`think: false`. An implementation that reported the trained length instead, or dropped either
+setting on the wire, fails here.

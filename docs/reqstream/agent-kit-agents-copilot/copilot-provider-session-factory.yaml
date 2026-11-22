@@ -154,3 +154,28 @@ sections:
               is configured and carried onto every session a rotation creates.
             tests:
               - CopilotProviderSessionFactory_BuildSessionConfig_WorkingDirectory_IsCarried
+
+          - id: AgentKitAgentsCopilot-CopilotProviderSessionFactory-AppliesASelection
+            title: >-
+              The factory shall create every session on a validated model selection's model, effort
+              and tier, and shall use the selection's context window, when chosen, as the ceiling
+              the session accounts against.
+            justification: |
+              The selection's window on Copilot is a ceiling the user chose, which only ever lowers
+              the window a session accounts against and is never sent to the runtime; it is the same
+              ceiling the factory already accepted directly.
+            tests:
+              - CopilotProviderSessionFactory_CreateAsync_Selection_ConfiguresTheSessionAndCapsTheWindow
+
+          - id: AgentKitAgentsCopilot-CopilotProviderSessionFactory-RefusesAnAmbiguousSelection
+            title: >-
+              The factory shall refuse a model named both by name and by selection, a window
+              ceiling stated both directly and in the selection, and a selection carrying an output
+              limit.
+            justification: |
+              Each pair states one choice twice, and which one applied would be left to a rule
+              nobody reads. The runtime takes no output limit, so one would be dropped with nothing
+              reporting it.
+            tests:
+              - CopilotProviderSessionFactory_Constructor_ConflictingSelection_Throws
+              - CopilotProviderSessionFactory_Constructor_SelectionWithAnOutputLimit_Throws

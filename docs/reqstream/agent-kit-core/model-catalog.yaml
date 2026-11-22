@@ -1,0 +1,106 @@
+---
+# Software Unit Requirements for ModelCatalog
+#
+# These requirements describe the design-level behavior of the ModelCatalog unit: the catalog
+# contract, the listing query, the caching base the provider catalogs share, and the
+# session-start gate.
+
+sections:
+  - title: AgentKitCore Requirements
+    sections:
+      - title: ModelCatalog Requirements
+        requirements:
+          - id: AgentKitCore-ModelCatalog-FiltersByRequirement
+            title: >-
+              A catalog listing shall return, in the provider's order, only the models that report
+              every capability the query requires, and shall omit models that cannot be used unless
+              the query asks for them; a lookup by identifier shall find a model whether or not it
+              can be used.
+            justification: |
+              The first application built on this lists only vision-capable models, so filtering by
+              capability is the feature rather than a convenience. Unusable models are hidden by
+              default because a picker should offer only what will run, but a lookup still finds
+              them so that validation can say why a persisted choice no longer works. The provider's
+              order is kept because it is the provider's own ranking.
+            tests:
+              - ModelCatalog_ListAsync_Query_FiltersByRequirementAndUsability
+              - ModelCatalog_ListAsync_ProviderOrder_IsPreserved
+              - ModelCatalog_GetAsync_UnusableModel_IsFound
+
+          - id: AgentKitCore-ModelCatalog-CachesForALifetime
+            title: >-
+              A caching catalog shall read its provider only when first asked, shall serve later
+              queries from that reading for five minutes unless given another positive lifetime, and
+              shall read again once the reading has reached that age; a listing it returns shall be
+              read-only, so a caller cannot alter the cached reading.
+            justification: |
+              A picker lists models far more often than a provider's offering changes, and a
+              provider listing is a network call that some providers rate-limit. Five minutes is
+              long enough that one interaction never waits twice, and short enough that a model
+              enabled or withdrawn appears or disappears without a restart.
+            tests:
+              - ModelCatalog_Construct_ReadsNothingUntilAsked
+              - ModelCatalog_ListAsync_WithinLifetime_ReadsOnce
+              - ModelCatalog_ListAsync_AfterLifetime_ReadsAgain
+              - ModelCatalog_ListAsync_AtLifetime_ReadsAgain
+              - ModelCatalog_Construct_NonPositiveLifetime_Throws
+              - ModelCatalog_ListAsync_Result_IsReadOnlyAndDoesNotAlterTheCache
+
+          - id: AgentKitCore-ModelCatalog-SharesOneRead
+            title: >-
+              Callers that query a catalog while a read is in flight shall share that read, and its
+              outcome, rather than each starting one.
+            justification: |
+              A GUI commonly asks for the list from several places at once when it opens. Without
+              sharing, each would read the provider, multiplying the cost the cache exists to save
+              exactly when it matters.
+            tests:
+              - ModelCatalog_ListAsync_ConcurrentCallers_ShareOneRead
+              - ModelCatalog_ListAsync_CallerArrivingAsReadFails_ReceivesThatFailure
+              - ModelCatalog_RefreshAsync_ReadInFlight_JoinsIt
+
+          - id: AgentKitCore-ModelCatalog-DoesNotCacheFailures
+            title: >-
+              A failed read shall reach its callers and shall not be cached, so the next query reads
+              again; a caller that cancels shall stop only its own wait, and a read canceled by the
+              caller that started it shall be read again by any caller still waiting.
+            justification: |
+              A provider that is briefly unreachable, or a user not yet signed in, must not leave the
+              catalog empty for five minutes after the cause is fixed. One caller's cancellation is
+              that caller's business; another caller that is still waiting asked for a listing and
+              should get one.
+            tests:
+              - ModelCatalog_ListAsync_ReadFails_IsNotCachedAndNextQueryRetries
+              - ModelCatalog_ListAsync_ReadingCallerCancels_WaiterReadsForItself
+              - ModelCatalog_ListAsync_ProviderTimeout_ReachesEveryWaiterWithOneRead
+              - ModelCatalog_ListAsync_CallerArrivingAsReadFails_ReceivesThatFailure
+              - ModelCatalog_ListAsync_CallerArrivingAsReaderCancels_ReadsOnceForItself
+
+          - id: AgentKitCore-ModelCatalog-RefreshesOnRequest
+            title: >-
+              A catalog shall read its provider again on request, within the lifetime.
+            justification: |
+              A user who has just been granted a model, or has just pulled one onto a server, should
+              be able to see it without waiting for the cache to expire.
+            tests:
+              - ModelCatalog_RefreshAsync_WithinLifetime_ReadsAgain
+              - ModelCatalog_RefreshAsync_ArrivingAsReadSucceeds_ReadsAgain
+
+          - id: AgentKitCore-ModelCatalog-GatesSessionStart
+            title: >-
+              Selecting persisted settings through a catalog shall refuse a model the provider no
+              longer offers, shall re-enforce the application's required capabilities, and shall
+              otherwise produce a validated selection naming the model by the catalog's own
+              identifier.
+            justification: |
+              Settings saved yesterday are checked against what the provider offers today, every
+              time a session starts: the model may have been withdrawn, may have lost a capability
+              the application needs, or may no longer accept a setting. Refusing here, with every
+              reason, is what keeps such a choice from failing part-way through a conversation. The
+              catalog's own spelling of the identifier is used so the provider is asked for exactly
+              the model that was validated.
+            tests:
+              - ModelCatalog_SelectAsync_UnknownModel_IsRefusedAsNotAvailable
+              - ModelCatalog_SelectAsync_ModelLostARequiredCapability_IsRefused
+              - ModelCatalog_SelectAsync_ValidSettings_ProducesSelection
+              - ModelCatalog_SelectAsync_AlternateSpelling_SelectsTheCatalogsIdentifier

@@ -80,3 +80,15 @@ sections:
             tags: [ots]
             tests:
               - AgentKitCore_SystemChatReducer_OverThresholdHistory_IsConsolidatedKeepingTheTail
+
+          - id: AgentKit-OTS-MicrosoftExtensionsAIAbstractions-ReasoningOptions
+            title: >-
+              Microsoft.Extensions.AI.Abstractions shall carry a reasoning effort, an output limit and
+              a model identifier on the options of a chat request.
+            justification: |
+              A model selection reaches an IChatClient provider only through these request options,
+              which the provider's own client maps to its wire. AgentKit's tests read all three back
+              from the options a request arrived with.
+            tags: [ots]
+            tests:
+              - ModelSettingsChatClient_GetResponseAsync_AppliesTheSelection

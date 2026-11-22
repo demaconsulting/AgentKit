@@ -50,15 +50,19 @@ and the model name.
   See *CopilotTurnChannel Unit Design*.
 - **`_model`** (`string?`) — The model performing each consolidation, or null to leave the choice to
   the runtime.
+- **`_selection`** (`ModelSelection?`) — The validated model selection performing each consolidation,
+  or null when the host named a model, or none, instead.
 
 ### Key Methods
 
-#### The CopilotSummarizer Constructor (CopilotRuntime, string?)
+#### The CopilotSummarizer Constructor (CopilotRuntime, string?, ModelSelection?)
 
 **Purpose:** Hold what every consolidation needs, and nothing else.
 
-**Algorithm:** Reject a null runtime, check it is not disposed (`CopilotRuntime.ThrowIfDisposed`), and
-build the production channel opener over the runtime — one that deletes each session when it is
+**Algorithm:** Reject a null runtime, check it is not disposed (`CopilotRuntime.ThrowIfDisposed`),
+refuse an ambiguous or foreign selection, and one carrying a context window or an output limit,
+through `CopilotAgentFactory.ValidateSelection` with `windowAccounted: false`, and build
+the production channel opener over the runtime — one that deletes each session when it is
 released, because a consolidation session is finished with once it has answered. The opener is handed
 the runtime, not its client, and reads the client at each open and release: the SDK restarts a
 disposed client on demand, so a summarizer that held the client would bring a runtime the host had
@@ -69,15 +73,25 @@ The model is named separately from the conversation's because consolidation is s
 than reasoning, so a smaller and cheaper model is usually the right choice — and because it is a
 different *conversation*, so changing it alters nothing the agent can observe.
 
-**Preconditions:** `runtime` is not null and not disposed.
+A `selection` may be given instead of a model name. It is a model the host's user chose from a
+`CopilotModelCatalog`, validated; it names the model each consolidation runs on, and its reasoning
+effort and context tier, each only when chosen, are set on each consolidation session. The same rules
+as the agent factory's apply: a cheaper model is chosen and validated the same way, and a model named
+both ways is refused. A consolidation session is accounted against no window, so a selection's
+context window has nothing to lower and is refused; the runtime takes no output limit, so a
+selection's `MaxOutputTokens` is refused too, rather than either being dropped silently.
+
+**Preconditions:** `runtime` is not null and not disposed; a model is named at most once; a
+selection carries no context window and no output limit.
 
 **Postconditions:** A summarizer ready to consolidate, owning nothing disposable.
 
-#### The CopilotSummarizer Constructor (CopilotChannelOpener, string?)
+#### The CopilotSummarizer Constructor (CopilotChannelOpener, string?, ModelSelection?)
 
 **Purpose:** The test seam, for the reason *CopilotTurnChannel Unit Design* gives.
 
-**Algorithm:** Reject a null opener and record it.
+**Algorithm:** Reject a null opener, refuse a selection as the public constructor does,
+and record the opener, the model and the selection.
 
 **Preconditions:** `opener` is not null.
 
@@ -88,7 +102,8 @@ different *conversation*, so changing it alters nothing the agent can observe.
 **Purpose:** Produce the record that consolidates one span of history.
 
 **Algorithm:** Reject a null request and a canceled token. Build fresh, tool-free engine session
-options, open a session from them, send the composed consolidation prompt as the only message —
+options carrying the model or the selection, open a session from them, send the composed
+consolidation prompt as the only message —
 a `MessageOptions` carrying the prompt and nothing else — and return the answer. Release the session
 in a `finally`, so a consolidation that failed,
 timed out or was canceled leaves nothing behind on the runtime — which matters because a long
@@ -113,6 +128,8 @@ for.
 | --- | --- |
 | Null `runtime` or `opener` | `ArgumentNullException` propagates |
 | Disposed `runtime` | `ObjectDisposedException` propagates |
+| Both a model name and a selection, or a foreign selection | `ArgumentException` naming `selection` propagates |
+| A selection carrying a context window or an output limit | `ArgumentException` naming `selection` propagates |
 | `runtime` disposed after construction | `ObjectDisposedException` from the next consolidation; nothing started |
 | Null `request` | `ArgumentNullException` propagates |
 | Cancellation before opening | `OperationCanceledException`; nothing is opened |
@@ -123,7 +140,7 @@ for.
 ### Dependencies
 
 - **AgentKitCore** — supplies `ISummarizer`, `ConsolidationRequest` and `ConsolidationPrompt`; see
-  *Summarizer Unit Design*.
+  *Summarizer Unit Design*; and `ModelSelection`; see *ModelSettings Unit Design*.
 - **CopilotAgentFactory** — supplies the tool-free engine session options; see
   *CopilotAgentFactory Unit Design*.
 - **CopilotTurnChannel** — opens and owns each short-lived runtime session; see *CopilotTurnChannel

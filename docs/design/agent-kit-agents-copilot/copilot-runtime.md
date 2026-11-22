@@ -336,8 +336,9 @@ The SDK's own exception for a session the runtime does not hold propagates uncha
 **Purpose:** Refuse a disposed runtime where something is built on it.
 
 **Algorithm:** Read `Client` and discard it, so a disposed runtime throws `ObjectDisposedException`
-with the object name `CopilotRuntime`. Called by `CopilotAgentFactory.Create` and by the
-`CopilotProviderSessionFactory` and `CopilotSummarizer` constructors.
+with the object name `CopilotRuntime`. Called by `CopilotAgentFactory.Create`, by the
+`CopilotProviderSessionFactory`, `CopilotSummarizer` and `CopilotModelCatalog` constructors, and by
+the catalog at each read.
 
 #### DisposeAsync()
 
@@ -346,12 +347,11 @@ with the object name `CopilotRuntime`. Called by `CopilotAgentFactory.Create` an
 **Algorithm:** Atomically take the client and dispose it; a second call finds none and returns.
 Sessions open on the runtime end with it; their persisted state stays in the data directory.
 
-**Postconditions:** Every agent, provider-session factory and summarizer built on the runtime fails
-its next open, resume or deletion with `ObjectDisposedException` before the SDK is reached, so nothing
-starts the runtime again. The host disposes the runtime only once no run is in progress on it: an
-open that has already read the client when disposal begins races the disposal, and the SDK may then
-restart the client for that open. Disposal is not serialized against open runs, as is usual for
-`IAsyncDisposable`.
+**Postconditions:** Every agent, provider-session factory and summarizer built on the runtime fails its next open,
+resume or deletion, and every model catalog its next read of the service, with `ObjectDisposedException` before the SDK
+is reached, so nothing starts the runtime again. The host disposes the runtime only once no run is in progress on it: an
+open that has already read the client when disposal begins races the disposal, and the SDK may then restart the client
+for that open. Disposal is not serialized against open runs, as is usual for `IAsyncDisposable`.
 
 ### Error Handling
 
@@ -388,7 +388,9 @@ restart the client for that open. Disposal is not serialized against open runs, 
 A host application calls `CopilotRuntime.StartAsync` once and disposes the runtime when finished,
 handing it to `CopilotAgentFactory.Create`, `CopilotProviderSessionFactory` and `CopilotSummarizer`,
 which check it is not disposed, pass it to their channel openers — each open, resume and release
-reads its client — and never dispose it. A host deletes a finished
+reads its client — and never dispose it. It hands the same runtime to `CopilotModelCatalog`, which
+checks it is not disposed when built and at each read, reads its client to list the service's
+models, and never disposes it. A host deletes a finished
 conversation with `DeleteSessionAsync`, passing `CopilotAgentSession.SessionId`. The production turn channel
 calls `StartClientAsync` before every session it opens or resumes; see *CopilotTurnChannel Unit
 Design*.

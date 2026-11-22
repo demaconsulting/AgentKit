@@ -1,0 +1,129 @@
+---
+# Software Unit Requirements for ModelSettings
+#
+# These requirements describe the design-level behavior of the ModelSettings unit: the persisted
+# model choice, its validation against a model, and the validated selection provider factories
+# accept.
+
+sections:
+  - title: AgentKitCore Requirements
+    sections:
+      - title: ModelSettings Requirements
+        requirements:
+          - id: AgentKitCore-ModelSettings-Persistable
+            title: >-
+              Model settings shall always name a model, and shall survive a round trip through JSON.
+            justification: |
+              An application saves the user's choice and reads it back on the next launch, so the
+              settings must be plain data that serializes as it stands. Settings naming no model
+              could never be validated against anything, so they cannot be constructed, including
+              by copying an existing value with a blank identifier.
+            tests:
+              - ModelSettings_Construct_BlankModelId_Throws
+              - ModelSettings_Serialize_RoundTrips
+
+          - id: AgentKitCore-ModelSettings-NamesTheModelItIsCheckedAgainst
+            title: >-
+              Validation shall refuse settings checked against a model other than the one they name.
+            justification: |
+              Validating settings for one model against another would prove nothing about the model
+              that actually runs.
+            tests:
+              - ModelSettings_Validate_DifferentModel_IsRefused
+
+          - id: AgentKitCore-ModelSettings-RefusesUnusableOrIncapableModels
+            title: >-
+              Validation shall refuse a model that cannot be used, giving the provider's reason, and
+              a model that does not report every capability the application requires, naming what
+              is missing.
+            justification: |
+              A vision application must not start a session on a model that cannot see, and a model
+              the provider will not run must not reach a session at all. Naming the reason and the
+              missing capability is what lets a user fix the choice rather than guess.
+            tests:
+              - ModelSettings_Validate_UnusableModel_IsRefusedWithItsReason
+              - ModelSettings_Validate_MissingRequiredCapability_IsRefused
+
+          - id: AgentKitCore-ModelSettings-RefusesUnofferedEffortsAndTiers
+            title: >-
+              Validation shall refuse a reasoning effort or a context tier the model does not offer,
+              listing those it does, and shall refuse either on a model that accepts none.
+            justification: |
+              Providers do not reliably refuse a level they do not understand — a live Ollama server
+              accepted every think level it was sent — so a mistyped or stale setting would be
+              silently ignored. Listing the offered values turns the refusal into a correction.
+            tests:
+              - ModelSettings_Validate_UnofferedEffort_IsRefusedListingTheSupportedOnes
+              - ModelSettings_Validate_EffortOnModelWithoutEfforts_IsRefused
+              - ModelSettings_Validate_UnofferedTier_IsRefused
+
+          - id: AgentKitCore-ModelSettings-HoldsTheWindowToTheModel
+            title: >-
+              Validation shall refuse a context window that is not positive, that the model does not
+              allow to be set, or that exceeds the chosen tier's window — else the default tier's,
+              else the model's largest window — and shall not enforce a limit the provider does not
+              report.
+            justification: |
+              On Ollama a window above the length the model was trained for is not something the
+              model can honor, and on Copilot a ceiling above the tier's window could never apply.
+              Refusing it before the session starts is cheaper and clearer than a server's failure
+              mid-conversation. An unknown limit is not enforced, because nothing could be said
+              about it.
+            tests:
+              - ModelSettings_Validate_NonPositiveWindow_IsRefused
+              - ModelSettings_Validate_WindowOnModelWithoutWindowSetting_IsRefused
+              - ModelSettings_Validate_WindowAboveModelMaximum_IsRefused
+              - ModelSettings_Validate_WindowAboveTierWindow_IsRefused
+              - ModelSettings_Validate_ChosenTierWithoutWindow_IsHeldToTheDefaultTier
+              - ModelSettings_Validate_UnknownMaximum_IsNotEnforced
+
+          - id: AgentKitCore-ModelSettings-HoldsTheOutputLimitToTheModel
+            title: >-
+              Validation shall refuse an output limit that is not positive, that the model does not
+              allow to be set, or that exceeds the model's own output limit.
+            justification: |
+              An output limit the provider cannot apply would be silently dropped, and one above the
+              model's own limit could never be reached.
+            tests:
+              - ModelSettings_Validate_MaxOutput_IsCheckedAgainstTheModel
+
+          - id: AgentKitCore-ModelSettings-ReportsEveryProblem
+            title: >-
+              Validation shall report every problem at once, each worded to be shown to a user, and
+              binding invalid settings shall fail carrying all of them.
+            justification: |
+              A user who fixes one problem only to be shown the next has been made to guess. Every
+              reason is collected so a settings dialog can show them together. The list is
+              read-only, and the exception keeps its own copy, so the problems shown are the
+              problems found.
+            tests:
+              - ModelSettings_Validate_SeveralProblems_AreAllReported
+              - ModelSettings_Bind_InvalidSettings_ThrowsWithEveryProblem
+              - ModelSettings_Validate_Problems_AreReadOnly
+              - ModelSettings_Exception_Problems_AreCopiedAndReadOnly
+
+          - id: AgentKitCore-ModelSettings-OnlyValidatedSelectionsExist
+            title: >-
+              A selection a provider factory accepts shall be obtainable only by validating settings
+              against a model, and shall carry the provider-neutral equivalent of the chosen effort,
+              where one exists, and the window of the chosen or default tier.
+            justification: |
+              Factories accept a selection rather than raw settings so that settings reach a factory
+              only after they have been validated. The neutral effort
+              is what an IChatClient pipeline applies, and an effort with no neutral equivalent
+              carries none rather than an approximation.
+            tests:
+              - ModelSettings_Bind_ValidSettings_YieldsSelection
+              - ModelSettings_Bind_ProviderOnlyEffort_HasNoStandardEquivalent
+              - ModelSettings_ModelSelection_HasNoPublicConstructor
+
+          - id: AgentKitCore-ModelSettings-DefaultsInventNothing
+            title: >-
+              The settings a picker starts from shall carry the model's published default effort and
+              tier, and nothing the provider did not publish.
+            justification: |
+              A provider that publishes no default effort leaves the choice to the model; inventing
+              one would send a setting the user never chose. The window is left unset for the same
+              reason.
+            tests:
+              - ModelSettings_DefaultsFor_CarriesPublishedDefaultsOnly

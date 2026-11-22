@@ -54,7 +54,8 @@ explicitly asserted. Any forwarded request reaching the provider without the cho
 any request after the first losing it, any streamed request behaving differently from a
 whole-response one, any option the caller set failing to reach the provider, any write into the
 caller's own settings, any caller-named context length overruled, any non-positive size accepted at
-composition, and any request body reaching the server without the size constitutes a failure.
+composition, any request body reaching the server without the size, and any decorator not found, or
+reporting another size, through a delegating client above it constitutes a failure.
 
 ### Test Scenarios
 
@@ -116,6 +117,14 @@ Error path at composition, covering zero and a negative. No Ollama instance can 
 length, so it is a mistake in the application rather than a condition to degrade around, and it is
 refused at the line that wrote it rather than at some later request whose failure would name a
 server.
+
+#### AgentKitAgentsOllama-OllamaContextSizingChatClient-ReportsItsWindow: The Window Is Found From Above
+
+**Test**: `OllamaContextSizingChatClient_GetService_ReportsItsContextWindow`
+
+The decorator, composed beneath a function-invoking client, is found by
+`GetService<IContextWindowChatClient>()` on the outer client, and reports the 8,192 tokens it asks
+for. This is the lookup `ModelSettingsChatClient` makes to confirm a selection's window.
 
 #### AgentKit-OTS-OllamaSharp-ContextLengthOption: The Size Reaches the Wire
 

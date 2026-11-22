@@ -11,7 +11,9 @@ built from: `AIFunction` and `AIFunctionFactory.Create` for expressing a tool, t
 result-delivery guard, the `AIContent` type hierarchy (`AIContent`, `TextContent`,
 `DataContent`) that carries binary and image results to the provider in a typed form rather than
 as serialized JSON, and `DelegatingAIFunction`, the transparent wrapper every guarded tool is
-returned as. It also supplies `IChatReducer`, the reducer contract `AgentKitChatReducer` implements.
+returned as. It also supplies `IChatReducer`, the reducer contract `AgentKitChatReducer` implements,
+and the request options a model selection travels on: `ChatOptions.ModelId`, `MaxOutputTokens` and
+`Reasoning`, with `ReasoningOptions` and the `ReasoningEffort` scale.
 
 ### Verification Approach
 
@@ -95,6 +97,16 @@ verbatim tail — out.
 
 **Requirement coverage**: `AgentKit-OTS-MicrosoftExtensionsAIAbstractions-ChatReducer`.
 
+#### ModelSettingsChatClient_GetResponseAsync_AppliesTheSelection
+
+**Scenario**: `ModelSettingsChatClient` forwards a request, carrying a selection with the effort
+`high` and a 1,000-token output limit, to a recording chat client.
+
+**Expected**: The `ChatOptions` the request arrived with carry the model identifier as `ModelId`,
+`ReasoningEffort.High` in `Reasoning`, and 1,000 as `MaxOutputTokens`.
+
+**Requirement coverage**: `AgentKit-OTS-MicrosoftExtensionsAIAbstractions-ReasoningOptions`.
+
 ### Requirements Coverage
 
 - **`AgentKit-OTS-MicrosoftExtensionsAIAbstractions-FunctionFactory`**:
@@ -110,3 +122,5 @@ verbatim tail — out.
   GuardedToolFactory_Create_ConstructedTool_PreservesEveryPieceOfMetadata
 - **`AgentKit-OTS-MicrosoftExtensionsAIAbstractions-ChatReducer`**:
   AgentKitCore_SystemChatReducer_OverThresholdHistory_IsConsolidatedKeepingTheTail
+- **`AgentKit-OTS-MicrosoftExtensionsAIAbstractions-ReasoningOptions`**:
+  ModelSettingsChatClient_GetResponseAsync_AppliesTheSelection

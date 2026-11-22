@@ -1,10 +1,12 @@
 using System.Text.Json;
+using DemaConsulting.AgentKit.Core;
 using Microsoft.Extensions.AI;
 using OllamaSharp;
 using OllamaSharp.Models;
 using WireMock.RequestBuilders;
 using WireMock.ResponseBuilders;
 using WireMock.Server;
+using ModelInfo = DemaConsulting.AgentKit.Core.ModelInfo;
 
 namespace DemaConsulting.AgentKit.Agents.Ollama.Tests;
 
@@ -99,6 +101,48 @@ public class AgentKitAgentsOllamaTests
         Assert.Equal(OllamaContextWindowSource.Stated, window.Source);
         Assert.Equal(2, server.LogEntries.Count);
         Assert.All(server.LogEntries, entry => Assert.Equal(chosen, RequestedContextLength(entry.RequestMessage!.Body)));
+    }
+
+    /// <summary>
+    ///     Proves a model chosen from the catalog runs as chosen: the catalog describes it from the
+    ///     server, the chosen window is reported as stated and asked of the server, and the chosen
+    ///     effort reaches the wire as Ollama's own thinking option.
+    /// </summary>
+    /// <remarks>
+    ///     The whole Ollama path an application with a model picker follows, over HTTP through the
+    ///     real client against descriptions captured from a live server.
+    /// </remarks>
+    [Fact]
+    public async Task AgentKitAgentsOllama_ModelSelection_ChosenModelRunsWithItsWindowAndEffort()
+    {
+        // Arrange: the captured server, also answering chat requests
+        using var server = OllamaModelCatalogTests.CapturedServer();
+        server
+            .Given(Request.Create().WithPath("/api/chat").UsingPost())
+            .RespondWith(Response.Create()
+                .WithStatusCode(200)
+                .WithHeader("Content-Type", "application/json")
+                .WithBody("""{"model":"gemma4:e4b","message":{"role":"assistant","content":"ok"},"done":true}"""));
+        using var ollama = new OllamaApiClient(new Uri(server.Url!));
+        var catalog = new OllamaModelCatalog(ollama);
+
+        // Act: select a vision model with a window and an effort, read the window, and converse
+        var selection = await catalog.SelectAsync(
+            new ModelSettings("gemma4:e4b") { ContextWindowTokens = 8192, ReasoningEffort = "none" },
+            ModelCapabilities.Vision | ModelCapabilities.ToolCalls,
+            TestContext.Current.CancellationToken);
+        var window = await OllamaContextWindow.ReadAsync(ollama, selection, TestContext.Current.CancellationToken);
+        using var client = new ModelSettingsChatClient(new OllamaContextSizingChatClient(ollama, window.Tokens), selection);
+        await Converse(client);
+
+        // Assert: the stated window, and a chat request naming the model, the size and no thinking
+        Assert.Equal(8192, window.Tokens);
+        Assert.Equal(OllamaContextWindowSource.Stated, window.Source);
+        var chat = Assert.Single(server.LogEntries, entry => entry.RequestMessage!.Path == "/api/chat");
+        using var request = JsonDocument.Parse(chat.RequestMessage!.Body!);
+        Assert.Equal("gemma4:e4b", request.RootElement.GetProperty("model").GetString());
+        Assert.Equal(8192, request.RootElement.GetProperty("options").GetProperty("num_ctx").GetInt32());
+        Assert.False(request.RootElement.GetProperty("think").GetBoolean());
     }
 
     /// <summary>

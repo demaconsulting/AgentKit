@@ -1,0 +1,74 @@
+---
+# Software Unit Requirements for ModelInfo
+#
+# These requirements describe the design-level behavior of the ModelInfo unit: the
+# provider-neutral description of one model, its capability vocabulary, and the derivation of the
+# host capabilities tool packs are gated on.
+
+sections:
+  - title: AgentKitCore Requirements
+    sections:
+      - title: ModelInfo Requirements
+        requirements:
+          - id: AgentKitCore-ModelInfo-DescribesAModel
+            title: >-
+              The unit shall describe one model in provider-neutral terms — its provider, identity,
+              display name, capabilities, the settings it accepts, the efforts, tiers, window and
+              output limits it offers, whether it can be used and why not, and the notices to show —
+              defaulting a hand-built description to usable with empty lists.
+            justification: |
+              A model picker and a validation step need the same facts about a model whichever
+              provider offers it, and an application on a provider no catalog serves must be able to
+              state them itself. Defaulting to usable with empty lists rather than missing ones is
+              what lets a hand-built description be as short as the facts the application knows.
+            tests:
+              - ModelInfo_Construct_ByHand_DefaultsToUsableWithEmptyLists
+
+          - id: AgentKitCore-ModelInfo-OwnsItsCollections
+            title: >-
+              The unit shall copy every list and the additional-properties dictionary it is given and
+              expose them read-only, so a description cannot change after it is built.
+            justification: |
+              A catalog caches its descriptions and hands the same instances to every caller, on
+              any thread. A description that kept the caller's list, or exposed one that could be
+              cast back and altered, could be changed by one caller under another, and the
+              validation a selection records would no longer describe the model it holds. Copying
+              on the way in and exposing read-only views on the way out keeps each description as
+              it was built; a list holding a null entry is refused, and a null list is taken as
+              empty.
+            tests:
+              - ModelInfo_Lists_SourceMutatedAfterInit_InstanceUnchanged
+              - ModelInfo_Lists_CannotBeCastBackAndMutated
+              - ModelInfo_With_ReplacedList_IsCopied
+              - ModelInfo_AdditionalProperties_SourceMutatedAfterInit_InstanceUnchanged
+              - ModelInfo_Lists_NullEntry_IsRefused
+              - ModelInfo_Lists_Null_IsEmpty
+
+          - id: AgentKitCore-ModelInfo-CapabilitiesCombine
+            title: >-
+              Model capabilities shall be independently combinable flags, each zero or a single bit,
+              and a model shall satisfy a requirement only when it reports every required flag.
+            justification: |
+              An application that shows only vision models also needs those models to call tools,
+              so requirements combine, and a combined requirement must not be satisfied by a model
+              reporting only half of it. A member overlapping another would silently satisfy a
+              requirement nobody stated, which is why each member is a single bit.
+            tests:
+              - ModelInfo_Supports_EveryRequiredFlagReported_IsSatisfiedOtherwiseNot
+              - ModelInfo_Supports_NothingRequired_IsAlwaysSatisfied
+              - ModelInfo_FlagEnums_EveryMember_IsZeroOrASingleBit
+
+          - id: AgentKitCore-ModelInfo-HostCapabilitiesFromModel
+            title: >-
+              The unit shall derive the vision host capability from a model that accepts images, and
+              no host capability from one that does not; delegation shall remain the host's to
+              declare.
+            justification: |
+              Whether the image tool family is offered used to be asserted by the host, which could
+              only guess what its model could see. A model catalog now knows, so the host can derive
+              the declaration from the selected model instead. Delegation depends on the
+              application's provider and credentials rather than on the model, so the model
+              contributes nothing to it.
+            tests:
+              - ModelInfo_ToHostCapabilities_VisionModel_YieldsVisionOnly
+              - ModelInfo_ToHostCapabilities_TextModel_YieldsNone

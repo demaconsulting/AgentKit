@@ -1,7 +1,7 @@
 # AgentKit Product Capability Verification
 
-This document describes how AgentKit's three product-level provider capabilities, and its capability
-for tools in an agent runtime AgentKit did not build, are verified.
+This document describes how AgentKit's three product-level provider capabilities, its capability
+for tools in an agent runtime AgentKit did not build, and its model-selection capability are verified.
 
 ## Verification Approach
 
@@ -112,6 +112,24 @@ That these building blocks hold against a live model is shown by the opt-in live
 described in *AgentKitAgentsChatClient System Verification Design*; like the live Copilot suite, it is
 supplementary and none of its tests is linked here.
 
+### AgentKit-ModelSelection
+
+- `AgentKitCore_SystemModelSelection_VisionOnlyApp_SelectsAndGatesTheImageFamily` — a vision-only
+  application lists only the models that can see, selects one with its settings, and offers the image
+  family because the selected model can see. This is the provider-neutral half of the capability.
+- `AgentKitAgentsChatClient_ModelSelection_EveryRequestOfATurnCarriesTheSelection` — on any
+  `IChatClient` provider, every request of a tool-calling turn carries the chosen model and effort.
+- `AgentKitAgentsOllama_ModelSelection_ChosenModelRunsWithItsWindowAndEffort` — an Ollama model chosen
+  from the catalog runs at the chosen window and effort, read back off the wire through the real
+  Ollama client.
+- `AgentKitAgentsCopilot_ModelSelection_AgentRunsOnTheSelectedModelAndSettings` — a Copilot model
+  chosen from the catalog backs the agent's session with the chosen effort and tier.
+
+The live listings, the limits the Copilot runtime reports per tier, and the `think` and `num_ctx`
+values a real Ollama server receives are recorded by the opt-in live suites, described in
+*CopilotModelCatalog Unit Verification Design* and *OllamaModelCatalog Unit Verification Design*.
+They are supplementary, and none of their tests is linked here.
+
 ## Acceptance Criteria
 
 A capability is satisfied when every scenario listed for it passes. A confinement scenario that fails
@@ -119,5 +137,6 @@ means the provider is supported only in the sense that it answers; a rotation sc
 means the conversation is bounded by the provider's window after all; a fidelity scenario that fails
 means a tool's answer reaches the model as silence; a window-discovery scenario that fails means the
 window a conversation is accounted against on Ollama is a guess rather than the window the instance
-is running. Any
+is running. A model-selection scenario that fails means a stale or incapable model choice could start
+a session. Any
 of these outcomes withdraws the capability rather than degrading it.

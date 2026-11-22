@@ -53,8 +53,9 @@ explicitly asserted. Any created session reporting a window other than the facto
 reaches a client other than the factory's, any seed that fails to reach the session it was given for,
 any two creations yielding the same session, any seeded tool that is declared but not invoked, any
 occupancy that is a total across a turn's requests rather than its last prompt, any replacement
-reporting a figure its predecessor left behind, or any invalid argument accepted rather than refused
-constitutes a failure.
+reporting a figure its predecessor left behind, any turn reaching the provider without the selected
+model or effort, or any invalid argument, any selection the client cannot apply, or any selection
+whose window differs from the stated window, accepted rather than refused constitutes a failure.
 
 ### Test Scenarios
 
@@ -129,3 +130,24 @@ a user message rather than only in the tool result. The scenario is worth its ow
 defect it guards against is silent: a provider that cannot carry an image on its tool-result channel
 drops it at the wire and answers anyway, so every other assertion here — the tool ran, the result
 reached the transcript, the answer came back — holds just as well when the model never saw the image.
+
+#### AgentKitAgentsChatClient-ChatClientProviderSessionFactory-AppliesASelection: Turns Carry the Selection
+
+**Test**: `ChatClientProviderSessionFactory_CreateAsync_WithSelection_TurnsCarryTheSelection`
+
+A factory constructed with a stated window and a selection with a low effort creates a session that
+takes a turn. The request reaching the recording client carries the model identifier and
+`ReasoningEffort.Low`, and the session still reports its occupancy against the stated window rather
+than any figure from the selection.
+
+**Test**: `ChatClientProviderSessionFactory_Constructor_SelectionWithATier_Throws`
+
+Error path: a selection carrying a context tier is refused with `ArgumentException` at construction,
+where the application configured its provider, rather than dropped on every request.
+
+**Test**: `ChatClientProviderSessionFactory_Constructor_SelectionWindowDiffersFromWindowTokens_Throws`
+
+Error path and its counterpart: a selection carrying an 8,192-token window, over a client reporting
+that it applies 8,192 tokens, is refused with `ArgumentException` naming `selection` when the stated
+window is 4,096, the message naming both figures; with a stated window of 8,192 the same selection
+is accepted and the factory reports that window.

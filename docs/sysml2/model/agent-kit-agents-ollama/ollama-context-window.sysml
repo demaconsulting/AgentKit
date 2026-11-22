@@ -12,4 +12,7 @@ package AgentKitAgentsOllama_OllamaContextWindow {
             requirementFiles = ("docs/reqstream/agent-kit-agents-ollama/ollama-context-window.yaml");
         }
     }
+
+    // The window reading takes the model and its stated window from a validated model selection.
+    dependency OllamaContextWindow to AgentKitCore_ModelSettings::ModelSettings;
 }

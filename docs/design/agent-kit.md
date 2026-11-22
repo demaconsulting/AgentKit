@@ -9,6 +9,10 @@ provider's context window; the chat-client capability promises one thing more, t
 returned reaches the model intact. Each promise is demonstrated end to end rather than argued from
 its parts. A fourth, `AgentKit-Tools-AnyAgentRuntime`, is not a provider capability: it promises that
 AgentKit's tools and the controls around them work in an agent runtime the application built itself.
+A fifth, `AgentKit-ModelSelection`, is not a provider capability either: it promises that an
+application can list a provider's models, filter them by capability, and start a session on settings
+validated against the selected model: the Copilot and Ollama adapters list their providers' models, and an
+`IChatClient` application can validate against a model description it builds itself.
 
 ## Why the Capabilities Sit Above the Packages
 
@@ -71,6 +75,27 @@ The building blocks are deliberately reduced in scope compared with AgentKit's o
 provider is honored only by `ChatClientAgent`. On the GitHub Copilot path, whose runtime owns the
 history and fixes a session's tools at creation, `CopilotAgentFactory` and `CompactingAgentSession`
 remain the recommended route; the user guide describes both.
+
+## Model Selection Across Providers
+
+`AgentKit-ModelSelection` is delivered jointly, because the provider-neutral half and the
+provider-specific half live in different packages:
+
+- **AgentKitCore** describes a model, filters a catalog by capability, caches the listing, validates
+  persisted settings at session start, and applies a selection to each request through an `IChatClient`
+  pipeline.
+- **AgentKitAgentsChatClient** applies a selection on its agent factory and provider-session factory,
+  and offers `UseModelSettings` for a pipeline the host builds.
+- **AgentKitAgentsOllama** reads the server's models as a catalog, and takes the window the session
+  accounts against from the selection.
+- **AgentKitAgentsCopilot** reads the service's models as a catalog, and sets the chosen effort and
+  tier on every session it configures.
+
+The offline scenarios linked to the requirement carry the evidence. They run on captured or
+hand-built provider descriptions. The opt-in live suites record the live listings, the limits the
+Copilot runtime reports per tier, and the `think` and `num_ctx` values an Ollama server receives;
+they are supplementary. See *AgentKitCore System Design*, *AgentKitAgentsOllama System Design* and
+*AgentKitAgentsCopilot System Design*.
 
 ## What the OTS Requirements Are Doing Here
 

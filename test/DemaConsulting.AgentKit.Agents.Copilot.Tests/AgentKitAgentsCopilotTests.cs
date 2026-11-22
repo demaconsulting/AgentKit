@@ -291,6 +291,50 @@ public class AgentKitAgentsCopilotTests
     }
 
     /// <summary>
+    ///     Proves a vision-only application lists only vision models from the service's listing,
+    ///     selects one with an effort and a tier, and runs its agent on exactly that choice.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task AgentKitAgentsCopilot_ModelSelection_AgentRunsOnTheSelectedModelAndSettings()
+    {
+        // Arrange: a listing with the automatic choice, a vision model and a text-only model
+        const Core.ModelCapabilities required = Core.ModelCapabilities.Vision | Core.ModelCapabilities.ToolCalls;
+        var textOnly = CopilotModelCatalogTests.Haiku();
+        textOnly.Id = "text-only";
+        textOnly.Capabilities.Supports!.Vision = null;
+        var catalog = new CopilotModelCatalog(_ => Task.FromResult<IList<Model>>(
+            [new Model { Id = "auto" }, CopilotModelCatalogTests.Haiku(), textOnly]));
+        var runtime = new FakeCopilotRuntime(_ => [new ScriptedTurn([CopilotEvents.Assistant("ok")])]);
+
+        // Act: list for the picker, select at session start, and run
+        var listed = await catalog.ListAsync(new ModelQuery { Require = required }, TestContext.Current.CancellationToken);
+        var selection = await catalog.SelectAsync(
+            new ModelSettings(listed[0].Id) { ReasoningEffort = "high", ContextTier = "long_context" },
+            required,
+            TestContext.Current.CancellationToken);
+        var agent = CopilotAgentFactory.CreateAgent(
+            [MakeTool("doc_read")],
+            instructions: null,
+            onPermissionRequest: null,
+            name: null,
+            model: null,
+            workingDirectory: null,
+            runtime.Opener,
+            runtime.Resumer,
+            selection: selection);
+        await agent.RunAsync("hello", cancellationToken: TestContext.Current.CancellationToken);
+
+        // Assert: only the vision model was offered, and the session ran on the user's choices
+        Assert.Equal(["claude-haiku-5.5"], listed.Select(model => model.Id));
+        Assert.Equal(HostCapabilities.Vision, selection.HostCapabilities);
+        var config = Assert.Single(runtime.Configs);
+        Assert.Equal("claude-haiku-5.5", config.Model);
+        Assert.Equal("high", config.Inference?.ReasoningEffort);
+        Assert.Equal(ContextTier.LongContext, config.Inference?.ContextTier);
+    }
+
+    /// <summary>
     ///     Proves a conversation serialized from one agent resumes on another under the same
     ///     confinement: the second agent reopens the same runtime session, with the allow-list and
     ///     the default-deny handler re-applied rather than trusted to the runtime's memory.

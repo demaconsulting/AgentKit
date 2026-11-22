@@ -82,6 +82,15 @@
     <PackageReference Include="Microsoft.SourceLink.GitHub" Version="10.0.403" PrivateAssets="All" />
   </ItemGroup>
 
+  <!-- Project References -->
+  <ItemGroup>
+    <!-- Core supplies the provider-neutral model catalog, settings and selection types this package's
+         catalog produces and its window reading accepts. Core depends only on the
+         Microsoft.Extensions.AI abstractions this package already references, so the IChatClient
+         adapter still gains no Ollama dependency and this package gains no agent runtime. -->
+    <ProjectReference Include="..\DemaConsulting.AgentKit.Core\DemaConsulting.AgentKit.Core.csproj" />
+  </ItemGroup>
+
   <!-- Code Analysis Dependencies -->
   <ItemGroup>
     <!-- Analyzer packages use child-element form to configure both PrivateAssets and IncludeAssets:

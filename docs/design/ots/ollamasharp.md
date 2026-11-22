@@ -25,11 +25,22 @@ must stay free of any one of them.
   content found in a tool result into the tool message as base64 text rather than `images` — the
   reason promotion leaves only a placeholder there. A test-only reference in the ChatClient tests
   exercises this mapping on the wire
+- The `IChatClient` implementation's mapping of the provider-neutral request options AgentKit's model
+  selection travels on: `ChatOptions.Reasoning.Effort` becomes Ollama's `think` (`None` as `false`;
+  `Low`, `Medium` and `High` as the matching string; `ExtraHigh` as `"high"`), and `ChatOptions.ModelId`
+  becomes the request's `model`. This was read from OllamaSharp's `AbstractionMapper` at tag 5.5.2,
+  the version referenced
+- For `OllamaModelCatalog` only: `ListLocalModelsAsync`, the server's model listing (`/api/tags`),
+  and `ShowModelAsync`, each model's description (`/api/show`). Of `ShowModelResponse` the catalog
+  reads `Capabilities`; `Info.ExtraInfo`, for `{arch}.context_length` and the `{arch}.vision.*` keys;
+  `Projector`; and `Details` (`Family`, `ParameterSize` and `QuantizationLevel`)
 
-Not used: the model-metadata, embedding, pull and generation surfaces. The metadata query is
-deliberately not used: it reports what a model file could support, which is not what the instance is
-running. An application reaching Ollama as an `IChatClient` uses the chat surface directly through
-its own client; this package reads one report and annotates requests.
+Not used: the embedding, pull and generation surfaces. The model-metadata query is deliberately not
+used **for the window**: it reports what a model file could support, which is not what the instance is
+running. The catalog reads it, but only for capabilities and for the trained length as a ceiling a
+stated window is refused above; reading the window never calls it. An application reaching Ollama as
+an `IChatClient` uses the chat surface directly through its own client; the window reading reads one
+report and annotates requests.
 
 ### Integration Pattern
 
@@ -47,3 +58,7 @@ off-the-shelf requirement of its own.
 The running-models query is treated as optional. A server that refuses it — an older build, a proxy,
 one that never answers — yields the conservative default rather than a failed run, so no
 initialization ordering or availability check is required of the host before calling.
+
+`OllamaModelCatalog` takes the same host-supplied client and never changes its selected model. It
+lists the server's models, then describes them a few at a time; a model the server will not describe
+is still listed, as unusable, rather than failing the whole listing.

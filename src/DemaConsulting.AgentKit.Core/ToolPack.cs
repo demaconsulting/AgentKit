@@ -9,7 +9,10 @@ namespace DemaConsulting.AgentKit.Core;
 ///     <para>
 ///     A capability is a property of the <em>host</em> — the application and the model behind
 ///     it — not of the machine. Whether a model can accept image content is the host's to
-///     declare, and no library can discover it.
+///     declare; where a model catalog describes the selected model, derive the declaration from
+///     it with <see cref="ModelCapabilitiesExtensions.ToHostCapabilities"/> (or
+///     <see cref="ModelSelection.HostCapabilities"/>) rather than asserting it. The declaration
+///     stays explicit either way, so a host can still narrow or widen it.
 ///     </para>
 ///     <para>
 ///     <see cref="None"/> is a real, useful value rather than a placeholder for "unset". A pack

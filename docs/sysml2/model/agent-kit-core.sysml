@@ -27,6 +27,10 @@ package AgentKitCore {
     private import AgentKitCore_InMemoryProviderSession::*;
     private import AgentKitCore_CompactingAgentSession::*;
     private import AgentKitCore_AgentKitChatReducer::*;
+    private import AgentKitCore_ModelInfo::*;
+    private import AgentKitCore_ModelCatalog::*;
+    private import AgentKitCore_ModelSettings::*;
+    private import AgentKitCore_ModelSettingsChatClient::*;
 
     doc
     /*
@@ -48,6 +52,9 @@ package AgentKitCore {
      * each turn, the other holds it server-side - so the behavior is identical on either.
      * For a host that owns its own chat history instead, it offers a chat reducer that applies
      * the same consolidation prompt to that history, at reduced fidelity.
+     * It also defines the provider-neutral model catalog an application lists a provider's models
+     * through, filtered by the capabilities it requires, and the model settings it validates against
+     * the selected model before a session starts, from which the host's vision declaration is derived.
      */
 
     part def AgentKitCoreSystem {
@@ -87,5 +94,9 @@ package AgentKitCore {
         part inMemoryProviderSession : InMemoryProviderSession;
         part compactingAgentSession : CompactingAgentSession;
         part agentKitChatReducer : AgentKitChatReducer;
+        part modelInfo : ModelInfo;
+        part modelCatalog : ModelCatalog;
+        part modelSettings : ModelSettings;
+        part modelSettingsChatClient : ModelSettingsChatClient;
     }
 }

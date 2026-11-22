@@ -184,3 +184,38 @@ sections:
           - AgentKitAgentsChatClient_ContextProvider_DeserializedSession_PagesAnEarlierOutput
           - AgentKitAgentsChatClient_ImagePromotion_BuilderExtension_PromotesBeneathFunctionInvocation
           - AgentKitAgentsChatClient_ChatReducer_InMemoryHistoryProvider_ReducesStoredHistory
+
+      - id: AgentKit-ModelSelection
+        title: >-
+          An application shall be able to list the models GitHub Copilot and Ollama offer with their
+          capabilities, filter them by the capabilities it requires, and start a session with
+          settings validated against the selected model; an application on an IChatClient provider
+          shall be able to validate settings against a model description it builds itself.
+        tags: [system]
+        justification: |
+          The first application built on AgentKit offers its user a choice of model and shows only
+          models that can see. It needs the provider's own list, described the same way whichever
+          provider it is; a filter on capability; a choice of effort, tier and window the model
+          actually accepts; and a check, when the session starts today, that what was chosen
+          yesterday is still valid — and that the image tools are offered only because the chosen model
+          can see. The description, filtering and validation are AgentKit Core's; reading each
+          provider and applying the choice to it are the adapters'.
+
+          The offline scenarios linked here run on captured or hand-built provider descriptions.
+          The live listings, the per-tier limits the Copilot runtime reports, and the think and
+          num_ctx values an Ollama server receives are recorded by the opt-in live suites.
+        children:
+          - AgentKitCore-ModelSelection-ListedAndFilteredByCapability
+          - AgentKitCore-ModelSelection-ValidatedAtSessionStart
+          - AgentKitCore-ModelSelection-HostCapabilitiesFromTheModel
+          - AgentKitCore-ModelSelection-AppliedToEveryRequest
+          - AgentKitAgentsChatClient-ModelSelection-AppliedToEveryRequest
+          - AgentKitAgentsOllama-ModelCatalog-ListsWhatTheServerCanRun
+          - AgentKitAgentsOllama-ModelSelection-RunsAsChosen
+          - AgentKitAgentsCopilot-ModelCatalog-ListsTheServicesModels
+          - AgentKitAgentsCopilot-ModelSelection-AppliedToEverySession
+        tests:
+          - AgentKitCore_SystemModelSelection_VisionOnlyApp_SelectsAndGatesTheImageFamily
+          - AgentKitAgentsChatClient_ModelSelection_EveryRequestOfATurnCarriesTheSelection
+          - AgentKitAgentsOllama_ModelSelection_ChosenModelRunsWithItsWindowAndEffort
+          - AgentKitAgentsCopilot_ModelSelection_AgentRunsOnTheSelectedModelAndSettings

@@ -26,11 +26,13 @@ Unit tests reside in `ChatClientAgentFactoryTests.cs`, with the scripted client 
 
 ### Acceptance Criteria
 
-A unit test run passes when all nine tests below pass without error or exception beyond those
+A unit test run passes when all fifteen tests below pass without error or exception beyond those
 explicitly asserted. Any wrapped client that is not an `ImagePromotingChatClient`, any invalid
 argument that is accepted rather than refused, any host-built pipeline in which a tool-returned image
-does not reach the inner client on a user message, or any misplaced decorator that is built rather
-than refused, constitutes a failure.
+does not reach the inner client on a user message, any misplaced decorator that is built rather
+than refused, any request that reaches the client without the selected model, effort or output
+limit, or any selection an `IChatClient` cannot apply — including a context window the client does
+not apply — that is accepted rather than refused, constitutes a failure.
 
 ### Test Scenarios
 
@@ -80,3 +82,40 @@ A null builder is refused with `ArgumentNullException`.
 
 `UseImagePromotion().UseFunctionInvocation()` — the decorator above the loop — throws
 `InvalidOperationException` when built, and the message names `UseFunctionInvocation()`.
+
+#### AgentKitAgentsChatClient-ChatClientAgentFactory-AppliesASelection: The Agent's Requests Carry the Selection
+
+**Test**: `ChatClientAgentFactory_Create_WithSelection_RequestsCarryTheSelection`
+
+A selection with a low effort and a 500-token output limit, bound to a hand-built model, is passed
+to `Create` over a recording client. The request the agent sends carries the model identifier,
+`ReasoningEffort.Low` and the output limit.
+
+**Test**: `ChatClientAgentFactory_Create_SelectionWithATier_Throws`
+
+Error path: a selection carrying a context tier, which an `IChatClient` cannot apply, is refused with
+`ArgumentException` when the agent is built rather than dropped.
+
+**Test**: `ChatClientAgentFactory_Create_SelectionWithAnUnappliedWindow_Throws`
+
+Error path and its counterpart: a selection carrying an 8,192-token window, over a scripted client
+that applies no window, is refused with `ArgumentException` whose message names
+`ContextWindowTokens`; the same selection over a delegating client reporting, as an
+`IContextWindowChatClient`, that it applies 8,192 tokens builds an agent.
+
+#### AgentKitAgentsChatClient-ChatClientAgentFactory-UseModelSettings: The Builder Extension Applies the Selection
+
+**Test**: `ChatClientAgentFactory_UseModelSettings_HostPipeline_RequestsCarryTheSelection`
+
+A host-built pipeline over a recording client with `UseModelSettings(selection)` sends a request
+carrying the selected model identifier and `ReasoningEffort.Low`.
+
+**Test**: `ChatClientAgentFactory_UseModelSettings_SelectionWithAWindow_NeedsItAppliedBeneath`
+
+A selection carrying an 8,192-token window is refused with `ArgumentException` naming
+`ContextWindowTokens` when a pipeline over a plain scripted client is built, and the same selection
+builds over a client that reports, as an `IContextWindowChatClient`, that it applies 8,192 tokens.
+
+**Test**: `ChatClientAgentFactory_UseModelSettings_NullArguments_Throw`
+
+A null builder and a null selection are each refused with `ArgumentNullException`.

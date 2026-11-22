@@ -49,9 +49,11 @@ session's own.
 ### Data Model
 
 - **`_client`** (`IChatClient`) — The client the application talks to its provider with, which every
-  pipeline built here wraps. Owned by the application: this factory never disposes it, and neither
+  pipeline built here wraps — itself wrapped once, at construction, in Core's `ModelSettingsChatClient`
+  when a selection was supplied. Owned by the application: this factory never disposes it, and neither
   does any session it creates, because the client is shared by all of them and outlives the
-  conversation.
+  conversation. The settings decorator is never disposed either, because disposing it would dispose
+  the application's client, and it holds nothing of its own.
 - **`WindowTokens`** (`int`) — The provider's context window in tokens, as supplied at construction
   and passed to every created session. Invariant: positive.
 
@@ -62,17 +64,36 @@ other's reading, which the concurrency this contract promises does not allow.
 
 ### Key Methods
 
-#### The ChatClientProviderSessionFactory Constructor (IChatClient client, int windowTokens)
+#### The ChatClientProviderSessionFactory Constructor (IChatClient client, int windowTokens, ModelSelection? selection)
 
-**Purpose:** Record the client and the window every created session will carry.
+**Purpose:** Record the client and the window every created session will carry, and apply the
+user's model selection to that client when one is supplied.
 
-**Algorithm:** Reject a null client and a window that is not positive, then record both.
+**Algorithm:** Reject a null client and a window that is not positive. When the selection carries
+`ContextWindowTokens` that differs from `windowTokens`, refuse it with `ArgumentException` naming
+`selection` ("The selection's ContextWindowTokens ({window}) differs from windowTokens
+({windowTokens}); a session must account against the window the provider runs at."). When
+`selection` is supplied, wrap the client once in `new ModelSettingsChatClient(client, selection)`,
+directly over the supplied client and so beneath the recorder of every pipeline built later; then
+record the client and the window.
+
+The window stays explicit even with a selection. The figure a session accounts against is the one
+the provider runs at, and the application states it here. A selection's window is the user's choice
+of that figure, so it must agree with `windowTokens`; a session accounting against one figure while
+the provider ran at another would rotate too early or too late with nothing reporting it.
+
+Wrapping here rather than per session costs nothing, because the decorator holds no per-conversation
+state, and it refuses a selection the client cannot apply where the host composed it: a context
+tier, an effort with no provider-neutral equivalent, or a window no client beneath applies raises
+`ArgumentException` from the constructor.
 
 This is where the application's provider configuration is checked, because it is where the
 application wrote it. The session it creates cannot be constructed from outside this class, so these
 are the only checks an application can trip.
 
-**Preconditions:** `client` is not null; `windowTokens` is positive.
+**Preconditions:** `client` is not null; `windowTokens` is positive; `selection`, when supplied,
+carries no context tier and no effort without a provider-neutral equivalent, and any window it
+carries equals `windowTokens` and is applied by `client`.
 
 **Postconditions:** The factory is ready to create sessions and reports the window it was given.
 
@@ -107,6 +128,9 @@ disposes it at the next rotation.
 | --- | --- |
 | Null `client` | `ArgumentNullException` propagates |
 | `windowTokens` not positive | `ArgumentOutOfRangeException` propagates |
+| Selection carrying a context tier, or an effort with no neutral equivalent | `ArgumentException` propagates |
+| Selection window differing from `windowTokens` | `ArgumentException` naming `selection` |
+| Selection window not applied by `client` | `ArgumentException` from `ModelSettingsChatClient` propagates |
 | Null `seed` | `ArgumentNullException` propagates |
 | Cancellation before creation | `OperationCanceledException` propagates |
 
@@ -117,7 +141,9 @@ nothing unowned.
 ### Dependencies
 
 - **AgentKitCore** — supplies `IProviderSessionFactory`, `IProviderSession` and
-  `ProviderSessionSeed`; see *ProviderSession Unit Design*.
+  `ProviderSessionSeed`; see *ProviderSession Unit Design*; and `ModelSelection` and
+  `ModelSettingsChatClient`, which apply a user's model choice; see *ModelSettingsChatClient Unit
+  Design*.
 - **ChatClientProviderSession** — the session this factory creates; see *ChatClientProviderSession
   Unit Design*.
 - **PromptSizeRecordingChatClient** — the layer this factory installs at the bottom of the pipeline;

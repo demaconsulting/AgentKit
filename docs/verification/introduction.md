@@ -82,6 +82,16 @@ constituent software items, specifically:
 - **AgentKitChatReducer (Unit)** — A chat reducer for a host that owns its chat history,
   consolidating older messages through the summarizer while keeping the system messages and a
   verbatim tail
+- **ModelInfo (Unit)** — The provider-neutral description of a model: its capabilities, the settings
+  it accepts, its efforts and tiers, its ceiling window, whether it is usable, and its notices; and the
+  conversion of its capabilities into host capabilities
+- **ModelCatalog (Unit)** — The catalog contract, the query, and the caching base: a five-minute
+  lifetime, one shared read at a time, no cached failures, a refresh on request, and the `SelectAsync`
+  gate a session starts through
+- **ModelSettings (Unit)** — The persistable settings a user chooses, their validation against a
+  model, and the validated `ModelSelection` a provider factory accepts
+- **ModelSettingsChatClient (Unit)** — The decorator that applies a selection to each request through an
+  `IChatClient` pipeline without overriding what the caller set
 - **AgentKitTools (System)** — A general-purpose capability package of guarded tool families
   built on the AgentKitCore contract, organized as one subsystem per tool family
 - **TextFile (Subsystem)** — The text file tool family: policy-governed searching, reading,
@@ -199,6 +209,8 @@ constituent software items, specifically:
   turn's tool traffic, and any sign the runtime rewrote history itself
 - **CopilotSummarizer (Unit)** — Consolidates history on a short-lived, tool-free Copilot session,
   out of the session being compacted
+- **CopilotModelCatalog (Unit)** — Describes the models the Copilot service offers the signed-in user,
+  read through the runtime AgentKit started
 - **CopilotTurnChannel (Unit)** — The internal seam over the SDK's sealed session types, opening,
   resuming and releasing a runtime session, which is what makes everything above it testable
   without a live Copilot runtime
@@ -210,6 +222,8 @@ constituent software items, specifically:
 - **OllamaContextSizingChatClient (Unit)** — The decorator that names the application's chosen
   context length on every request, so the instance Ollama runs is the one the session accounts
   against
+- **OllamaModelCatalog (Unit)** — Describes the models an Ollama server holds: their capabilities,
+  whether an agent can run on them, their efforts, and their trained length as a ceiling
 
 The following OTS items are also covered:
 

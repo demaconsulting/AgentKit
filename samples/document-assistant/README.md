@@ -168,9 +168,44 @@ dotnet run --project samples/document-assistant -- `
   --prompt "List the files, read welcome.txt, then describe diagram.png"
 ```
 
+### Choosing a model
+
+The sample is a vision application, so it shows and accepts only models that can see the images
+`image_read` returns. `--list-models` prints the models the provider offers that can run the sample,
+grouped by the provider's category, with the reasoning efforts and context tiers each one accepts —
+the list an application's model picker would show:
+
+```pwsh
+dotnet run --project samples/document-assistant -- --provider ollama --host http://your-ollama-host:11434 --list-models
+```
+
+`--reasoning-effort`, `--context-tier` (Copilot only) and `--context-window` (Ollama only) choose how
+the model runs. The Copilot agent the sample builds is accounted against no window, so there is
+nothing for `--context-window` to cap there, and it is a usage error with `--provider copilot`. The
+choice is checked against the provider's catalog before the session starts, so a model that
+cannot see, an effort the model does not offer, or a window larger than an Ollama model was trained
+for is refused with every reason at once rather than failing part-way through a conversation:
+
+```pwsh
+dotnet run --project samples/document-assistant -- `
+  --workspace samples/document-assistant/workspace `
+  --provider ollama --host http://your-ollama-host:11434 --model gemma4:e4b `
+  --reasoning-effort none --context-window 8192 `
+  --prompt "Describe diagram.png"
+```
+
+Whether the image tools are offered follows from the model that was selected rather than from a
+setting: the selected model's vision capability becomes the host's vision declaration. On Copilot
+with no `--model`, nothing describes the runtime's own choice, so the sample declares vision itself —
+the explicit declaration a catalog never takes away. `--no-vision` still removes the image tools.
+
 Omit `--prompt` to start an interactive chat instead. The conversation keeps its thread state across
 turns, so you can refer back to earlier answers. Type `exit` or `quit`, press Ctrl-C, or reach
 end-of-input to leave.
+
+If the provider stops responding in time — for example, Ollama does not answer within the sample's
+client timeout, two minutes when listing models and ten during a chat — the sample prints the reason
+to standard error and exits with code 1; Ctrl-C still ends the run cleanly with code 0.
 
 ## Options
 
@@ -182,7 +217,11 @@ end-of-input to leave.
 | `--provider copilot\|ollama` | Runtime to run the agent on. Default: `copilot`. |
 | `--host <url>` | Ollama server URL. Default: `http://localhost:11434`. Ollama only. |
 | `--model <name>` | Model to back the agent. Default: the Copilot runtime's own choice, or `qwen3.5:9b` for Ollama. |
-| `--no-vision` | Omit the image tools and the `Vision` capability entirely. |
+| `--no-vision` | Omit the image tools and the `Vision` capability entirely, and stop requiring a vision model. |
+| `--list-models` | List the models that can run the sample, grouped by category, and exit. No `--workspace` needed. |
+| `--reasoning-effort <id>` | Reasoning effort, from the model's list. Validated before the session starts. |
+| `--context-tier <id>` | Context tier, from the model's list. Copilot only. |
+| `--context-window <n>` | Tokens: the exact `num_ctx` (at most the trained length). Ollama only. |
 | `--prompt "<text>"` | Run a single prompt and exit. Otherwise start an interactive chat. |
 | `--help` | Show help and exit. |
 

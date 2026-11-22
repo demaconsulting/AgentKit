@@ -108,9 +108,11 @@ public static class ChatLoop
             {
                 await RunTurnAsync(agent, session, input, cancellationToken);
             }
-            catch (OperationCanceledException)
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
-                // Ctrl-C during a turn: stop the turn and fall out of the loop cleanly.
+                // Ctrl-C during a turn: stop the turn and fall out of the loop cleanly. Any other
+                // cancellation - a provider that did not respond in time - propagates to the entry
+                // point, which reports it and fails the run.
                 Console.WriteLine();
                 break;
             }

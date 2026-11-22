@@ -83,7 +83,9 @@ Unit tests reside in `OllamaContextWindowTests.cs` and `OllamaContextWindowReadT
 A unit test run passes when every scenario below passes without error or exception beyond those
 explicitly asserted. Any stated window overruled, any bare model name failing to match the tag the
 server resolved it to, any other model's length borrowed, any figure taken from what a model file
-publishes, any zero or invented figure returned where no instance was described, or any invalid
+publishes reported as the window, any zero or invented figure returned where no instance was
+described, any selection's window not reported as stated, any selection of another provider's model
+accepted, or any invalid
 argument accepted rather than refused constitutes a failure. On the reading path, any query issued
 when the application stated a window, any request to the model-metadata endpoint at all, any
 declined or unanswered query that fails the read rather than costing it a rung, and any cancellation
@@ -133,7 +135,8 @@ loaded also serves the model-metadata endpoint, which would answer; the scenario
 conservative default *and* that no request was made to that endpoint. Asserting the absence of the
 call pins the rung's removal rather than merely the fact that nothing currently reaches it: a future
 change that reintroduced the query would fail here even if the figure it produced happened to be
-discarded.
+discarded. The catalog's read of the trained length belongs to a separate unit, `OllamaModelCatalog`,
+and uses it only as a ceiling a stated window is refused above, never as a window to account against.
 
 #### AgentKitAgentsOllama-OllamaContextWindow-AssumesTheDefaultWhenNothingIsReported: The Conservative Default
 
@@ -188,6 +191,21 @@ and a caller can construct an instance that contradicts the type's own documenta
 a bad window would reach do re-check it, but an invariant that holds only because every consumer
 re-checks is a habit rather than a guarantee. Refusing it where it is claimed is what makes the
 documented promise true of every instance that can exist.
+
+#### AgentKitAgentsOllama-OllamaContextWindow-StatesTheSelectionsWindow: A Selection's Window Is Stated
+
+**Tests**:
+
+- `OllamaContextWindow_ReadAsync_SelectionWithWindow_ReportsItAsStated`
+- `OllamaContextWindow_ReadAsync_SelectionWithoutWindow_ReadsTheLoadedInstance`
+- `OllamaContextWindow_ReadAsync_SelectionFromAnotherProvider_Throws`
+
+Normal operation and an error path on the selection overload, reached through the real Ollama
+client. A selection of an Ollama model that chose a window is answered with that window, sourced as
+stated, without the server being asked. A selection that chose none keeps the old precedence and
+reports the loaded instance's length. A selection of another provider's model is refused with
+`ArgumentException`, because it was validated against that provider's offering rather than this
+server's.
 
 #### Supporting Corner Cases (Deliberately Unlinked)
 

@@ -22,6 +22,7 @@ public class XmlDocExampleTests
         XmlDocExampleVerifier.VerifyExamples(
             "DemaConsulting.AgentKit.Agents.Ollama.xml",
             "DemaConsulting.AgentKit.Agents.Ollama",
+            "DemaConsulting.AgentKit.Core",
             "Microsoft.Extensions.AI",
             "OllamaSharp");
     }

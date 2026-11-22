@@ -1,0 +1,125 @@
+---
+# Software Unit Requirements for CopilotModelCatalog
+#
+# These requirements describe the design-level behavior of the CopilotModelCatalog unit: the
+# description of the models the GitHub Copilot service offers the signed-in user, in the
+# provider-neutral terms the Core model catalog defines.
+
+sections:
+  - title: AgentKitAgentsCopilot Requirements
+    sections:
+      - title: CopilotModelCatalog Requirements
+        requirements:
+          - id: AgentKitAgentsCopilot-CopilotModelCatalog-ReadsTheServiceThroughTheRuntime
+            title: >-
+              The unit shall read the service's model listing through a runtime AgentKit started, at
+              every read and uncached by the client, shall refuse a disposed runtime rather than
+              restart it, and shall fail a read the client cannot make with a message saying the
+              runtime is not connected or not signed in and naming the ways to sign it in.
+            justification: |
+              The listing depends on who is signed in, so only the runtime AgentKit owns can read
+              it. Reading the client at every read is what keeps a runtime the host disposed from
+              being started again behind its back, and reading past the client's own per-connection
+              cache is what lets a refresh show a model the user was just granted. A runtime AgentKit
+              started was refused at start if it was not signed in, so a read fails only when the
+              connection was lost or the sign-in lapsed; the SDK reports both with the same
+              exception, so the message names both and the same ways to sign in that the runtime's
+              own refusal names, not the Copilot CLI's sign-in, which the runtime does not use.
+            tests:
+              - CopilotModelCatalog_ListAsync_ClientNotConnected_FailsWithTheSignInMessage
+              - CopilotModelCatalog_Construct_DisposedRuntime_Throws
+              - CopilotModelCatalog_ListAsync_RuntimeDisposedLater_Throws
+              - CopilotModelCatalog_RefreshAsync_ReadsTheServiceAgain
+
+          - id: AgentKitAgentsCopilot-CopilotModelCatalog-TreatsUnreportedToolCallingAsSupported
+            title: >-
+              The unit shall treat a model the service does not report on as able to call tools,
+              and shall report a model the service says cannot call tools as unable and unusable.
+            justification: |
+              This is a documented, provider-specific exception to reporting capabilities only on a
+              positive signal. The service reports no tool-calling flag for any model, and the
+              Copilot runtime is itself a tool-calling agent runtime, so reading silence as absence
+              would make every Copilot model fail a vision-and-tools requirement. An explicit
+              refusal is still honored.
+            tests:
+              - CopilotModelCatalog_Map_UnreportedToolCalling_IsSupported
+              - CopilotModelCatalog_Map_ToolCallingDenied_IsUnusable
+
+          - id: AgentKitAgentsCopilot-CopilotModelCatalog-ReportsVisionOnlyWhenTheServiceDoes
+            title: >-
+              The unit shall report a model as vision-capable only when the service reports that it
+              is.
+            justification: |
+              Vision is the capability the first application filters on, and a model wrongly
+              offered as able to see would describe an image it never received. Silence is
+              therefore not vision.
+            tests:
+              - CopilotModelCatalog_Map_Vision_IsSetOnlyWhenReported
+
+          - id: AgentKitAgentsCopilot-CopilotModelCatalog-DerivesTiersFromBilling
+            title: >-
+              The unit shall offer the standard context tier when the service publishes token prices
+              for the model and the long-context tier when it publishes long-context prices, labeled
+              "Standard" and "Long context", each with a window of its prompt budget plus the model's
+              output limit capped at the model's largest window, together with any tier the model
+              declares directly.
+            justification: |
+              The service publishes context tiers through billing rather than as a list, and
+              publishes no labels for them, so AgentKit supplies both. The prompt budget plus the
+              output limit can exceed the model's largest window, which no tier can, so the window
+              is capped. The largest window itself is reported as the service gives it.
+            tests:
+              - CopilotModelCatalog_Map_BillingTiers_AreDerivedLabeledAndCapped
+              - CopilotModelCatalog_Map_HugePromptBudget_SaturatesInsteadOfOverflowing
+              - CopilotModelCatalog_Map_DeclaredTiers_AreAddedOnce
+
+          - id: AgentKitAgentsCopilot-CopilotModelCatalog-KeepsTheServicesEfforts
+            title: >-
+              The unit shall offer the reasoning efforts the service lists, by its identifiers and in
+              its order, each with its provider-neutral equivalent where one exists, and shall report
+              a default effort only when the service names one it offers.
+            justification: |
+              The runtime applies an effort by the service's own identifier, including levels such
+              as max that have no provider-neutral equivalent, so the identifiers are kept as they
+              are. The service names no default for any model; inventing one would send a setting
+              the user never chose.
+            tests:
+              - CopilotModelCatalog_Map_Efforts_KeepTheServicesIdentifiersAndInventNoDefault
+              - CopilotModelCatalog_Map_PublishedDefaultEffort_IsReported
+
+          - id: AgentKitAgentsCopilot-CopilotModelCatalog-UsabilityFollowsPolicy
+            title: >-
+              The unit shall report a model as unusable when the organization's policy disables it
+              or it is not enabled for the account, giving the reason and, for the latter, the
+              service's terms as a notice.
+            justification: |
+              A model the policy withholds cannot run a session, and enabling one is an action the
+              user takes on GitHub, so the picker shows why it is grayed out and what to accept.
+            tests:
+              - CopilotModelCatalog_Map_Policy_DecidesUsability
+
+          - id: AgentKitAgentsCopilot-CopilotModelCatalog-SurfacesTheServicesNotices
+            title: >-
+              The unit shall carry the service's information and warning messages as notices of the
+              matching kind, its data-retention text as a notice that must be shown, and its display
+              name, vendor, billing multiplier, category and price band, and its prompt and vision
+              limits as read-only additional properties.
+            justification: |
+              The service says some text is required to be shown to the user, and a picker groups
+              and badges models by category and price. Carrying them is what lets an application
+              show what the service intended without reading the SDK.
+            tests:
+              - CopilotModelCatalog_Map_Messages_BecomeNotices
+              - CopilotModelCatalog_Map_PickerMetadata_IsCarried
+              - CopilotModelCatalog_Map_VisionLimits_AreCarriedAsReadOnlyExtras
+
+          - id: AgentKitAgentsCopilot-CopilotModelCatalog-OmitsTheAutomaticChoice
+            title: >-
+              The unit shall not list the service's automatic model choice, so a lookup of it finds
+              nothing, and shall keep the service's order for every other model.
+            justification: |
+              The automatic choice lets the service pick a model per request, so it cannot promise a
+              capability the application requires, such as vision. Listing it would offer a choice
+              validation could not stand behind.
+            tests:
+              - CopilotModelCatalog_ListAsync_AutoEntry_IsSkippedAndOrderKept

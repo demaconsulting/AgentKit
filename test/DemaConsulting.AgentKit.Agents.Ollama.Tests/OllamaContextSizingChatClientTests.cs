@@ -1,4 +1,5 @@
 using System.Text.Json;
+using DemaConsulting.AgentKit.Core;
 using Microsoft.Extensions.AI;
 using OllamaSharp;
 using WireMock.RequestBuilders;
@@ -229,6 +230,26 @@ public class OllamaContextSizingChatClientTests
         // Act / Assert
         Assert.Throws<ArgumentOutOfRangeException>(
             () => new OllamaContextSizingChatClient(recorder, contextLength));
+    }
+
+    /// <summary>
+    ///     Proves the decorator reports the window it asks for, and is found from a delegating
+    ///     client above it, which is how a model-settings decorator confirms a selection's window
+    ///     is the one asked of the server.
+    /// </summary>
+    [Fact]
+    public void OllamaContextSizingChatClient_GetService_ReportsItsContextWindow()
+    {
+        // Arrange: the sizing decorator beneath another delegating client
+        using var outer = new FunctionInvokingChatClient(
+            new OllamaContextSizingChatClient(new RecordingChatClient(), ContextLength));
+
+        // Act
+        var applying = outer.GetService<IContextWindowChatClient>();
+
+        // Assert
+        var sizing = Assert.IsType<OllamaContextSizingChatClient>(applying);
+        Assert.Equal(ContextLength, sizing.ContextWindowTokens);
     }
 
     /// <summary>

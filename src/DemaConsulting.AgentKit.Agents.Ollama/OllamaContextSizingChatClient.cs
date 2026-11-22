@@ -1,3 +1,4 @@
+using DemaConsulting.AgentKit.Core;
 using Microsoft.Extensions.AI;
 
 namespace DemaConsulting.AgentKit.Agents.Ollama;
@@ -68,6 +69,12 @@ namespace DemaConsulting.AgentKit.Agents.Ollama;
 ///     decorator, dispose the inner client directly and let the decorator be collected.
 ///     </para>
 ///     <para>
+///     <b>It reports the window it applies.</b> As an <see cref="IContextWindowChatClient"/> it is
+///     found through <see cref="ChatClientExtensions.GetService{TService}"/> from any delegating
+///     client above it, which is how <see cref="ModelSettingsChatClient"/> confirms that a selection's
+///     window is the one this decorator asks for, and refuses the selection when it is not.
+///     </para>
+///     <para>
 ///     The class holds no mutable state of its own and is as safe for concurrent use as the client
 ///     it wraps.
 ///     </para>
@@ -88,7 +95,7 @@ namespace DemaConsulting.AgentKit.Agents.Ollama;
 ///     Console.WriteLine($"{window.Tokens} tokens, from {window.Source}");
 ///     </code>
 /// </example>
-public sealed class OllamaContextSizingChatClient : DelegatingChatClient
+public sealed class OllamaContextSizingChatClient : DelegatingChatClient, IContextWindowChatClient
 {
     /// <summary>
     ///     The Ollama option naming the context length a model is loaded with.
@@ -132,6 +139,15 @@ public sealed class OllamaContextSizingChatClient : DelegatingChatClient
 
         _contextLength = contextLength;
     }
+
+    /// <summary>
+    ///     Gets the context length, in tokens, every forwarded request asks for.
+    /// </summary>
+    /// <remarks>
+    ///     A request whose caller named <c>num_ctx</c> itself is forwarded at the caller's figure; this
+    ///     is the figure asked for on every other request.
+    /// </remarks>
+    public int ContextWindowTokens => _contextLength;
 
     /// <summary>
     ///     Forwards a request, having asked for the chosen context length.

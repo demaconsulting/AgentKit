@@ -29,6 +29,7 @@ within the model's context window on each supported provider.
 - 🧠 **Self-Compacting Sessions**: Tiered compaction keeps a long conversation within the window the provider runs
 - 🗄️ **Large Output Retention**: Opt-in; oversized tool output is held in memory and paged through by reference
 - 🖼️ **Tool Image Delivery**: Tool-returned images reach the model on providers that would otherwise drop them
+- 🎚️ **Model Catalog and Settings**: List models by capability; effort, tier, and window are checked at session start
 - 🧪 **Testable Offline**: An in-memory provider session exercises the whole session lifecycle without a model
 - 📚 **Agent-Readable API Reference**: Every package ships a gradually-disclosed Markdown API reference
 - 🖥️ **Multi-Platform Support**: Builds and runs on Windows, Linux, and macOS, targeting .NET 8, 9, and 10

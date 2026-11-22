@@ -13,8 +13,10 @@ thereafter. This unit is where an application gets that number for Ollama.
 
 Only the running instance can answer the question. A model file publishes the context length it
 could be loaded with, but Ollama decides at load time what the instance will actually use, and that
-decision is the one enforced. The published figure is therefore never consulted: it describes the
-file, and using it would account a session against a window nothing guarantees. What remains is a
+decision is the one enforced. The published figure is therefore never consulted for accounting: it
+describes the file, and using it would account a session against a window nothing guarantees. The
+model catalog reads it, but only as the ceiling a stated window is refused above; see *OllamaModelCatalog
+Unit Design*. What remains is a
 window the application stated, then the length the running instance reports, then a conservative
 default named as an assumption. Whichever answers, the application asks the server to run at it; see
 *OllamaContextSizingChatClient Unit Design*.
@@ -80,6 +82,31 @@ No model is loaded as a side effect of asking.
 **Side effects:** Network I/O against the Ollama server, through the supplied client, only when no
 window was stated.
 
+#### ReadAsync(IOllamaApiClient client, ModelSelection selection, CancellationToken cancellationToken)
+
+**Purpose:** Obtain the window for a model selected from an `OllamaModelCatalog`, taking the stated
+window from the selection.
+
+**Algorithm:** Reject a null client and a null selection. Refuse a selection whose
+`Model.Provider` is not `OllamaModelCatalog.ProviderId` (`ollama`), with `ArgumentException` "The
+selection names a model from provider '{provider}', not 'ollama'." Otherwise delegate to the
+string overload with `selection.Model.Id` as the model and `selection.Settings.ContextWindowTokens`
+as the stated window.
+
+A window the user chose therefore wins outright, reported as `Stated`, and has already been checked
+against the length the model was trained for when the selection was made. With none chosen, the
+precedence is unchanged: the loaded instance, then the assumed default. The trained length the
+catalog reported is never the answer.
+
+Only the window is read; nothing in the selection is applied here. The model, the effort and the
+output limit are applied by a `ModelSettingsChatClient`, which also confirms that a selection's
+window is the one the context-sizing client beneath it asks for; see *ModelSettingsChatClient Unit
+Design*.
+
+**Preconditions:** `client` and `selection` are not null; the selection names an Ollama model.
+
+**Postconditions:** As the string overload.
+
 #### Select(int? stated, IEnumerable&lt;RunningModel&gt;? running, string model)
 
 **Purpose:** Choose the window from what was stated and what the server reported.
@@ -109,6 +136,9 @@ compare equal. Return the matched model's context length, or zero.
 
 **Algorithm:** Return the name unchanged when it already carries a tag, otherwise append `:latest`.
 
+The method is `internal` and shared with `OllamaModelCatalog`, whose lookups must resolve a bare name
+the same way this reading does.
+
 #### TryReadAsync&lt;T&gt;(Func&lt;Task&lt;T&gt;&gt; query, CancellationToken cancellationToken)
 
 **Purpose:** Run an optional server query, treating failure as "the server did not say".
@@ -124,6 +154,8 @@ a server that never answers is precisely the case this tolerance exists for.
 | --- | --- |
 | Null or empty `client` or `model` | `ArgumentException` family propagates to the caller |
 | Construction with a window of zero or less | `ArgumentOutOfRangeException` propagates to the caller |
+| Null `selection` | `ArgumentNullException` propagates to the caller |
+| A selection of another provider's model | `ArgumentException` propagates to the caller |
 | The server query fails | Treated as "not reported"; the conservative default is used |
 | The server never answers | The client's own timeout ends the query; treated as "not reported" |
 | Cancellation during the query | `OperationCanceledException` propagates; no window is returned |
@@ -136,10 +168,15 @@ conservative window that names itself honestly.
 ### Dependencies
 
 - **OllamaSharp** — supplies `IOllamaApiClient` and `RunningModel`; see *OllamaSharp Design*.
+- **AgentKitCore** — supplies `ModelSelection`, which the selection overload accepts; see
+  *ModelSettings Unit Design*.
+- **OllamaModelCatalog** — supplies `ProviderId`, which the selection overload checks; see
+  *OllamaModelCatalog Unit Design*.
 
 ### Callers
 
-An application calls `ReadAsync` where it configures its Ollama provider, and hands `Tokens` to
+An application calls `ReadAsync` where it configures its Ollama provider — with a model name, or with
+the selection its user made from the catalog — and hands `Tokens` to
 `ChatClientProviderSessionFactory`; see *ChatClientProviderSessionFactory Unit Design*. It composes
 that same figure onto the client its conversation runs through and onto the summarizer's, through
 `OllamaContextSizingChatClient` and whichever rung produced the figure; that unit's design says why

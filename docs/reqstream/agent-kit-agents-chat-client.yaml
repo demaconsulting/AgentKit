@@ -236,3 +236,21 @@ sections:
           output itself never reaches the provider or the transcript.
         tests:
           - AgentKitAgentsChatClient_ToolOutput_PreviewReachesTheProviderAndTheReaderPagesIt
+
+      - id: AgentKitAgentsChatClient-ModelSelection-AppliedToEveryRequest
+        title: >-
+          The library shall run an agent, a compacting session, or a host-built pipeline on any
+          IChatClient provider with a model selection the user made, applying it to every request,
+          including those sent after a tool ran.
+        justification: |
+          An application that offers its user a choice of model and effort on an IChatClient
+          provider expects every turn to run on that choice. The agent factory and the
+          provider-session factory are where those requests are composed, so they are where the
+          choice is applied, and a host that builds its own pipeline gets the same placement as a
+          one-line extension.
+        children:
+          - AgentKitAgentsChatClient-ChatClientAgentFactory-AppliesASelection
+          - AgentKitAgentsChatClient-ChatClientAgentFactory-UseModelSettings
+          - AgentKitAgentsChatClient-ChatClientProviderSessionFactory-AppliesASelection
+        tests:
+          - AgentKitAgentsChatClient_ModelSelection_EveryRequestOfATurnCarriesTheSelection

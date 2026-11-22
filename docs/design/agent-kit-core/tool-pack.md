@@ -33,8 +33,11 @@ receives everything it needs as an argument.
 | `Delegation` | `2` | The host can create and run a further agent on its own model provider. |
 
 A capability is a property of the *host* — the application and the model behind it — not of the
-machine. Whether a model can accept image content is the host's to declare, and no library can
-discover it. Whether a second agent can be started is likewise the host's to declare: only the
+machine. Whether a model can accept image content is the host's to declare. Where a model catalog
+describes the selected model, the host derives the declaration from it with
+`ModelCapabilitiesExtensions.ToHostCapabilities`, or `ModelSelection.HostCapabilities`, rather than
+asserting it. The declaration stays explicit either way, so a host can still narrow or widen it; see
+*ModelInfo Unit Design*. Whether a second agent can be started is likewise the host's to declare: only the
 application knows its provider, its model and its credentials.
 
 `None` is a real value, not a placeholder for "unset". A pack whose `RequiredCapabilities` is

@@ -30,6 +30,12 @@ This unit performs no I/O and knows nothing about the window a session accounts 
 connection between the two is made by the application, which hands one integer to both this
 decorator and the reading; see *OllamaContextWindow Unit Design*.
 
+**It reports the window it applies.** The decorator implements Core's `IContextWindowChatClient`,
+whose `ContextWindowTokens` returns the context length it asks for. A delegating client above it
+finds it through `GetService`, which is how `ModelSettingsChatClient` confirms that a selection's
+window is the one this decorator asks the server for — and refuses the selection when nothing
+beneath applies its window, or applies another; see *ModelSettingsChatClient Unit Design*.
+
 ### When an Application Composes It
 
 Around the client the conversation runs through, and around the summarizer's, carrying whatever
@@ -82,6 +88,14 @@ context length of zero or less.
 **Postconditions:** A decorator that forwards to `innerClient` and owns it for disposal, as the
 delegating base defines.
 
+#### ContextWindowTokens
+
+**Purpose:** Report, as `IContextWindowChatClient`, the context length every forwarded request asks
+for.
+
+**Algorithm:** Return `_contextLength`. A request whose caller named `num_ctx` itself is forwarded
+at the caller's figure; this is the figure asked for on every other request.
+
 #### GetResponseAsync(IEnumerable&lt;ChatMessage&gt; messages, ChatOptions? options, CancellationToken cancellationToken)
 
 **Purpose:** Forward a whole-response request, having asked for the chosen context length.
@@ -126,6 +140,8 @@ an application needs to see, and this unit has no fallback of its own to offer.
 
 - **Microsoft.Extensions.AI.Abstractions** — supplies `IChatClient`, `ChatOptions` and the
   delegating chat-client base this unit extends.
+- **AgentKit Core** — supplies `IContextWindowChatClient`, which this unit implements; see
+  *ModelSettingsChatClient Unit Design*.
 - **OllamaSharp** — not called by this unit, which names the option and forwards; it is what
   translates that option into the Ollama request's own options block on the wire, which is why the
   unit's tests compose a real client over a loopback server to read it; see *OllamaSharp Design*.
@@ -135,4 +151,5 @@ an application needs to see, and this unit has no fallback of its own to offer.
 An application composes this decorator around the client its conversation runs through and around
 the summarizer's, using the window `OllamaContextWindow.ReadAsync` returned — whichever rung
 produced it. *When an Application Composes It* above gives the reasoning. The research-assistant
-sample is the worked example. Nothing within this system calls this unit.
+sample is the worked example. Within this system, `ModelSettingsChatClient` reads its
+`ContextWindowTokens` through `GetService` to confirm a selection's window.

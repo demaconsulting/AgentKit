@@ -58,6 +58,14 @@ reference survives the agent persisting and reloading the conversation. The fram
 contributed tools only for a `ChatClientAgent`, so the provider refuses any other agent. The same host
 can reduce its history with Core's `AgentKitChatReducer` in the framework's in-memory history provider.
 
+**A model the user chose rides on every request.** An application that let its user choose a model
+and an effort hands the validated `ModelSelection` to either factory. Core's `ModelSettingsChatClient`
+is then placed directly over the supplied client, so every request the agent or the session sends —
+including those sent after a tool ran — carries the model, the effort and the output limit. A host
+that builds its own pipeline gets the same through `UseModelSettings`. A selection carrying a context
+tier, or an effort with no provider-neutral equivalent, is refused, because an `IChatClient` cannot
+apply either.
+
 ## Dependency Isolation
 
 This system carries `Microsoft.Agents.AI`, the Microsoft Agent Framework runtime, whose size and
@@ -77,14 +85,17 @@ has to review. The agent factory and the session adapter share a package rather 
 both exist to make one `IChatClient` usable, and neither calls the other.
 
 - **ChatClientAgentFactory (Unit)** — the static factory that validates its arguments, wraps the
-  supplied client in the image-promoting decorator, and builds a `ChatClientAgent`; and the
-  `UseImagePromotion` builder extension that installs the decorator in a pipeline a host builds.
+  supplied client in the image-promoting decorator — over the model-settings decorator when a
+  selection is supplied — and builds a `ChatClientAgent`; and the `UseImagePromotion` and
+  `UseModelSettings` builder extensions that install those decorators in a pipeline a host builds.
 - **ChatClientProviderSession (Unit)** — one Core session over an `IChatClient`: the seeded message
   list, the conversation resent on every turn, the transcript entries a turn produces, and the
   occupancy reported against a supplied window.
-- **ChatClientProviderSessionFactory (Unit)** — holds the client and the window, builds the pipeline
-  each session runs on — the tool-calling loop over image promotion over the recorder — and creates a
-  session from a seed at the start of a conversation and again at every rotation.
+- **ChatClientProviderSessionFactory (Unit)** — holds the client, the window and an optional model
+  selection, builds the pipeline each session runs on — the tool-calling loop over image promotion
+  over the recorder, with the model-settings decorator beneath the recorder when a selection is
+  supplied — and creates a session from a seed at the start of a conversation and again at every
+  rotation.
 - **PromptSizeRecordingChatClient (Unit)** — sits beneath the tool-calling loop in that pipeline and
   records the prompt size of each individual request, so occupancy is the last request's prompt
   rather than usage summed across a tool-calling turn.
@@ -109,6 +120,7 @@ src/DemaConsulting.AgentKit.Agents.ChatClient/
 ## Dependencies
 
 - **AgentKitCore** — supplies `ImagePromotingChatClient`, the decorator the factory installs,
+  `ModelSelection` and `ModelSettingsChatClient`, which apply a user's model choice,
   `ToolPackBuilder`, `GuardedToolFactory.AsGuarded` and `ToolOutputRetention`, which the context
   provider composes, and the
   session contracts the adapter implements: `IProviderSession`, `IProviderSessionFactory`,

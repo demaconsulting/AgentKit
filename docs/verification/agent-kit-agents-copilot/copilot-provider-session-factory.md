@@ -75,8 +75,10 @@ runtime's default threshold, any working directory not carried — or invented w
 none — any part of a seeded record appearing in a session's system message,
 any seeded record rendered in the wrong order or with an entry lost, any record composed for an
 empty history, any session created without the event handler registered, any session opened for a
-creation that was already canceled, or any opened session left unreleased when the creation failed
-constitutes a failure.
+creation that was already canceled, any opened session left unreleased when the creation failed,
+any session created without a selection's model, effort or tier, any window not capped at the
+selection's ceiling, or any model named twice, ceiling stated twice or selection carrying an output
+limit that is accepted constitutes a failure.
 
 ### Test Scenarios
 
@@ -202,3 +204,26 @@ session on the runtime; a cancellation that arrives while the request is in flig
 the runtime holds, and the test asserts that session is released exactly once rather than orphaned.
 The second is the scenario the guard exists for and is the reason the scripted opener does not refuse
 a canceled token itself.
+
+#### AgentKitAgentsCopilot-CopilotProviderSessionFactory-AppliesASelection: The Selection and Its Ceiling
+
+**Test**: `CopilotProviderSessionFactory_CreateAsync_Selection_ConfiguresTheSessionAndCapsTheWindow`
+
+The scripted runtime reports a 9,000-token limit, and the selection chose the effort `medium`, the
+`default` tier and a 4,000-token window. The session is created with the model, the effort and the
+tier, and after a turn it accounts against 4,000 — the selection's window, which lowers the runtime's
+figure as a ceiling.
+
+#### AgentKitAgentsCopilot-CopilotProviderSessionFactory-RefusesAnAmbiguousSelection: Each Choice Stated Once
+
+**Test**: `CopilotProviderSessionFactory_Constructor_ConflictingSelection_Throws`
+
+Error paths. A model name beside a selection is refused with `ArgumentException`, and so is a
+`maxWindowTokens` beside a selection carrying a window, with a message saying "not both".
+
+**Test**: `CopilotProviderSessionFactory_Constructor_SelectionWithAnOutputLimit_Throws`
+
+Error path. A selection of a hand-built Copilot model description carrying an output limit — which
+the Copilot catalog never grants — is refused with `ArgumentException` naming `selection`, whose
+message says `MaxOutputTokens` cannot be applied on Copilot. A selection's window is still accepted
+here, as the ceiling; see the scenario above.

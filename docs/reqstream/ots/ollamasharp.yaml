@@ -78,3 +78,31 @@ sections:
             tags: [ots]
             tests:
               - AgentKitAgentsChatClient_ImagePromotion_OverOllamaSharp_ToolMessageCarriesNoImageBytes
+
+          - id: AgentKit-OTS-OllamaSharp-ModelDetails
+            title: >-
+              OllamaSharp shall list the models a server holds and fetch each one's description —
+              its capabilities, architecture metadata, projector and details — over the Ollama HTTP
+              API.
+            justification: |
+              The catalog implements no Ollama wire protocol: the listing and each description
+              arrive through OllamaSharp's own requests and types. AgentKit's tests drive the real
+              client against an HTTP server replaying listings and descriptions captured from a live
+              Ollama server, so the library's own request shaping and deserialization execute.
+            tags: [ots]
+            tests:
+              - OllamaModelCatalog_ListAsync_CapturedServer_DescribesTheVisionModels
+              - OllamaModelCatalog_GetAsync_VisionWithoutProjector_IsVision
+
+          - id: AgentKit-OTS-OllamaSharp-ReasoningAndOutputMapping
+            title: >-
+              OllamaSharp shall send a chat request's provider-neutral reasoning effort as Ollama's
+              think option and its model identifier as the request's model.
+            justification: |
+              A chosen effort reaches an Ollama server only through this translation; AgentKit
+              writes no Ollama-specific think option. AgentKit's test drives the real client against
+              an HTTP server and reads the request body it sent. The opt-in live suite records the
+              think levels a real server received.
+            tags: [ots]
+            tests:
+              - AgentKitAgentsOllama_ModelSelection_ChosenModelRunsWithItsWindowAndEffort

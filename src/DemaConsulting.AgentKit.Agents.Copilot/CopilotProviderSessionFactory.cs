@@ -119,6 +119,12 @@ public sealed class CopilotProviderSessionFactory : IProviderSessionFactory
     private readonly string? _workingDirectory;
 
     /// <summary>
+    ///     The validated model selection every session this factory creates is configured with, or
+    ///     <see langword="null"/> when the host named a model, or none, instead.
+    /// </summary>
+    private readonly ModelSelection? _selection;
+
+    /// <summary>
     ///     Initializes a new instance of the <see cref="CopilotProviderSessionFactory"/> class.
     /// </summary>
     /// <param name="runtime">
@@ -152,21 +158,38 @@ public sealed class CopilotProviderSessionFactory : IProviderSessionFactory
     ///     working directory on the runtime process, so this is where a host sets one. It grants
     ///     nothing: what the conversation may read or write is decided by the tools' own path policy.
     /// </param>
+    /// <param name="selection">
+    ///     The model the user chose from a <see cref="CopilotModelCatalog"/>, validated, or
+    ///     <see langword="null"/>. It names the model every session runs on, its reasoning effort and
+    ///     context tier — each only when chosen — are set on every session, and its context window,
+    ///     when chosen, becomes the ceiling <paramref name="maxWindowTokens"/> would otherwise state:
+    ///     it only ever lowers what a session accounts against and is never sent to the runtime. A
+    ///     selection carrying an output limit is refused, because the runtime takes none. Pass
+    ///     this or <paramref name="model"/>, not both, and state a ceiling in one place only.
+    /// </param>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="maxWindowTokens"/> is less than 1.</exception>
+    /// <exception cref="ArgumentException">
+    ///     Both <paramref name="model"/> and <paramref name="selection"/> were passed; both
+    ///     <paramref name="maxWindowTokens"/> and a selection carrying a context window were passed;
+    ///     the selection names another provider's model; or it carries an output limit.
+    /// </exception>
     public CopilotProviderSessionFactory(
         CopilotRuntime runtime,
         string? model = null,
         int? maxWindowTokens = null,
-        string? workingDirectory = null)
+        string? workingDirectory = null,
+        ModelSelection? selection = null)
     {
         ArgumentNullException.ThrowIfNull(runtime);
         ArgumentOutOfRangeException.ThrowIfLessThan(maxWindowTokens ?? 1, 1);
         runtime.ThrowIfDisposed();
+        CopilotAgentFactory.ValidateSelection(model, selection, windowAccounted: true);
 
         _opener = CopilotSessionChannel.Open(runtime);
         _model = model;
-        _maxWindowTokens = maxWindowTokens;
+        _maxWindowTokens = Ceiling(maxWindowTokens, selection);
         _workingDirectory = workingDirectory;
+        _selection = selection;
     }
 
     /// <summary>
@@ -187,19 +210,26 @@ public sealed class CopilotProviderSessionFactory : IProviderSessionFactory
     ///     runtime's own limit is ignored. Must be at least 1 when supplied.
     /// </param>
     /// <param name="workingDirectory">The working directory to give each session, or <see langword="null"/> for the runtime's default.</param>
+    /// <param name="selection">A validated model selection, or <see langword="null"/>; see the public constructor.</param>
     /// <exception cref="ArgumentNullException"><paramref name="opener"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentException">
+    ///     The model is named twice, the ceiling is stated twice, or the selection carries an output limit.
+    /// </exception>
     internal CopilotProviderSessionFactory(
         CopilotChannelOpener opener,
         string? model,
         int? maxWindowTokens = null,
-        string? workingDirectory = null)
+        string? workingDirectory = null,
+        ModelSelection? selection = null)
     {
         ArgumentNullException.ThrowIfNull(opener);
+        CopilotAgentFactory.ValidateSelection(model, selection, windowAccounted: true);
 
         _opener = opener;
         _model = model;
-        _maxWindowTokens = maxWindowTokens;
+        _maxWindowTokens = Ceiling(maxWindowTokens, selection);
         _workingDirectory = workingDirectory;
+        _selection = selection;
     }
 
     /// <inheritdoc/>
@@ -222,7 +252,7 @@ public sealed class CopilotProviderSessionFactory : IProviderSessionFactory
         cancellationToken.ThrowIfCancellationRequested();
 
         var observer = new CopilotSessionObserver();
-        var config = BuildProviderSessionConfig(seed, observer.OnEvent, _model, _workingDirectory);
+        var config = BuildProviderSessionConfig(seed, observer.OnEvent, _model, _workingDirectory, _selection);
 
         var channel = await _opener(config, cancellationToken).ConfigureAwait(false)
             ?? throw new InvalidOperationException("The Copilot channel opener returned null.");
@@ -293,6 +323,7 @@ public sealed class CopilotProviderSessionFactory : IProviderSessionFactory
     /// <param name="onEvent">The observer's handler, registered before the session is created.</param>
     /// <param name="model">The model to name, or <see langword="null"/> for the runtime's default.</param>
     /// <param name="workingDirectory">The session's working directory, or <see langword="null"/> for the runtime's default.</param>
+    /// <param name="selection">A validated model selection, or <see langword="null"/>: the model and any chosen effort and tier.</param>
     /// <returns>The configuration the runtime session is created from.</returns>
     /// <exception cref="ArgumentNullException">
     ///     <paramref name="seed"/> is <see langword="null"/>.
@@ -302,7 +333,8 @@ public sealed class CopilotProviderSessionFactory : IProviderSessionFactory
         ProviderSessionSeed seed,
         Action<SessionEvent> onEvent,
         string? model,
-        string? workingDirectory = null)
+        string? workingDirectory = null,
+        ModelSelection? selection = null)
     {
         ArgumentNullException.ThrowIfNull(seed);
 
@@ -310,7 +342,8 @@ public sealed class CopilotProviderSessionFactory : IProviderSessionFactory
             [.. seed.Tools],
             seed.Instructions,
             model,
-            workingDirectory);
+            workingDirectory,
+            selection);
 
         // Registered on the configuration rather than on the session, because the SDK installs this
         // handler before the session.create RPC is issued - which is what makes the first turn's
@@ -318,6 +351,31 @@ public sealed class CopilotProviderSessionFactory : IProviderSessionFactory
         config.Events.OnEvent = onEvent;
 
         return config;
+    }
+
+    /// <summary>
+    ///     Decides the window ceiling from the two places a host may state one.
+    /// </summary>
+    /// <remarks>
+    ///     A ceiling stated both directly and through the selection would leave which one applies to a
+    ///     rule nobody reads, so stating it twice is refused. The selection's window was validated
+    ///     against the chosen tier, so it is already no larger than the model provides.
+    /// </remarks>
+    /// <param name="maxWindowTokens">The ceiling stated directly, if any.</param>
+    /// <param name="selection">The selection, if any.</param>
+    /// <returns>The ceiling, or <see langword="null"/> when none was stated.</returns>
+    /// <exception cref="ArgumentException">Both places state a ceiling.</exception>
+    private static int? Ceiling(int? maxWindowTokens, ModelSelection? selection)
+    {
+        var chosen = selection?.Settings.ContextWindowTokens;
+        if (maxWindowTokens is not null && chosen is not null)
+        {
+            throw new ArgumentException(
+                "State the window ceiling either as maxWindowTokens or in the model selection, not both.",
+                nameof(selection));
+        }
+
+        return maxWindowTokens ?? chosen;
     }
 
     /// <summary>

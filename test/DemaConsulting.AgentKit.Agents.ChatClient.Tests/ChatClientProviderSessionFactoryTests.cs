@@ -268,6 +268,73 @@ public class ChatClientProviderSessionFactoryTests
     }
 
     /// <summary>
+    ///     Proves a session's turns carry the selected model and effort to the provider.
+    /// </summary>
+    [Fact]
+    public async Task ChatClientProviderSessionFactory_CreateAsync_WithSelection_TurnsCarryTheSelection()
+    {
+        // Arrange
+        var client = RecordingChatClient.Answering("answer", inputTokens: 300);
+        var selection = new ModelSettings("vision-large") { ReasoningEffort = "low" }
+            .Bind(ChatClientAgentFactoryTests.SelectableModel());
+        var factory = new ChatClientProviderSessionFactory(client, Window, selection);
+
+        // Act
+        await using var session = await factory.CreateAsync(EmptySeed(), TestContext.Current.CancellationToken);
+        await session.SendAsync("hello", TestContext.Current.CancellationToken);
+
+        // Assert: the selection rode on the turn, and the stated window is still what is accounted
+        var options = Assert.Single(client.Requests).Options;
+        Assert.Equal("vision-large", options?.ModelId);
+        Assert.Equal(ReasoningEffort.Low, options?.Reasoning?.Effort);
+        Assert.Equal(Window, session.CurrentUsage.WindowTokens);
+    }
+
+    /// <summary>
+    ///     Proves a selection a chat client cannot apply is refused where the provider is configured.
+    /// </summary>
+    [Fact]
+    public void ChatClientProviderSessionFactory_Constructor_SelectionWithATier_Throws()
+    {
+        // Arrange
+        var selection = new ModelSettings("vision-large") { ContextTier = "default" }
+            .Bind(ChatClientAgentFactoryTests.SelectableModel());
+
+        // Act / Assert
+        Assert.Throws<ArgumentException>(
+            () => new ChatClientProviderSessionFactory(RecordingChatClient.Answering("x", 1), Window, selection));
+    }
+
+    /// <summary>
+    ///     Proves a selection whose window differs from the window the factory accounts against is
+    ///     refused, even when the client applies the selection's window, because a session would
+    ///     account against one figure while the provider ran at another.
+    /// </summary>
+    [Fact]
+    public void ChatClientProviderSessionFactory_Constructor_SelectionWindowDiffersFromWindowTokens_Throws()
+    {
+        // Arrange: the client applies the selection's 8,192 tokens; the factory is told 4,096
+        var selection = new ModelSettings("vision-large") { ContextWindowTokens = 8192 }
+            .Bind(ChatClientAgentFactoryTests.SelectableModel());
+        using var client = new ChatClientAgentFactoryTests.WindowApplyingChatClient(
+            RecordingChatClient.Answering("x", 1),
+            8192);
+
+        // Act
+        var failure = Assert.Throws<ArgumentException>(
+            () => new ChatClientProviderSessionFactory(client, Window, selection));
+        var matching = new ChatClientProviderSessionFactory(client, 8192, selection);
+
+        // Assert: the mismatch names both figures; the matching window is accepted and accounted
+        Assert.Equal("selection", failure.ParamName);
+        Assert.Contains(
+            "ContextWindowTokens (8,192) differs from windowTokens (4,096)",
+            failure.Message,
+            StringComparison.Ordinal);
+        Assert.Equal(8192, matching.WindowTokens);
+    }
+
+    /// <summary>
     ///     Proves a window that is not positive is refused, because every session this factory makes
     ///     would report an occupancy against it.
     /// </summary>

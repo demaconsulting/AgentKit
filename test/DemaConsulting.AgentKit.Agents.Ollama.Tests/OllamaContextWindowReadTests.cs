@@ -1,4 +1,5 @@
 using System.Reflection;
+using DemaConsulting.AgentKit.Core;
 using OllamaSharp;
 using WireMock.RequestBuilders;
 using WireMock.ResponseBuilders;
@@ -145,6 +146,78 @@ public sealed class OllamaContextWindowReadTests
         Assert.Equal(OllamaContextWindowSource.Stated, window.Source);
         Assert.Empty(server.LogEntries);
     }
+
+    /// <summary>
+    ///     Proves a selection's chosen window is reported as stated, without the server being asked.
+    /// </summary>
+    [Fact]
+    public async Task OllamaContextWindow_ReadAsync_SelectionWithWindow_ReportsItAsStated()
+    {
+        // Arrange
+        using var server = WireMockServer.Start();
+        Serve(server, RunningModelsPath, "ps-one-loaded.json");
+        using var client = new OllamaApiClient(new Uri(server.Url!), Model);
+        var selection = new ModelSettings(Model) { ContextWindowTokens = 8192 }.Bind(OllamaModel());
+
+        // Act
+        var window = await OllamaContextWindow.ReadAsync(client, selection, TestContext.Current.CancellationToken);
+
+        // Assert
+        Assert.Equal(8192, window.Tokens);
+        Assert.Equal(OllamaContextWindowSource.Stated, window.Source);
+        Assert.Empty(server.LogEntries);
+    }
+
+    /// <summary>
+    ///     Proves a selection with no window keeps the reading's precedence: the loaded instance's
+    ///     length, never the trained length the catalog reported.
+    /// </summary>
+    [Fact]
+    public async Task OllamaContextWindow_ReadAsync_SelectionWithoutWindow_ReadsTheLoadedInstance()
+    {
+        // Arrange: the model's trained length is far above what the instance is loaded with
+        using var server = WireMockServer.Start();
+        Serve(server, RunningModelsPath, "ps-one-loaded.json");
+        using var client = new OllamaApiClient(new Uri(server.Url!), Model);
+        var selection = new ModelSettings(Model).Bind(OllamaModel());
+
+        // Act
+        var window = await OllamaContextWindow.ReadAsync(client, selection, TestContext.Current.CancellationToken);
+
+        // Assert
+        Assert.Equal(65_536, window.Tokens);
+        Assert.Equal(OllamaContextWindowSource.LoadedModel, window.Source);
+    }
+
+    /// <summary>
+    ///     Proves a selection of another provider's model is refused.
+    /// </summary>
+    [Fact]
+    public async Task OllamaContextWindow_ReadAsync_SelectionFromAnotherProvider_Throws()
+    {
+        // Arrange
+        using var client = new OllamaApiClient(new Uri("http://127.0.0.1:9"), Model);
+        var selection = new ModelSettings(Model).Bind(OllamaModel() with { Provider = "copilot" });
+
+        // Act / Assert
+        await Assert.ThrowsAsync<ArgumentException>(
+            () => OllamaContextWindow.ReadAsync(client, selection, TestContext.Current.CancellationToken));
+    }
+
+    /// <summary>
+    ///     Describes the model these tests ask about as the catalog would, trained for far more than
+    ///     the captured instance is loaded with.
+    /// </summary>
+    /// <returns>The model.</returns>
+    private static DemaConsulting.AgentKit.Core.ModelInfo OllamaModel() => new()
+    {
+        Provider = OllamaModelCatalog.ProviderId,
+        Id = Model,
+        DisplayName = Model,
+        Capabilities = ModelCapabilities.ToolCalls,
+        Adjustments = ModelAdjustments.ContextWindow | ModelAdjustments.MaxOutputTokens,
+        ContextWindowTokens = 262_144,
+    };
 
     /// <summary>
     ///     Proves a declined loaded-model query costs a rung of the ladder rather than the run.

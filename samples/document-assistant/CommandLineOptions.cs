@@ -172,6 +172,46 @@ public sealed class CommandLineOptions
     public bool VisionEnabled { get; init; } = true;
 
     /// <summary>
+    ///     Gets the reasoning effort to run the model at, or <see langword="null"/> to leave it to the
+    ///     provider. Set by <c>--reasoning-effort</c>.
+    /// </summary>
+    /// <remarks>
+    ///     An identifier from the model's own list, as <c>--list-models</c> prints it. It is checked
+    ///     against the model before any session starts, so a level the model does not offer is
+    ///     refused with the levels it does.
+    /// </remarks>
+    public string? ReasoningEffort { get; init; }
+
+    /// <summary>
+    ///     Gets the context tier to run the model in, or <see langword="null"/> to leave it to the
+    ///     provider. Set by <c>--context-tier</c>. Copilot only.
+    /// </summary>
+    public string? ContextTier { get; init; }
+
+    /// <summary>
+    ///     Gets the context window to state, in tokens, or <see langword="null"/> to leave it to the
+    ///     provider. Set by <c>--context-window</c>.
+    /// </summary>
+    /// <remarks>
+    ///     Ollama only: the exact length the server is asked to run the model at, which may not
+    ///     exceed the length the model was trained for. The Copilot agent this sample builds is
+    ///     accounted against no window, so there is nothing for a stated window to cap, and the
+    ///     flag is a usage error with <c>--provider copilot</c>.
+    /// </remarks>
+    public int? ContextWindow { get; init; }
+
+    /// <summary>
+    ///     Gets a value indicating whether to list the models the provider offers and exit. Set by
+    ///     <c>--list-models</c>.
+    /// </summary>
+    /// <remarks>
+    ///     The listing is the one an application's model picker would show: only models that can
+    ///     run this sample — vision-capable unless <c>--no-vision</c> is given — grouped by the
+    ///     provider's category.
+    /// </remarks>
+    public bool ListModels { get; init; }
+
+    /// <summary>
     ///     Gets the single prompt to run non-interactively, or <see langword="null"/> to run the
     ///     interactive REPL. Set by <c>--prompt</c>.
     /// </summary>
@@ -199,7 +239,8 @@ public sealed class CommandLineOptions
     /// <exception cref="ArgumentNullException"><paramref name="args"/> is <see langword="null"/>.</exception>
     /// <exception cref="CommandLineException">
     ///     An argument is unknown, a flag is missing its value, <c>--provider</c> names something
-    ///     other than <c>copilot</c> or <c>ollama</c>, or the required <c>--workspace</c> is absent.
+    ///     other than <c>copilot</c> or <c>ollama</c>, <c>--context-window</c> is given for the
+    ///     Copilot provider, or the required <c>--workspace</c> is absent.
     /// </exception>
     public static CommandLineOptions Parse(string[] args)
     {
@@ -222,6 +263,10 @@ public sealed class CommandLineOptions
         string? model = null;
         var visionEnabled = true;
         string? prompt = null;
+        string? effort = null;
+        string? tier = null;
+        int? window = null;
+        var listModels = false;
 
         for (var index = 0; index < args.Length; index++)
         {
@@ -260,6 +305,22 @@ public sealed class CommandLineOptions
                     visionEnabled = false;
                     break;
 
+                case "--reasoning-effort":
+                    effort = TakeValue(args, ref index, arg);
+                    break;
+
+                case "--context-tier":
+                    tier = TakeValue(args, ref index, arg);
+                    break;
+
+                case "--context-window":
+                    window = ParseWindow(TakeValue(args, ref index, arg));
+                    break;
+
+                case "--list-models":
+                    listModels = true;
+                    break;
+
                 default:
                     // An unrecognized token is a mistake, not something to silently ignore, because
                     // ignoring it would let a misspelled --workspace run the agent unconfined.
@@ -273,16 +334,25 @@ public sealed class CommandLineOptions
         // Without it there is nothing to anchor and nothing to grant, so its absence is an error
         // rather than a defaulted convenience. The session location is different: the sample picks
         // a default for it and prints that choice at startup.
-        if (string.IsNullOrWhiteSpace(workspace))
+        if (string.IsNullOrWhiteSpace(workspace) && !listModels)
         {
             throw new CommandLineException(
                 "The --workspace <path> argument is required; it is the folder relative paths are "
                 + "anchored to and the folder the agent is granted access to.");
         }
 
+        // The Copilot agent the sample builds accounts against no window and refuses a selection
+        // that states one; refusing the flag here reports the mistake where the user typed it.
+        if (window is not null && provider == AgentProvider.Copilot)
+        {
+            throw new CommandLineException(
+                "--context-window applies to --provider ollama only: the Copilot agent this sample builds is "
+                + "accounted against no window, so there is nothing for it to cap.");
+        }
+
         return new CommandLineOptions
         {
-            Workspace = workspace,
+            Workspace = workspace ?? string.Empty,
             Session = session,
             WorkspaceReadOnly = workspaceReadOnly,
             Provider = provider,
@@ -290,8 +360,23 @@ public sealed class CommandLineOptions
             Model = model,
             VisionEnabled = visionEnabled,
             Prompt = prompt,
+            ReasoningEffort = effort,
+            ContextTier = tier,
+            ContextWindow = window,
+            ListModels = listModels,
         };
     }
+
+    /// <summary>
+    ///     Parses a context window, which must be a positive whole number of tokens.
+    /// </summary>
+    /// <param name="value">The token count as typed.</param>
+    /// <returns>The window.</returns>
+    /// <exception cref="CommandLineException"><paramref name="value"/> is not a positive whole number.</exception>
+    private static int ParseWindow(string value) =>
+        int.TryParse(value, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var tokens) && tokens > 0
+            ? tokens
+            : throw new CommandLineException($"The --context-window value '{value}' must be a positive whole number of tokens.");
 
     /// <summary>
     ///     Reads the value that must follow a value-taking flag, advancing the argument index.
@@ -368,10 +453,19 @@ public sealed class CommandLineOptions
            --model <name>            Model to back the agent (default: the Copilot runtime's own
                                      choice for --provider copilot, {DefaultOllamaModel} for ollama).
            --no-vision               Omit the image tool and the Vision capability entirely.
+           --list-models             List the models that can run this sample (vision models unless
+                                     --no-vision), grouped by category, and exit. No --workspace needed.
+           --reasoning-effort <id>   Reasoning effort, from the model's list (see --list-models).
+           --context-tier <id>       Context tier, from the model's list (copilot only).
+           --context-window <n>      Context window in tokens: the exact num_ctx (ollama only; at
+                                     most the trained length).
            --prompt "<text>"         Run a single prompt and exit (otherwise start an interactive chat).
            --help                    Show this help and exit.
 
          Try:
+           --provider ollama --list-models               (the vision models a picker would offer)
+           --provider ollama --model gemma4:e4b --reasoning-effort none --context-window 8192
+                     --prompt "Describe diagram.png"     (choices validated before the session starts)
            --model gpt-5.4-mini --prompt "Read welcome.txt and summarize it"
                                                         (choose the model backing the agent)
            --prompt "List every location you can reach and say which you can write to"

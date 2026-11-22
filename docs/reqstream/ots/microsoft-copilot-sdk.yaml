@@ -167,3 +167,35 @@ sections:
               - AgentKitAgentsCopilot_Runtime_ClientOptionsAreConfined
               - CopilotRuntime_DisposeAsync_IsIdempotentAndClientIsThenUnavailable
               - CopilotRuntime_BuildClientOptions_InstalledCli_SpawnsTheResolvedCliOverStdio
+
+          - id: AgentKit-OTS-MicrosoftCopilotSDK-ModelListing
+            title: >-
+              The Copilot SDK shall list the models the service offers the signed-in user, each with
+              its capabilities, limits, billing, reasoning efforts, policy and messages, through an
+              uncached query on a started client.
+            justification: |
+              The catalog reads the service only through the SDK: the model description types and
+              the server-level model query. AgentKit's offline tests build the SDK's own model
+              descriptions and read every member the catalog depends on back through the mapping,
+              and drive the query on a client that was never started to show it refuses rather than
+              answers. The opt-in live suite lists the models through the query on a runtime
+              AgentKit started, compares the count with the client's cached listing, and refreshes.
+            tags: [ots]
+            tests:
+              - CopilotModelCatalog_Map_BillingTiers_AreDerivedLabeledAndCapped
+              - CopilotModelCatalog_Map_Policy_DecidesUsability
+              - CopilotModelCatalog_ListAsync_ClientNotConnected_FailsWithTheSignInMessage
+
+          - id: AgentKit-OTS-MicrosoftCopilotSDK-InferenceOptions
+            title: >-
+              The Copilot SDK shall carry a session's reasoning effort and context tier in the
+              session options it creates and resumes the session with.
+            justification: |
+              Copilot applies effort and tier per session, through the inference options on the
+              options a session is created or resumed with. AgentKit's tests read both back from the
+              options the factory builds; the opt-in live suite creates sessions in each tier and
+              records the different limits the runtime then reports.
+            tags: [ots]
+            tests:
+              - CopilotAgentFactory_BuildSessionConfig_Selection_SetsModelEffortAndTier
+              - CopilotAgentFactory_ResumeAndEnginePaths_CarryTheSameSelection

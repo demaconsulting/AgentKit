@@ -58,6 +58,11 @@ words:
   - metacharacters
   - ordinally
   - pageable
+  # Model-catalog identifiers the providers publish verbatim: Copilot's extra-high reasoning effort,
+  # Ollama's GPT-OSS model family, and an Ollama embedding model the captured listing names.
+  - xhigh
+  - gptoss
+  - mxbai
   - pasteable
   - setext
   - unranged

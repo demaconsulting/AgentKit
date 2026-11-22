@@ -134,42 +134,61 @@ rather than asserted.
 - **`_model`** (`string?`) — The model backing every session this factory creates, or null to leave
   the choice to the runtime.
 - **`_maxWindowTokens`** (`int?`) — The ceiling each session accounts its window against, or null to
-  account against whatever the runtime reports. Invariant: one or greater when stated.
+  account against whatever the runtime reports — stated directly, or taken from the selection's
+  window. Invariant: one or greater when stated.
 - **`_workingDirectory`** (`string?`) — The working directory every session this factory creates is
   given, or null or blank to leave it to the runtime.
+- **`_selection`** (`ModelSelection?`) — The validated model selection every session is configured
+  with, or null when the host named a model, or none, instead.
 - **`RecordOpening`**, **`RecordClosing`** (`const string`) — The fixed lines opening and closing a
   seeded record. Plain text rather than generated tokens, so the rendering is deterministic and a
   test can assert on it exactly.
 
 ### Key Methods
 
-#### The CopilotProviderSessionFactory Constructor (CopilotRuntime, string?, int?, string?)
+#### The CopilotProviderSessionFactory Constructor (CopilotRuntime, string?, int?, string?, ModelSelection?)
 
 **Purpose:** Hold what every session this factory creates needs, and nothing else.
 
-**Algorithm:** Reject a null runtime and a ceiling below one, and check the runtime is not disposed
-(`CopilotRuntime.ThrowIfDisposed`). Build the production channel opener over the runtime — one that
+**Algorithm:** Reject a null runtime and a ceiling below one, check the runtime is not disposed
+(`CopilotRuntime.ThrowIfDisposed`), and refuse an ambiguous or foreign selection, and one carrying an
+output limit the runtime cannot take, through `CopilotAgentFactory.ValidateSelection` with
+`windowAccounted: true` — this factory accounts against a window, so a selection's window is accepted
+here as the ceiling. Build the production channel opener over the runtime — one that
 deletes each session when it is released, because a rotated session is finished with by definition —
 once, so every session a rotation creates demonstrably runs on the runtime the host started. The
 opener is handed the runtime, not its client, and reads the client at each open and release: the SDK
 restarts a disposed client on demand, so a factory that held the client would bring a runtime the
 host had disposed back to life. Record the model name without
 checking it: only the runtime knows which models the signed-in user may use, so an unrecognized name
-is refused at session creation rather than here. Record the window ceiling as stated, and the working
-directory without checking it: the runtime resolves it when a session is created.
+is refused at session creation rather than here. Record the window ceiling through `Ceiling`, and the
+working directory without checking it: the runtime resolves it when a session is created. Record the
+selection.
 
-**Parameter ordering.** The working directory is the trailing optional parameter, so every existing
-positional call keeps binding to the parameter it always bound to.
+**The selection's window is the ceiling.** `Ceiling(maxWindowTokens, selection)` returns the ceiling
+stated directly or the selection's `ContextWindowTokens`, and refuses both with `ArgumentException`
+"State the window ceiling either as maxWindowTokens or in the model selection, not both." The
+selection's window was validated against the chosen tier when the selection was made, so it is
+already no larger than the model provides. Either way it only ever lowers what a session accounts
+against, and it is never sent to the runtime. A live session reports the tier's prompt budget, which
+is smaller than the tier's total window; see *CopilotModelCatalog Unit Design*, "Context Tiers and the
+Reported Limit".
 
-**Preconditions:** `runtime` is not null and not disposed; any stated ceiling is one or greater.
+**Parameter ordering.** The working directory and the selection are trailing optional parameters, so
+every existing positional call keeps binding to the parameter it always bound to.
+
+**Preconditions:** `runtime` is not null and not disposed; any stated ceiling is one or greater; a
+model is named at most once and a ceiling stated at most once.
 
 **Postconditions:** A factory ready to create sessions, owning nothing disposable.
 
-#### The CopilotProviderSessionFactory Constructor (CopilotChannelOpener, string?, int?, string?)
+#### The CopilotProviderSessionFactory Constructor (CopilotChannelOpener, string?, int?, string?, ModelSelection?)
 
 **Purpose:** The test seam.
 
-**Algorithm:** Reject a null opener and record it. The SDK's session type is sealed with a non-public
+**Algorithm:** Reject a null opener, refuse an ambiguous selection as the public constructor does,
+and record the opener, the model, the ceiling, the working directory and the selection. The SDK's
+session type is sealed with a non-public
 constructor and no virtual members, and its client type is sealed, so nothing above them can be
 exercised without a live runtime and credentials unless the opening of a session is injectable. See
 *Why a Turn-Channel Seam Exists* in *AgentKitAgentsCopilot System Design*.
@@ -183,7 +202,7 @@ exercised without a live runtime and credentials unless the opening of a session
 **Purpose:** Turn one seed into a live, seeded, confined Copilot session.
 
 **Algorithm:** Reject a null seed and a canceled token. Build the observer **first** and hand it to
-the session options, together with the model and the working directory, so the SDK registers it on
+the session options, together with the model, the working directory and the selection, so the SDK registers it on
 the session before the create request is issued and the very first turn's events are caught. Open
 the session — the only awaited allocation. Then, under a guard, check cancellation once more and
 construct the provider session, handing it the composed history preamble so the first message it
@@ -200,15 +219,16 @@ the same window `CompactingAgentSession` guards when it adopts a replacement, gu
 holding the seeded history ready to travel on its first message; or nothing, with no session left
 behind on the runtime.
 
-#### BuildProviderSessionConfig(seed, Action&lt;SessionEvent&gt; onEvent, string? model, string? workingDirectory)
+#### BuildProviderSessionConfig(seed, Action&lt;SessionEvent&gt; onEvent, string? model, string? workingDirectory, ModelSelection? selection)
 
 **Purpose:** Build the `CreateSessionOptions` one seed produces.
 
 **Algorithm:** Take the seed's instructions as the system message's content — unchanged, and alone — hand them
-with the seeded tools, the model and the working directory to
+with the seeded tools, the model, the working directory and the selection to
 `CopilotAgentFactory.BuildEngineSessionConfig` — which refuses a tool named like a runtime built-in,
 derives the source-qualified allow-list, withholds the runtime's injection channels, pins the permission
-mode, installs the default-deny permission handler, applies the model and the working directory, and
+mode, installs the default-deny permission handler, applies the model, the selection's effort and tier
+when chosen, and the working directory, and
 raises the runtime's own compaction threshold clear of the engine's rotation point — and then set the
 observer's handler as `Events.OnEvent`.
 
@@ -255,6 +275,10 @@ asserts on it directly — the configuration no longer carries it.
 | Disposed `runtime` | `ObjectDisposedException` propagates |
 | `runtime` disposed after construction | `ObjectDisposedException` from the next `CreateAsync`; nothing started |
 | Window ceiling below one | `ArgumentOutOfRangeException` propagates |
+| Both a model name and a selection | `ArgumentException` naming `selection` propagates |
+| A selection of another provider's model | `ArgumentException` naming `selection` propagates |
+| A ceiling stated both directly and in the selection | `ArgumentException` naming `selection` propagates |
+| A selection carrying an output limit | `ArgumentException` naming `selection` propagates |
 | Null `seed` | `ArgumentNullException` propagates |
 | Cancellation before opening | `OperationCanceledException`; nothing is opened |
 | Cancellation after opening | `OperationCanceledException`; session released |
@@ -265,7 +289,8 @@ asserts on it directly — the configuration no longer carries it.
 ### Dependencies
 
 - **AgentKitCore** — supplies `IProviderSessionFactory`, `ProviderSessionSeed` and
-  `TranscriptEntry`; see *ProviderSession Unit Design*.
+  `TranscriptEntry`; see *ProviderSession Unit Design*; and `ModelSelection`; see *ModelSettings Unit
+  Design*.
 - **CopilotAgentFactory** — supplies the single confinement path every session in this package is
   built through; see *CopilotAgentFactory Unit Design*.
 - **CopilotSessionObserver** — registered on each session before it is created; see
