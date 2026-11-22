@@ -64,17 +64,20 @@ sections:
           - id: AgentKitAgentsCopilot-CopilotCli-ReportsWhereItLooked
             title: >-
               The CLI discovery shall report every location it searched and every candidate it passed
-              over, and its explanation for a CLI it did not find shall name them, how to install the
-              CLI, the minimum version, and the alternatives of naming a CLI or using the bundled
-              runtime.
+              over, in a report that does not change once returned, and its explanation for a CLI it
+              did not find shall name them, how to install the CLI, the minimum version, and the
+              alternatives of naming a CLI or using the bundled runtime.
             justification: |
               A host author whose machine has no CLI, or a CLI where discovery does not look, needs to
               see where AgentKit looked to fix it, and a single place to read the installation command
-              for the platform. The alternatives keep a machine without a suitable CLI usable.
+              for the platform. The alternatives keep a machine without a suitable CLI usable. A host
+              can keep the report and show it from any thread, so it does not change after discovery
+              returns it.
             tests:
               - CopilotCli_FindInstalled_NothingInstalled_ReturnsNullWithSearchedLocations
               - CopilotCli_FindInstalled_SameCandidateTwice_IsSearchedOnce
               - CopilotCli_ExplainNotFound_ListsSearchedSkippedAndInstallCommands
+              - CopilotCliSearchResult_Constructor_CallerListsChanged_ResultUnchanged
 
           - id: AgentKitAgentsCopilot-CopilotCli-ReadsTheVersionTheRuntimeRuns
             title: >-

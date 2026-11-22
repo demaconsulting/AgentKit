@@ -45,7 +45,8 @@ verify the started runtime.
 `CopilotCliSearchResult` (public, immutable): `Path` (`string?`, the selected CLI or `null`),
 `SearchedLocations` (`IReadOnlyList<string>`, each candidate file looked for, in order) and
 `SkippedCandidates` (`IReadOnlyList<string>`, `"<path> (<reason>)"` for each candidate passed over).
-Built only by discovery.
+Built only by discovery. Each list is a read-only copy taken when the result is built, so the result
+does not change afterwards and is safe to share between threads.
 
 Internal seams:
 

@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Globalization;
@@ -480,6 +481,30 @@ public class CopilotCliTests
         Assert.NotNull(result.SearchedLocations);
         Assert.NotNull(result.SkippedCandidates);
         Assert.True(result.Path is null || result.SearchedLocations.Contains(result.Path));
+    }
+
+    /// <summary>
+    ///     Proves a search result keeps its own copy of the lists it was built from, so a later change
+    ///     to those lists does not change it, and exposes them read-only.
+    /// </summary>
+    [Fact]
+    public void CopilotCliSearchResult_Constructor_CallerListsChanged_ResultUnchanged()
+    {
+        // Arrange
+        List<string> searched = ["/fake/a/copilot"];
+        List<string> skipped = ["/fake/shim/copilot (a launcher)"];
+        var result = new CopilotCliSearchResult(null, searched, skipped);
+
+        // Act
+        searched.Add("/fake/b/copilot");
+        searched[0] = "/fake/changed";
+        skipped.Clear();
+
+        // Assert
+        Assert.Equal(["/fake/a/copilot"], result.SearchedLocations);
+        Assert.Equal(["/fake/shim/copilot (a launcher)"], result.SkippedCandidates);
+        Assert.IsType<ReadOnlyCollection<string>>(result.SearchedLocations);
+        Assert.IsType<ReadOnlyCollection<string>>(result.SkippedCandidates);
     }
 
     /// <summary>

@@ -64,20 +64,18 @@ Unit tests reside in `CopilotCliTests.cs`, and the test double in `FakeCopilotCl
 
 ### Acceptance Criteria
 
-A unit test run passes when every scenario below passes without error or exception beyond those
-explicitly asserted. A CLI chosen out of search order, a candidate that cannot be started without a
-shell or lacks an execute bit chosen, a relative or drive-relative `PATH` entry searched, a launcher
-chosen or not reported, a file over the launcher-scan limit read, the same candidate searched twice, a
-search that does not report where it looked; a probe run through a shell, without
-`--no-auto-update --version`, outside the data directory, with an environment other than the given
-runtime environment and the data-directory Copilot home, without its time limit, or of a `.js` CLI
-not under `node`; a version misread, or a policy that accepts a version below the minimum or refuses
-one at or above it; a refusal or failure explanation missing the CLI, the versions, the command, the
-version check, an install or upgrade command or the alternatives; or a real process whose output or
-exit code is lost, that is not stopped on time-out or cancellation, or whose output held open past
-the limit is not bounded; or, on Windows or Linux, a process holding the probe's output left running
-after a time-out, or on Windows a process the probe left running not stopped when its tracking ends,
-constitutes a failure.
+A unit test run passes when every scenario below passes without error or exception beyond those explicitly asserted. A
+CLI chosen out of search order, a candidate that cannot be started without a shell or lacks an execute bit chosen, a
+relative or drive-relative `PATH` entry searched, a launcher chosen or not reported, a file over the launcher-scan limit
+read, the same candidate searched twice, a search that does not report where it looked, a search report that changes
+after it is returned; a probe run through a shell, without `--no-auto-update --version`, outside the data directory,
+with an environment other than the given runtime environment and the data-directory Copilot home, without its time
+limit, or of a `.js` CLI not under `node`; a version misread, or a policy that accepts a version below the minimum or
+refuses one at or above it; a refusal or failure explanation missing the CLI, the versions, the command, the version
+check, an install or upgrade command or the alternatives; or a real process whose output or exit code is lost, that is
+not stopped on time-out or cancellation, or whose output held open past the limit is not bounded; or, on Windows or
+Linux, a process holding the probe's output left running after a time-out, or on Windows a process the probe left
+running not stopped when its tracking ends, constitutes a failure.
 
 ### Test Scenarios
 
@@ -138,6 +136,7 @@ is chosen.
 - `CopilotCli_FindInstalled_NothingInstalled_ReturnsNullWithSearchedLocations`
 - `CopilotCli_FindInstalled_SameCandidateTwice_IsSearchedOnce`
 - `CopilotCli_ExplainNotFound_ListsSearchedSkippedAndInstallCommands`
+- `CopilotCliSearchResult_Constructor_CallerListsChanged_ResultUnchanged`
 
 Error path. On a Linux machine with nothing installed no CLI is returned; the searched locations
 start with the `PATH` entry and `~/.local/bin` and include npm's global package, and nothing is
@@ -145,7 +144,9 @@ reported as skipped. The same candidate reached twice is searched once: `/usr/lo
 `PATH`, which is also a well-known location, and on Windows two `PATH` entries differing only in case.
 The explanation lists the searched and skipped locations, says `COPILOT_CLI_PATH`
 is not consulted, names the minimum version, the WinGet, Homebrew, npm and install-script commands,
-the `cliPath` option and `CopilotRuntimeSource.Bundled`.
+the `cliPath` option and `CopilotRuntimeSource.Bundled`. A report built from two lists keeps their
+original entries after those lists are changed and cleared, and exposes them as read-only
+collections.
 
 #### AgentKitAgentsCopilot-CopilotCli-ReadsTheVersionTheRuntimeRuns: The Built-In Version, Confined
 

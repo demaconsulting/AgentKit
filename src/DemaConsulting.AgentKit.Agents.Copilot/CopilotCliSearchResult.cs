@@ -14,7 +14,8 @@ public sealed class CopilotCliSearchResult
     ///     Initializes a new instance of the <see cref="CopilotCliSearchResult"/> class.
     /// </summary>
     /// <remarks>
-    ///     Internal: only discovery builds a result.
+    ///     Internal: only discovery builds a result. Each list is copied, so the result does not change
+    ///     when the lists it was built from do.
     /// </remarks>
     /// <param name="path">The selected CLI's full path, or <see langword="null"/> when none was found.</param>
     /// <param name="searchedLocations">Every location searched, in search order.</param>
@@ -25,8 +26,8 @@ public sealed class CopilotCliSearchResult
         IReadOnlyList<string> skippedCandidates)
     {
         Path = path;
-        SearchedLocations = searchedLocations;
-        SkippedCandidates = skippedCandidates;
+        SearchedLocations = Array.AsReadOnly<string>([.. searchedLocations]);
+        SkippedCandidates = Array.AsReadOnly<string>([.. skippedCandidates]);
     }
 
     /// <summary>

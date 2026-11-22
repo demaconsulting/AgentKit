@@ -399,7 +399,7 @@ public class AgentKitAgentsCopilotTests
 
     /// <summary>
     ///     Proves a host that sets no runtime source runs the Copilot CLI installed on the machine: the
-    ///     CLI discovery finds is version-checked and spawned, not the SDK's bundled runtime.
+    ///     CLI that discovery finds is version-checked and spawned, not the SDK's bundled runtime.
     /// </summary>
     [Fact]
     public async Task AgentKitAgentsCopilot_Runtime_DefaultsToTheInstalledCli()
