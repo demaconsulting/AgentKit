@@ -62,6 +62,39 @@ public sealed class CopilotLiveTests
     }
 
     /// <summary>
+    ///     L0: the runtime the run started is the selected source and speaks the protocol this release
+    ///     supports — an installed CLI at least <see cref="CopilotCli.MinimumVersion"/> as it runs under
+    ///     the SDK, or the bundled runtime with no CLI path.
+    /// </summary>
+    [Fact]
+    public void AgentKitAgentsCopilotLive_Runtime_ReportsASupportedRuntime()
+    {
+        // Arrange
+        _live.RequireOptIn();
+        var runtime = _live.Runtime;
+
+        // Act
+        _live.Log($"L0 source={_live.RuntimeSource} cli={runtime.CliPath ?? "(bundled)"} version={runtime.RuntimeVersion} protocol={runtime.ProtocolVersion}");
+
+        // Assert
+        Assert.Equal(CopilotCli.SupportedProtocolVersion, runtime.ProtocolVersion);
+        Assert.False(string.IsNullOrWhiteSpace(runtime.RuntimeVersion));
+        if (_live.RuntimeSource == CopilotRuntimeSource.Bundled)
+        {
+            Assert.Null(runtime.CliPath);
+        }
+        else
+        {
+            Assert.NotNull(runtime.CliPath);
+            Assert.True(File.Exists(runtime.CliPath));
+            Assert.True(_live.CliPath is null || string.Equals(_live.CliPath, runtime.CliPath, StringComparison.Ordinal));
+            var version = CopilotCli.ParseVersion(runtime.RuntimeVersion);
+            Assert.NotNull(version);
+            Assert.True(CopilotCli.IsSupported(version), $"Runtime version {runtime.RuntimeVersion} is older than {CopilotCli.MinimumVersion}.");
+        }
+    }
+
+    /// <summary>
     ///     L1: the confinement the package builds exposes exactly the supplied tools and none of the
     ///     runtime's built-ins.
     /// </summary>
@@ -431,7 +464,7 @@ public sealed class CopilotLiveTests
 
             // Act: a runtime AgentKit starts, and a session opened on it as production opens one
             await using var runtime = await CopilotRuntime.StartAsync(
-                new CopilotRuntimeOptions(Path.Combine(_live.Root, "second-home")),
+                _live.CreateOptions(Path.Combine(_live.Root, "second-home")),
                 TestContext.Current.CancellationToken);
             var config = CopilotAgentFactory.BuildEngineSessionConfig(_live.ReadTools, null, _live.Model, _live.Sandbox);
             var session = await CopilotSessionChannel.CreateConfinedSessionAsync(
@@ -1121,16 +1154,18 @@ public sealed class CopilotLiveTests
     ///     built before AgentKit owned the runtime — spawned on a data directory under the run's root.
     /// </summary>
     /// <remarks>
-    ///     The runtime process gets the environment AgentKit's own runtime gets, so an ambient
+    ///     The runtime process is the executable the run's own runtime spawns — the installed CLI or
+    ///     the bundled runtime — and gets the environment AgentKit's own runtime gets, so an ambient
     ///     <c>COPILOT_CLI_PATH</c> cannot redirect it; only the mode and the data directory differ.
     /// </remarks>
     /// <param name="home">The data directory.</param>
     /// <returns>The client. The caller starts and disposes it.</returns>
-    private static CopilotClient CreateCodingAgentClient(string home) =>
+    private CopilotClient CreateCodingAgentClient(string home) =>
         new(new CopilotClientOptions
         {
             Mode = CopilotClientMode.CodingAgent,
             Runtime = RuntimeConnection.ForSpawnedStdio(
+                path: _live.RuntimeCliPath,
                 environment: CopilotRuntime.BuildRuntimeEnvironment(Environment.GetEnvironmentVariables()),
                 baseDirectory: home),
             GitHub = new ClientGitHubOptions { UseLoggedInUser = true },
@@ -1147,7 +1182,7 @@ public sealed class CopilotLiveTests
     /// <returns>The started runtime. The caller disposes it.</returns>
     private async Task<CopilotRuntime> StartTamperedRuntimeAsync(string name, Func<string, Task> tamper)
     {
-        var options = new CopilotRuntimeOptions(Path.Combine(_live.Root, name));
+        var options = _live.CreateOptions(Path.Combine(_live.Root, name));
         Assert.StartsWith(_live.Root, options.DataDirectory, StringComparison.Ordinal);
 
         await (await CopilotRuntime.StartAsync(options, TestContext.Current.CancellationToken)).DisposeAsync();

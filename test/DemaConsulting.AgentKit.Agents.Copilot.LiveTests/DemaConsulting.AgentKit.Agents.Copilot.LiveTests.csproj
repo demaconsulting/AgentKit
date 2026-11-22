@@ -12,7 +12,12 @@
        - run by the live-copilot-suite job in live_samples.yaml, and by hand as described in the
          verification documentation.
 
-       It authenticates as the logged-in GitHub user, or from GH_TOKEN / GITHUB_TOKEN. -->
+       It authenticates as the logged-in GitHub user, or from GH_TOKEN / GITHUB_TOKEN.
+
+       It runs on either runtime source, chosen by AGENTKIT_COPILOT_LIVE_RUNTIME: 'installed' (the
+       default) runs the installed Copilot CLI named by AGENTKIT_COPILOT_LIVE_CLI_PATH, or the one
+       discovery finds; 'bundled' runs the runtime Microsoft.Copilot.SDK provisions into this
+       project's output. -->
 
   <PropertyGroup>
     <!-- Build Configuration -->
@@ -66,11 +71,13 @@
     </PackageReference>
   </ItemGroup>
 
-  <!-- Copilot Runtime Provisioning: this suite hosts the Copilot runtime, so it references
-       Microsoft.Copilot.SDK directly, exactly as a consuming application must. The SDK's build
-       targets download the native runtime for the build machine's platform and copy it into this
-       project's output; they run only in a project that references the SDK directly. The version
-       matches the library's own reference. -->
+  <!-- Copilot Runtime Provisioning: the installed-CLI variant needs no runtime in the output, and is
+       built with -p:CopilotSkipCliDownload=true to prove it. The bundled variant needs the runtime
+       the SDK provisions, so this suite references Microsoft.Copilot.SDK directly, exactly as a host
+       that opts into CopilotRuntimeSource.Bundled must: the SDK's build targets download the native
+       runtime for the build machine's platform and copy it into this project's output, and they run
+       only in a project that references the SDK directly. The version matches the library's own
+       reference. -->
   <ItemGroup>
     <PackageReference Include="Microsoft.Copilot.SDK" Version="2.0.1" />
   </ItemGroup>

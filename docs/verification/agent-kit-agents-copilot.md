@@ -329,11 +329,36 @@ every run the same tool instances, so a reference outlives the run that produced
 
 **Test**: `AgentKitAgentsCopilot_Runtime_FailedStart_IsExplained`
 
-Starts the runtime with a start that fails the way the SDK does when no runtime was provisioned — an
-error naming the runtime wrapper it did not find. Asserts the failure reaching the host carries the
+Starts the bundled runtime with a start that fails the way the SDK does when no runtime was
+provisioned — an error naming the runtime wrapper it did not find. Asserts the failure reaching the host carries the
 runtime's error, names the remedy, a `PackageReference` to `Microsoft.Copilot.SDK`, and keeps the
 original failure as its inner exception. The pass-through of a cancellation and the disposal of a
 client whose start failed are asserted in *CopilotRuntime Unit Verification Design*.
+
+### Runtime Startup: An Unsupported Installed CLI Is Refused With Upgrade Guidance
+
+**Test**: `AgentKitAgentsCopilot_Runtime_UnsupportedCli_IsRefusedWithUpgradeGuidance`
+
+On a fake Windows machine whose `copilot.exe` on `PATH` prints the version banner of a CLI older than
+the minimum, resolving the default launch is refused before any client exists, with the CLI's path,
+its version, the minimum version, the `copilot --no-auto-update --version` check, the WinGet upgrade
+command and the bundled alternative. The refusal of the real too-old CLI on the recording machine is
+part of the live evidence below.
+
+### Runtime Startup: A Runtime That Is Not Signed In Is Refused
+
+**Test**: `AgentKitAgentsCopilot_Runtime_Unauthenticated_IsRefusedWithSignInGuidance`
+
+A started runtime whose authentication status reports it is not signed in is refused, with the ways
+to sign it in — `gh auth login` and `GH_TOKEN` among them.
+
+### Runtime: The Installed Copilot CLI Is the Default
+
+**Test**: `AgentKitAgentsCopilot_Runtime_DefaultsToTheInstalledCli`
+
+With default options on a fake machine with a supported CLI on `PATH`, the runtime source is the
+installed CLI, that CLI is probed with `--no-auto-update --version`, and the client options spawn
+exactly that CLI rather than the SDK's bundled runtime.
 
 ### Runtime: The Runtime AgentKit Owns Is Confined Before It Starts
 
@@ -341,12 +366,13 @@ client whose start failed are asserted in *CopilotRuntime Unit Verification Desi
 
 Prepares a fresh data directory and builds the client options from a hostile host environment — a
 runtime path override, an approve-all switch, a skills directory and an injected MCP configuration —
-and asserts the options are in Empty mode on a spawned stdio connection to the provisioned runtime,
-with no runtime path or arguments, on the prepared data directory, with a replacement environment that
-carries no `COPILOT_` or `GITHUB_COPILOT_` variable but keeps `GH_TOKEN`, and with no plugin
+for both runtime sources, and asserts that the installed-CLI options spawn the resolved CLI and the
+bundled options spawn the provisioned runtime (no path), and that both are in Empty mode on a spawned
+stdio connection with no arguments, on the prepared data directory, with a replacement environment
+that carries no `COPILOT_` or `GITHUB_COPILOT_` variable but keeps `GH_TOKEN`, and with no plugin
 directory, session filesystem or extension launcher. This is the client-level half of the
-confinement, which no session option can reach. That the runtime honors it is shown by the live
-suite (L11, L14, L15).
+confinement, which no session option can reach, and it is identical for either executable. That the
+runtime honors it is shown by the live suite (L11, L14, L15), on both executables.
 
 ### Runtime: A Foreign Data Directory Is Refused
 
@@ -359,23 +385,21 @@ directory's configuration is never read.
 
 ## Acceptance Criteria
 
-A system-level test run passes when every scenario above passes without error or exception beyond
-those explicitly asserted. Any allow-list that diverges from the published tools or carries an
-unqualified entry, any tool named like a built-in that reaches the runtime, any session opened with a
-discovered MCP server left enabled on its options or accepted while one stays enabled, any supplied
-tool that is
-rejected, any unlisted or built-in request that is approved on either path, any missing runtime that
-is accepted, any runtime client options not confined as asserted, any foreign data directory that is
-accepted, any occupancy figure that is not the one the runtime reported, any rotation that fails
-to seed the consolidated record, any part of a seeded record appearing in a session's system message,
-any rotation that costs more than the one request the engine was already making, any superseded
-session left unreleased, any session created with the runtime's own compaction left at the runtime's
-default threshold, any agent run that is not confined, streamed or released as asserted, any
-resumption under a different confinement, any session that diverts a large tool result, any failed
-start whose explanation omits the runtime's error or the remedy, any reader of a retaining
-composition missing from a session's published tools, its custom-qualified allow-list or the requests
-its default handler approves, or any configured retaining tool that does not deliver its preview and
-the page it names constitutes a failure.
+A system-level test run passes when every scenario above passes without error or exception beyond those explicitly
+asserted. Any allow-list that diverges from the published tools or carries an unqualified entry, any tool named like a
+built-in that reaches the runtime, any session opened with a discovered MCP server left enabled on its options or
+accepted while one stays enabled, any supplied tool that is rejected, any unlisted or built-in request that is approved
+on either path, any missing runtime that is accepted, any runtime client options not confined as asserted for either
+runtime source, any default that does not run the installed CLI, any unsupported CLI or unauthenticated runtime that is
+accepted or refused without its guidance, any foreign data directory that is accepted, any occupancy figure that is not
+the one the runtime reported, any rotation that fails to seed the consolidated record, any part of a seeded record
+appearing in a session's system message, any rotation that costs more than the one request the engine was already
+making, any superseded session left unreleased, any session created with the runtime's own compaction left at the
+runtime's default threshold, any agent run that is not confined, streamed or released as asserted, any resumption under
+a different confinement, any session that diverts a large tool result, any failed start whose explanation omits the
+runtime's error or the remedy, any reader of a retaining composition missing from a session's published tools, its
+custom-qualified allow-list or the requests its default handler approves, or any configured retaining tool that does not
+deliver its preview and the page it names constitutes a failure.
 
 ## Supplementary Live Verification
 
@@ -399,7 +423,9 @@ that what those tests assert about the options is what the runtime honors.
 
 - **Project**: `test/DemaConsulting.AgentKit.Agents.Copilot.LiveTests/`, an xUnit v3 project targeting
   .NET 10 that references the Copilot package, AgentKit's core and tools packages, and
-  `Microsoft.Copilot.SDK` directly, so the native runtime is provisioned beside it. It is **not** part
+  `Microsoft.Copilot.SDK` directly, so the bundled runtime can be provisioned beside it for the
+  bundled variant; the installed-CLI variants build it with `CopilotSkipCliDownload` set, proving they
+  need no provisioned runtime. It is **not** part
   of `AgentKit.slnx`, so `build.ps1` and a `dotnet test` of the solution never build or run it. The
   merge gate compiles it, so an internal change that breaks it fails the pull request, but never runs
   it.
@@ -408,9 +434,14 @@ that what those tests assert about the options is what the runtime honors.
   starts no runtime and every test reports itself skipped, naming the variable, so an accidental run
   costs nothing.
 - **Log**: the optional environment variable `AGENTKIT_COPILOT_LIVE_LOG_DIRECTORY` names the folder a
-  `live-*.log` of the run is written to, recording what the runtime reported and decided.
+  `live-*.log` of the run is written to, recording what the runtime reported and decided, including
+  the runtime source, the CLI path, and the version and protocol the started runtime reported.
+- **Runtime selection**: `AGENTKIT_COPILOT_LIVE_RUNTIME` chooses `installed` (the default, as for a
+  host) or `bundled`; any other value fails the fixture. For the installed CLI,
+  `AGENTKIT_COPILOT_LIVE_CLI_PATH` names the CLI to run; unset, discovery chooses it exactly as for a
+  host. Every runtime and client the suite starts runs that one executable.
 - **Fixture**: one shared `CopilotRuntime` per run, started exactly as a host starts one — Empty
-  mode, the provisioned runtime spawned with the host's Copilot variables withheld bar the
+  mode, the selected runtime spawned with the host's Copilot variables withheld bar the
   pass-through set, a data directory AgentKit created under the run's temporary root —
   authenticated as the logged-in user or from
   `GH_TOKEN`/`GITHUB_TOKEN`. A sandbox folder holds a `notes.txt` carrying the codeword `PERIWINKLE-42` and a
@@ -419,7 +450,7 @@ that what those tests assert about the options is what the runtime honors.
   scenario changes the process environment. The ambient-server scenario, L12, starts a second,
   short-lived client of its own per test in CodingAgent mode — the hostile client a host could have
   built before AgentKit owned the runtime, reached through the channel's internal seam — spawned on the
-  runtime the SDK provisioned with the same withheld environment, whose data directory under the run's
+  run's executable with the same withheld environment, whose data directory under the run's
   temporary root configures one non-GitHub MCP server whose command does not exist — never the user's
   own Copilot home. The agent-definitions scenario, L13, starts one more such client whose data
   directory under the run's root defines a user agent, and gives its session a workspace under the
@@ -434,34 +465,57 @@ that what those tests assert about the options is what the runtime honors.
 ### Running the Live Suite
 
 **Manually**, from the repository root in PowerShell. `COPILOT_CLI_PATH` no longer needs to be unset:
-the runtime AgentKit starts never receives it, and L11 sets a bogus value itself. Unsetting it is
-still harmless, and is what the recorded run did.
+the runtime AgentKit starts never receives it, discovery ignores it, and L11 sets a bogus value
+itself. Unsetting it is still harmless, and is what the recorded runs did.
+
+On the installed CLI — the machine's own, found by discovery, or another named by path:
 
 ```pwsh
 Remove-Item Env:COPILOT_CLI_PATH -ErrorAction SilentlyContinue
 $env:AGENTKIT_COPILOT_LIVE_MODEL = 'claude-haiku-5.5'
-dotnet test --project test/DemaConsulting.AgentKit.Agents.Copilot.LiveTests -c Release `
-    --report-trx --results-directory artifacts/live
+$env:AGENTKIT_COPILOT_LIVE_RUNTIME = 'installed'
+# Optional: $env:AGENTKIT_COPILOT_LIVE_CLI_PATH = 'C:\path\to\copilot.exe'
+dotnet build test/DemaConsulting.AgentKit.Agents.Copilot.LiveTests -c Release -p:CopilotSkipCliDownload=true
+dotnet test --project test/DemaConsulting.AgentKit.Agents.Copilot.LiveTests -c Release --no-build `
+    --report-trx --results-directory artifacts/live/installed
 ```
+
+On the bundled runtime, build without the property, so the SDK provisions its runtime into the
+suite's output, and set `AGENTKIT_COPILOT_LIVE_RUNTIME` to `bundled`.
+
+To try a CLI version without touching the machine's own installation, download the standalone CLI
+release archive for the platform (`gh release download v<version> --repo github/copilot-cli`), check it
+against the release's `SHA256SUMS.txt`, extract it to a scratch folder and name it with
+`AGENTKIT_COPILOT_LIVE_CLI_PATH`. Point `LOCALAPPDATA` (Windows) or `XDG_CACHE_HOME` (elsewhere) at
+a scratch folder in that shell only, **after** the build: the CLI unpacks its package into that cache,
+which the user's interactive `copilot` shares, and an unpacked newer version there would change what
+the user's own CLI runs. Delete the scratch folders afterwards.
 
 **In CI**, by the `live-copilot-suite` job of `.github/workflows/live_samples.yaml`. It runs only when
 the workflow is dispatched and on its weekly schedule, never on a pull request or an ordinary push.
 It runs on `ubuntu-latest`, authenticates from the `COPILOT_GH_TOKEN` secret, and uses the dispatch's
 `model` input or `claude-haiku-5.5` by default. When no credential is configured it reports that it
-was skipped and succeeds, so it cannot fail a repository that holds no credential.
+was skipped and succeeds, so it cannot fail a repository that holds no credential. It is a matrix of
+three variants, none of which stops the others: `installed-minimum` installs the standalone CLI at
+the minimum version AgentKit supports, `installed-latest` the latest release — the early warning for
+a CLI that has moved to a protocol this release does not speak — and both put it on `PATH` and let
+discovery find it; `bundled` runs the SDK's provisioned runtime. Each installed variant verifies the
+downloaded archive against the release's checksums.
 
-**Evidence**: the CI job uploads `artifacts/live/` as the workflow artifact `live-copilot-suite`,
-holding the TRX test results and the run's `live-*.log`. A manual run leaves the TRX in
-`artifacts/live/` too, and the log beside it when `AGENTKIT_COPILOT_LIVE_LOG_DIRECTORY` points there.
+**Evidence**: each CI variant uploads `artifacts/live/` as the workflow artifact
+`live-copilot-suite-<variant>`, holding the TRX test results and the run's `live-*.log`. A manual run
+leaves the TRX in `artifacts/live/` too, and the log beside it when
+`AGENTKIT_COPILOT_LIVE_LOG_DIRECTORY` points there.
 
 ### Live Scenarios
 
-Every test name carries the prefix `AgentKitAgentsCopilotLive_`, omitted in the table. Twenty-five tests
-cover fifteen scenarios; the agent scenario, L10, is three tests, the ambient-server scenario, L12, is
+Every test name carries the prefix `AgentKitAgentsCopilotLive_`, omitted in the table. Twenty-six tests
+cover sixteen scenarios; the agent scenario, L10, is three tests, the ambient-server scenario, L12, is
 four, and the MCP-source scenario, L14, is six.
 
 | # | Test | Recorded result |
 | --- | --- | --- |
+| L0 | `Runtime_ReportsASupportedRuntime` | Pass (installed and bundled) |
 | L1 | `Confinement_EmptyModeCustomAllowList_ExposesOnlySuppliedTools` | Pass |
 | L2 | `Confinement_BareAllowList_WouldAdmitBuiltIns` | Pass (admitted `powershell`, `view`) |
 | L3 | `BuiltInToolNames_AreAllReserved` | Pass (15 Windows built-ins) |
@@ -491,6 +545,10 @@ four, and the MCP-source scenario, L14, is six.
 What each asserts. Assertions are made on the runtime's events and metadata wherever possible; the
 few that rest on the model's prose are marked.
 
+- **L0**: the fixture's runtime reports the protocol version this release supports and a version;
+  on the installed CLI it reports the CLI it runs — the named one when a path was given — and a
+  version at least the minimum, read from the started runtime; on the bundled runtime it reports no
+  CLI path.
 - **L1**: a session built from the package's confinement reports, through the runtime's own account
   of its current tools, exactly the supplied tools and no built-in.
 - **L2**: a control. The same options with bare names in the allow-list admit a built-in sharing a
@@ -576,23 +634,24 @@ few that rest on the model's prose are marked.
 
 ### Live Acceptance Criteria
 
-A live run passes when every test that is not skipped passes. A run in which every test was skipped
-because the gate variable was unset is not evidence of anything and is not recorded as a pass. A
-failure of L1, L2, L5 or L6 means a confined session is not confined on the real runtime; of L3 or L4,
-that the reserved-name set or the guard no longer matches the runtime; of L7 or L8, that a tool's
-result does not reach the model intact; of L9, that the session engine does not hold on the
-runtime's own usage; of L10a to L10c, that the agent does not stream, resume or deliver attachments
-as designed; of L11, that a host's Copilot variable reaches the runtime AgentKit starts, or that the
-control no longer fails, so L11 proves nothing; of L12a, that an ambient
-MCP server survives the confinement; of L12b, that the fixture no longer injects one, so L12a proves
-nothing; of L12c, that the seal's session-scoped disable does not take effect on the real runtime;
-of L12d, that the resume-time disabled list is not honored on a session resumed through the
-channel; of L13, that an agent definition or built-in sub-agent reaches a confined session; of L14a,
-L14c or L14e, that an MCP server of that source starts on the runtime AgentKit owns, or, for L14a,
-that some server of any source started — a renamed built-in server, or a managed-catalog or account
-server for the run's account; of L14b, L14d or L14f, that the probe no longer runs without the
-protection, so the paired scenario proves nothing; of L15, that an ambient channel reaches a session.
-Any such failure is investigated before a release.
+A live run passes when every test that is not skipped passes. A run in which every test was skipped because the gate
+variable was unset is not evidence of anything and is not recorded as a pass. A fixture that refuses to start the
+selected runtime fails every test with the refusal; on the installed variants that is the version check or discovery
+working as designed against a machine without a supported CLI, and the refusal's text, which the fixture writes to the
+run's log as "Runtime start refused: …", is the evidence. A failure of L0
+means the runtime that started is not the one selected or not a supported version. A failure of L1, L2, L5 or L6 means a
+confined session is not confined on the real runtime; of L3 or L4, that the reserved-name set or the guard no longer
+matches the runtime; of L7 or L8, that a tool's result does not reach the model intact; of L9, that the session engine
+does not hold on the runtime's own usage; of L10a to L10c, that the agent does not stream, resume or deliver attachments
+as designed; of L11, that a host's Copilot variable reaches the runtime AgentKit starts, or that the control no longer
+fails, so L11 proves nothing; of L12a, that an ambient MCP server survives the confinement; of L12b, that the fixture no
+longer injects one, so L12a proves nothing; of L12c, that the seal's session-scoped disable does not take effect on the
+real runtime; of L12d, that the resume-time disabled list is not honored on a session resumed through the channel; of
+L13, that an agent definition or built-in sub-agent reaches a confined session; of L14a, L14c or L14e, that an MCP
+server of that source starts on the runtime AgentKit owns, or, for L14a, that some server of any source started — a
+renamed built-in server, or a managed-catalog or account server for the run's account; of L14b, L14d or L14f, that the
+probe no longer runs without the protection, so the paired scenario proves nothing; of L15, that an ambient channel
+reaches a session. Any such failure is investigated before a release.
 
 ### Recorded Run
 
@@ -669,11 +728,77 @@ agent scenarios' cleanup moved from the client's session deletion to `CopilotRun
 to the same SDK call. After the branch was rebased onto large tool output retention, the whole suite was
 run again on 2026-11-21, on the same machine and model, with `COPILOT_CLI_PATH` removed from the shell first and no
 filter; all 25 tests passed, in 5 minutes 22 seconds, including L10a to L10c, so the agent scenarios' cleanup through
-`CopilotRuntime.DeleteSessionAsync` held on the real runtime. Later runs of the CI job record their results in the
-`live-copilot-suite` artifact of each workflow run.
+`CopilotRuntime.DeleteSessionAsync` held on the real runtime.
+
+When the installed Copilot CLI became the default runtime, the suite — now 26 tests with L0 — was run
+on 2026-11-21, on the same machine and model, once on each runtime source, with `COPILOT_CLI_PATH`
+removed from the shell first and each run's log written to its own folder through
+`AGENTKIT_COPILOT_LIVE_LOG_DIRECTORY`. Before the runs, the machine's WinGet installation reported
+1.0.114 both to `copilot --version` and to `copilot --no-auto-update --version`.
+
+- **Installed CLI, found by discovery.** Built with `CopilotSkipCliDownload` set, so the output held no
+  bundled runtime, and run with `AGENTKIT_COPILOT_LIVE_RUNTIME` set to `installed` and no CLI path.
+  Discovery chose the WinGet `copilot.exe` under
+  `%LOCALAPPDATA%\Microsoft\WinGet\Packages\GitHub.Copilot_…`, the first on `PATH`, ahead of the
+  Visual Studio Code launcher that follows it. All 26 tests passed, in 8 minutes 17 seconds. L0
+  reported that CLI, version 1.0.114 and protocol 4; the start, including discovery and the version
+  probe, took 4 seconds. L3 listed 15 Windows built-ins; L9 rotated three times; L11's in-process
+  control failed with `FFI runtime library not found` on the bogus folder while the owned runtime
+  exposed exactly the two supplied tools; L15 listed no plugin, skill, instruction source or agent,
+  with a system prompt of 3,252 tokens against 3,461 for the control.
+- **Bundled runtime.** Built without the property, so the SDK provisioned its runtime into the
+  suite's output, and run with `AGENTKIT_COPILOT_LIVE_RUNTIME` set to `bundled`. All 26 tests passed,
+  in 6 minutes 23 seconds; L0 reported no CLI path, version 1.0.114 and protocol 4, and the start took
+  1 second. L3, L9, L11 and L15 observed the same as on the installed CLI, with 3,463 tokens for L15's
+  control.
+- **Refusal of a CLI older than the minimum.** The standalone CLI 1.0.106 release for Windows, from a
+  scratch folder, named with `AGENTKIT_COPILOT_LIVE_CLI_PATH`, with `LOCALAPPDATA` pointed at a
+  scratch folder in that shell only, so the CLI unpacked its package there rather than into the
+  user's cache; only L0 was run. The probe, including that first unpacking, took 37 seconds, and the
+  start was refused before any runtime started. The fixture's log recorded: "Runtime start refused:
+  InvalidOperationException: The Copilot CLI at '…\106\copilot.exe' is version 1.0.106, which is too
+  old for AgentKit: it needs version 1.0.113 or later, which speaks SDK protocol version 4. AgentKit
+  starts the CLI with --no-auto-update, which runs the version built into the installed executable;
+  check that version with 'copilot --no-auto-update --version'. A newer version that auto-update or
+  'copilot update' downloaded is kept in the CLI's package cache, and 'copilot --version' can report
+  it, but AgentKit does not run it; only upgrading the installation itself changes the version
+  AgentKit runs. Upgrade the installation itself: …", followed by the upgrade command per
+  installation method (`winget upgrade GitHub.Copilot`, `brew upgrade --cask copilot-cli`,
+  `npm install -g @github/copilot@latest`, the install script again) and the `cliPath` and
+  `CopilotRuntimeSource.Bundled` alternatives. The elided folder is the scratch folder.
+- **Refusal of the last version before the minimum.** Re-recorded later on 2026-11-21 with a stand-in
+  console program, `copilot.exe`, built in a scratch folder, that prints `GitHub Copilot CLI 1.0.112.`
+  and exits, named the same way; only L0 was run. The start was refused 0.2 seconds after it began,
+  before any runtime started, with the same text naming the stand-in's path and version 1.0.112.
+- **Refusal of a batch file.** An empty `copilot.cmd` in a scratch folder, named the same way; only L0
+  was run. The start was refused when the options were built, before any process started, with
+  "ArgumentException: The Copilot CLI path '…\copilot.cmd' is a batch file, which Windows runs through
+  cmd.exe; AgentKit runs the Copilot CLI without a shell. Pass the full path of copilot.exe - such as
+  the one CopilotCli.FindInstalled() returns - or, for an npm installation, the package's
+  npm-loader.js (under %APPDATA%\npm\node_modules\@github\copilot), which AgentKit runs with node.
+  (Parameter 'cliPath')". The file was never run.
+- **The version that runs.** Measured beforehand with scratch caches, leaving the user's cache
+  untouched: the standalone 1.0.106 executable, with a cache that already held an unpacked 1.0.114,
+  reported 1.0.106 to `--no-auto-update --version` and 1.0.114 without the switch — the newest cached
+  package. The machine's WinGet executable had itself been upgraded earlier that day, so its built-in
+  version was 1.0.114 and both commands reported 1.0.114. The installation, not a downloaded package,
+  decides the version AgentKit runs.
+- **Earlier evidence.** Earlier on 2026-11-21, before the refusal text took its present wording and
+  with the same discovery, probe and launch code, the standalone CLI 1.0.113 release (checked against
+  the release's `SHA256SUMS.txt`), named by `AGENTKIT_COPILOT_LIVE_CLI_PATH` with a scratch
+  `LOCALAPPDATA`, passed all 26 tests, and `@github/copilot` 1.0.113 installed with npm into a scratch
+  prefix and named by its `npm-loader.js`, which AgentKit probes and the SDK runs under `node`, passed
+  L0 and L1, reporting version 1.0.113 and protocol 4 and exactly the two supplied tools.
+
+Afterwards the scratch folders, including those of the re-recorded refusals, were deleted, and the
+machine's `copilot --version` and `copilot --no-auto-update --version` still reported 1.0.114 and its
+package cache held the same versions as before the runs. Later runs of the CI job record their results
+in the `live-copilot-suite-<variant>` artifacts of each workflow run.
 
 **Platform coverage.** Every recorded live run of the owned runtime ran on Windows; the spawned
-runtime has not yet run live on Linux. The `live-copilot-suite` job, which runs on `ubuntu-latest`
-weekly and on dispatch, gives the first Linux evidence and records it in its artifact. The hermetic
+runtime has not yet run live on Linux, and discovery's macOS and Linux locations are verified only by
+the hermetic tests. The `live-copilot-suite` job, which runs on `ubuntu-latest` weekly and on
+dispatch, gives the first Linux evidence, including discovery of a CLI on `PATH`, and records it in
+its artifacts. The hermetic
 tests, including those for the client options, the withheld environment and the data-directory
 marking, run in the CI matrix on Linux.
