@@ -1,0 +1,174 @@
+---
+# Software Unit Requirements for CopilotCli
+#
+# These requirements describe the design-level behavior of the CopilotCli unit: finding the
+# installed GitHub Copilot CLI the runtime runs by default, reading the version that CLI runs under
+# the SDK, and refusing a version the library does not support with guidance a user can act on.
+
+sections:
+  - title: AgentKitAgentsCopilot Requirements
+    sections:
+      - title: CopilotCli Requirements
+        requirements:
+          - id: AgentKitAgentsCopilot-CopilotCli-FindsTheInstalledCli
+            title: >-
+              The CLI discovery shall find the installed Copilot CLI on the search path and then in
+              the platform's well-known installation locations, choosing the first candidate that
+              exists and can be started without a shell, and shall never search a search-path entry
+              resolved against the current directory: a relative entry or, on Windows, a drive-relative
+              entry such as C:bin.
+            justification: |
+              The installed Copilot CLI is the default runtime, so a host that names none needs it
+              found wherever the usual installation methods put it: on the search path, or where
+              WinGet, Homebrew, Linuxbrew, npm or the install script place it when the search path does
+              not reach it. Only a file that can be started directly is a candidate, because the runtime
+              is spawned without a shell: npm's command and PowerShell shims on Windows, and a file
+              without an execute bit elsewhere, cannot be; npm's script entry point is run with Node.js
+              and needs no execute bit. A relative search-path entry, or on Windows a drive-relative one
+              that resolves against the drive's current directory, would let the current directory
+              supply the executable a confined runtime runs. A root-relative Windows entry such as \bin is
+              searched: it names a folder at the root of the current drive, never one below the current
+              directory. npm's global package is looked for under npm's default prefix only; an
+              installation under a custom npm prefix is named with the CLI path option.
+            tests:
+              - CopilotCli_FindInstalled_OnPath_ReturnsFirstPathMatch
+              - CopilotCli_FindInstalled_OnPathAndWellKnown_PrefersPath
+              - CopilotCli_FindInstalled_WindowsCmdAndPs1OnPath_AreNotCandidates
+              - CopilotCli_FindInstalled_WinGetPackage_IsFound
+              - CopilotCli_FindInstalled_WinGetLink_IsFound
+              - CopilotCli_FindInstalled_NpmLoaderOnWindows_IsFound
+              - CopilotCli_FindInstalled_HomebrewOnMacOS_IsFound
+              - CopilotCli_FindInstalled_UsrLocalBinOnMacOS_IsFound
+              - CopilotCli_FindInstalled_LocalBinOnLinux_IsFound
+              - CopilotCli_FindInstalled_LinuxbrewOnLinux_IsFound
+              - CopilotCli_FindInstalled_NpmLoaderOnUnix_IsFound
+              - CopilotCli_FindInstalled_UnixWithoutExecuteBit_IsNotACandidate
+              - CopilotCli_FindInstalled_RelativePathEntries_AreNotSearched
+              - CopilotCli_FindInstalled_DriveRelativePathEntries_AreNotSearched
+              - CopilotCli_FindInstalled_CurrentMachine_ReturnsAResult
+
+          - id: AgentKitAgentsCopilot-CopilotCli-SkipsLaunchers
+            title: >-
+              The CLI discovery shall pass over an editor's Copilot launcher, such as the one Visual
+              Studio Code puts on the search path, and report it as passed over.
+            justification: |
+              The launcher forwards to another CLI and, when it finds none, can offer to install one
+              interactively, which a runtime spawned without a terminal cannot answer. Choosing it would
+              make the executable AgentKit runs depend on what the launcher finds, so the real CLI is
+              chosen instead, and the launcher is reported so a user can see why it was not used.
+            tests:
+              - CopilotCli_FindInstalled_VsCodeShimFolder_IsSkippedAndReported
+              - CopilotCli_FindInstalled_LauncherMarkerInSmallFile_IsSkippedAndReported
+              - CopilotCli_FindInstalled_LauncherMarkerScanLimit_LargerFileIsNotScanned
+
+          - id: AgentKitAgentsCopilot-CopilotCli-ReportsWhereItLooked
+            title: >-
+              The CLI discovery shall report every location it searched and every candidate it passed
+              over, in a report that does not change once returned, and its explanation for a CLI it
+              did not find shall name them, how to install the CLI, the minimum version, and the
+              alternatives of naming a CLI or using the bundled runtime.
+            justification: |
+              A host author whose machine has no CLI, or a CLI where discovery does not look, needs to
+              see where AgentKit looked to fix it, and a single place to read the installation command
+              for the platform. The alternatives keep a machine without a suitable CLI usable. A host
+              can keep the report and show it from any thread, so it does not change after discovery
+              returns it.
+            tests:
+              - CopilotCli_FindInstalled_NothingInstalled_ReturnsNullWithSearchedLocations
+              - CopilotCli_FindInstalled_SameCandidateTwice_IsSearchedOnce
+              - CopilotCli_ExplainNotFound_ListsSearchedSkippedAndInstallCommands
+              - CopilotCliSearchResult_Constructor_CallerListsChanged_ResultUnchanged
+
+          - id: AgentKitAgentsCopilot-CopilotCli-ReadsTheVersionTheRuntimeRuns
+            title: >-
+              The CLI version check shall read the version the installed CLI runs when started without
+              automatic updates, running it without a shell, under the runtime's withheld environment
+              and data directory, within a bounded time, and through Node.js for an npm installation's
+              script entry point.
+            tags: [security]
+            justification: |
+              The SDK starts the CLI with automatic updates off, which makes the CLI run the version
+              built into the installed binary rather than a newer one it downloaded, so the version that
+              matters is the one the CLI reports under the same switch; the interactive version can be
+              newer. The check runs the CLI, so it runs under the runtime's environment: no shell, none
+              of the host's Copilot configuration variables, and the library's data directory as its
+              home; the SDK's own additions when it spawns the runtime, the keychain switch and a token,
+              do not affect the version the CLI prints. The first run of a CLI version unpacks it, which
+              can take well over half a minute, so the time limit is generous but bounded: the probe and
+              its output are bounded by the limit, and a process that runs too long, holds its output
+              open too long, or is canceled is stopped (see StopsWhatTheProbeStarted). Output that names no
+              version is left to the SDK's protocol handshake, which refuses an incompatible runtime on
+              its own.
+            tests:
+              - CopilotCli_ReadVersionAsync_RunsTheCliWithNoAutoUpdateAndVersion
+              - CopilotCli_ReadVersionAsync_RunsWithTheRuntimeEnvironmentAndDataDirectoryHome
+              - CopilotCli_ReadVersionAsync_JsLoader_RunsUnderNodeFromPath
+              - CopilotCli_ReadVersionAsync_NoVersionInOutput_ReturnsNull
+              - CopilotCli_ParseVersion_CliBanner_ReturnsVersion
+              - CopilotCli_ParseVersion_PrereleaseSuffix_ReturnsCoreVersion
+              - CopilotCli_ParseVersion_NoVersion_ReturnsNull
+              - CopilotCli_RunProcessAsync_RealProcess_CapturesOutputAndExitCode
+              - CopilotCli_RunProcessAsync_ExceedsTimeout_KillsAndReportsTimedOut
+              - CopilotCli_RunProcessAsync_ExitsWithOutputHeldOpen_ReportsTimedOut
+              - CopilotCli_RunProcessAsync_Canceled_KillsAndThrowsOperationCanceled
+
+          - id: AgentKitAgentsCopilot-CopilotCli-StopsWhatTheProbeStarted
+            title: >-
+              The CLI version check shall stop a probe that runs too long, holds its output open too long
+              or is canceled, together with the processes it started: on Windows every process the probe
+              started after it was placed in its job object, on Linux every process still in its tree or
+              holding its output open, and elsewhere every process still in its tree; on Windows it shall
+              also stop any process in the job that the probe left running when the run ends.
+            justification: |
+              A probe that exits while a process it started holds its output open would otherwise leave
+              that process running after the run reports a time-out. Stopping the probe's tree finds
+              descendants through their parent process IDs, so it misses a process whose parent has
+              exited. On Windows a job object holds every process the probe starts once it is assigned,
+              whatever becomes of its parent, and closing the job ends what is left; a process started in
+              the moment between the probe's start and its assignment is stopped only through the tree.
+              On Linux the processes holding the probe's output pipes are exactly those keeping the probe
+              open, and /proc names them. On macOS, .NET 8 to 10 offer no comparable means, so only the
+              tree is stopped there; the library's ends of the pipes are still closed when the run
+              returns.
+            tests:
+              - CopilotCli_RunProcessAsync_ExceedsTimeout_KillsAndReportsTimedOut
+              - CopilotCli_RunProcessAsync_Canceled_KillsAndThrowsOperationCanceled
+              - windows@CopilotCli_RunProcessAsync_ExitsWithOutputHeldOpen_StopsTheProcessHoldingIt
+              - ubuntu@CopilotCli_RunProcessAsync_ExitsWithOutputHeldOpen_StopsTheProcessHoldingIt
+              - windows@CopilotCliProcessTree_Dispose_ProbeLeftAChildRunning_StopsIt
+
+          - id: AgentKitAgentsCopilot-CopilotCli-RequiresTheMinimumVersion
+            title: >-
+              The CLI version check shall accept only a CLI at least the minimum version that speaks
+              the SDK protocol the library supports, and its refusal shall name the CLI, the version
+              found, the version required, how to check the version the library runs, how to upgrade
+              each installation method, and the alternatives; a runtime reporting a newer protocol
+              shall be explained as newer than the library supports.
+            justification: |
+              The SDK accepts exactly one protocol version, and an older CLI fails its handshake with a
+              message that tells the user to update the SDK, which is not the remedy. Because automatic
+              updates are off, a user who updated the CLI interactively can still have an old built-in
+              version, so the refusal says how to check the version the library runs and that only an
+              upgrade of the installation itself changes it. A CLI newer than the library supports
+              needs a newer library, not a CLI upgrade.
+            tests:
+              - CopilotCli_IsSupported_ComparesWithMinimumVersion
+              - CopilotCli_MinimumVersion_IsTheFirstCliOnTheSupportedProtocol
+              - CopilotCli_ExplainTooOld_NamesVersionsPathAndUpgradeCommands
+              - CopilotCli_ExplainProtocolMismatch_OlderServer_GivesUpgradeGuidance
+              - CopilotCli_ExplainProtocolMismatch_NewerServer_AdvisesUpdatingAgentKit
+              - CopilotCli_ParseServerProtocol_SdkMismatchMessage_ReturnsTheServerVersion
+
+          - id: AgentKitAgentsCopilot-CopilotCli-ExplainsAProbeThatFails
+            title: >-
+              The CLI version check shall refuse a CLI that cannot be started, exits with an error, or
+              does not finish in time, and an npm installation without Node.js, naming the CLI, the
+              command and the failure, and the end of the CLI's error output.
+            justification: |
+              A CLI that cannot report its version cannot be trusted to run as the runtime, and the raw
+              process failure names neither the CLI nor the remedy.
+            tests:
+              - CopilotCli_ReadVersionAsync_JsLoaderWithoutNode_ThrowsNamingNode
+              - CopilotCli_ReadVersionAsync_TimedOut_ThrowsNamingTheTimeout
+              - CopilotCli_ReadVersionAsync_NonZeroExit_ThrowsWithStandardError
+              - CopilotCli_ReadVersionAsync_CannotStart_ThrowsNamingTheCli

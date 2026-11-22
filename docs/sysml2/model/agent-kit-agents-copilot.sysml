@@ -2,6 +2,7 @@ package AgentKitAgentsCopilot {
     private import SoftwareItemMetadata::*;
     private import AgentKitAgentsCopilot_CopilotAgent::*;
     private import AgentKitAgentsCopilot_CopilotAgentFactory::*;
+    private import AgentKitAgentsCopilot_CopilotCli::*;
     private import AgentKitAgentsCopilot_CopilotProviderSession::*;
     private import AgentKitAgentsCopilot_CopilotProviderSessionFactory::*;
     private import AgentKitAgentsCopilot_CopilotRuntime::*;
@@ -12,7 +13,8 @@ package AgentKitAgentsCopilot {
     doc
     /*
      * AgentKitAgentsCopilot builds AgentKit's own Microsoft Agent Framework agent on a Copilot
-     * runtime it starts and owns (Empty mode, the host's COPILOT_ and GITHUB_COPILOT_ variables
+     * runtime it starts and owns (the installed Copilot CLI by default, version-checked, or the SDK's
+     * bundled runtime on request; Empty mode, the host's COPILOT_ and GITHUB_COPILOT_ variables
      * withheld apart from an allow-listed credential, network and telemetry-off set, a data directory it owns) and a
      * supplied tool list, suppressing the runtime's built-in tools by
      * deriving a source-qualified session allow-list from the same collection it publishes as the
@@ -30,7 +32,8 @@ package AgentKitAgentsCopilot {
      * one conversation, ending a session outright when the runtime is left holding a turn the
      * engine's transcript does not. It carries the Microsoft.Copilot.SDK and
      * Microsoft.Agents.AI.Abstractions dependencies that must be kept out of Core; the SDK's
-     * RID-specific native runtime is provisioned by the host application, never by this library.
+     * RID-specific native runtime is provisioned only by a host application that opts into the bundled
+     * runtime, never by this library.
      */
 
     part def AgentKitAgentsCopilotSystem {
@@ -45,6 +48,7 @@ package AgentKitAgentsCopilot {
 
         part copilotAgent : CopilotAgent;
         part copilotAgentFactory : CopilotAgentFactory;
+        part copilotCli : CopilotCli;
         part copilotProviderSession : CopilotProviderSession;
         part copilotProviderSessionFactory : CopilotProviderSessionFactory;
         part copilotRuntime : CopilotRuntime;

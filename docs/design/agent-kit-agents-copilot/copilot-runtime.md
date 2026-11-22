@@ -3,8 +3,10 @@
 ![AgentKit Copilot Agents Structure](AgentKitAgentsCopilotView.svg)
 
 The `CopilotRuntime` class is the GitHub Copilot runtime AgentKit starts, confines and owns.
-`CopilotRuntimeOptions` carries the few options a host may give it. Every agent, provider-session
-factory and summarizer in this system runs on a `CopilotRuntime`; none accepts a client the host built.
+`CopilotRuntimeOptions` carries the few options a host may give it, and `CopilotRuntimeSource` names
+the two executables it can run: the Copilot CLI installed on the machine (the default) or the runtime
+`Microsoft.Copilot.SDK` bundles. Every agent, provider-session factory and summarizer in this system
+runs on a `CopilotRuntime`; none accepts a client the host built.
 
 ### Purpose
 
@@ -28,6 +30,15 @@ So AgentKit does not take a client; it builds one. Only options that cannot wide
 model are expressible, which matches the project's principle that an unsafe configuration should be
 impossible to express rather than refused when used.
 
+**Which executable runs is a separate decision from how it is confined.** By default the runtime is
+the Copilot CLI installed on the machine, so an application ships no runtime; the runtime the SDK
+bundles is the opt-in for a machine without a suitable CLI. The choice is the host's code — an
+explicit CLI path or `CopilotRuntimeSource.Bundled` — and never the ambient environment. Whichever
+executable is chosen, everything below the executable is the same code path: Empty mode, a child
+process over stdio, the withheld environment and the data directory AgentKit owns. Finding the CLI
+and checking its version belong to the *CopilotCli Unit Design*; this unit decides which executable
+to launch, launches it, and verifies the started runtime.
+
 ### Data Model
 
 `CopilotRuntimeOptions` (immutable, safe for concurrent use):
@@ -39,6 +50,20 @@ impossible to express rather than refused when used.
   normalized to `null`) to authenticate as the signed-in user.
 - **`LogLevel`** (`CopilotLogLevel?`) — the runtime's log level, or `null` for its default.
 - **`Logger`** (`ILogger?`) — a logger for the SDK's diagnostic output.
+- **`RuntimeSource`** (`CopilotRuntimeSource`) — `InstalledCli` (the default) or `Bundled`; an
+  undefined value is refused with `ArgumentOutOfRangeException`.
+- **`CliPath`** (`string?`) — the installed CLI to run, or `null` to let discovery choose. A blank
+  path is normalized to `null`; a path that is not fully qualified, names a batch file (`.cmd`/`.bat`,
+  which Windows would run through `cmd.exe`), is not a valid path, or is given with `Bundled` is
+  refused with `ArgumentException` naming `cliPath`. Its existence is checked at
+  start, because a CLI may be installed after the options are built. Always `null` for `Bundled`.
+
+`CopilotRuntimeSource` (public enumeration): `InstalledCli = 0`, `Bundled = 1`.
+
+`CopilotRuntimeLaunch` (internal record): what `StartAsync` launched — the `Source`, the installed
+CLI's `CliPath` (`null` for the bundled runtime) and the `CliVersion` it reported (`null` for the
+bundled runtime or when its output named none). It travels from `ResolveLaunchAsync` to
+`StartClientAsync`, so a start failure is explained for what was actually launched.
 
 `CopilotRuntime`:
 
@@ -53,6 +78,11 @@ impossible to express rather than refused when used.
   them to the platform cache folder (`%LOCALAPPDATA%` on Windows, `XDG_CACHE_HOME` or its default
   elsewhere), because the SDK sets `COPILOT_CACHE_HOME` only for in-process hosting and the host's own
   copy is withheld.
+- **`CliPath`** (`string?`) — the installed CLI the runtime runs, or `null` for the bundled runtime
+  (and for a runtime a test built without a launch); available after disposal.
+- **`RuntimeVersion`** (`string`) and **`ProtocolVersion`** (`int`) — what the started runtime
+  reported through the SDK's status call, so a host can log the version that actually runs; empty and
+  0 for a runtime a test built without a status; available after disposal.
 - **`PassThroughVariables`** (`FrozenSet<string>`) — the `COPILOT_` variables that reach the runtime:
   `COPILOT_GITHUB_TOKEN`, `COPILOT_GH_HOST`, `COPILOT_SYSTEM_PROXY`, `COPILOT_PROXY_KERBEROS`,
   `COPILOT_PROXY_KERBEROS_SPN`, `COPILOT_TELEMETRY_DISABLED` and `COPILOT_GITHUB_TELEMETRY_DISABLED`.
@@ -75,15 +105,60 @@ impossible to express rather than refused when used.
 
 1. Reject null options; honor a cancellation already requested.
 2. Prepare the data directory (`PrepareDataDirectory`), so a foreign directory is refused before any
-   runtime reads it.
-3. Build the client options (`BuildClientOptions`) from the options, the prepared directory and the
-   process environment, read once.
-4. Create the client and start it through `StartOwnedAsync`, whose start step is `StartClientAsync`
-   over the client's own start. A failed or canceled start disposes the client.
-5. Return a runtime over the started client.
+   discovery, probe or runtime reads it.
+3. Read the process environment once.
+4. Resolve the launch (`ResolveLaunchAsync`) with the current machine's search context and the real
+   process runner: for the installed CLI, find it and check its version, refusing an unsupported one
+   before any client exists.
+5. Build the client options (`BuildClientOptions`) from the options, the prepared directory, the
+   environment and the resolved CLI path.
+6. Create the client and start it through `StartOwnedAsync`, whose start step is `StartClientAsync`
+   over the client's own start with the launch, followed by `VerifyStartedAsync` over the client's
+   status and authentication reads. A failed, canceled or unauthenticated start disposes the client.
+7. Return a runtime over the started client, carrying the launch and the status.
 
-**Postconditions:** The runtime process is running on the prepared data directory; the caller owns
-the runtime and disposes it.
+**Postconditions:** The runtime process — the installed CLI or the bundled runtime — is running on
+the prepared data directory and is signed in; the caller owns the runtime and disposes it.
+
+#### ResolveLaunchAsync(options, dataDirectory, hostEnvironment, context, runner, cancellationToken)
+
+**Purpose:** Decide which executable a runtime runs, and check an installed CLI before it is used.
+
+**Algorithm:**
+
+1. For `Bundled`, return a bundled launch: nothing is searched or run, because the SDK provisioned
+   that runtime and pins its version.
+2. Otherwise take the host's `CliPath` when one is given, refusing it with `InvalidOperationException`
+   (`CopilotCli.ExplainExplicitPathMissing`) when the search context reports no such file; else run
+   discovery (`CopilotCli.FindInstalled(context)`), refusing with `CopilotCli.ExplainNotFound` when it
+   finds none. `COPILOT_CLI_PATH` is never read.
+3. Read the CLI's version (`CopilotCli.ReadVersionAsync`), passing `BuildRuntimeEnvironment` of the host's environment,
+   so the probe runs under the runtime's own environment and data directory. A version below `CopilotCli.MinimumVersion`
+   is refused with `CopilotCli.ExplainTooOld`. Output that names no version is accepted, because the SDK's protocol
+   handshake at start is authoritative and fails closed.
+4. Return an installed launch with the path and the version.
+
+The search context and the process runner are parameters, so every outcome is tested on a fake
+machine without a CLI.
+
+#### VerifyStartedAsync(readStatus, readAuthentication, cancellationToken)
+
+**Purpose:** Read what the started runtime is and refuse one that is not signed in.
+
+**Algorithm:** Read the status (version and protocol version), then the authentication status. When
+the runtime is not authenticated, throw `InvalidOperationException` with `ExplainUnauthenticated`;
+otherwise return the status. Run inside `StartOwnedAsync`'s start step, so a refused runtime's client
+is disposed. The reads are delegates so the outcome is testable with fabricated SDK responses.
+
+#### ExplainUnauthenticated(GetAuthStatusResponse authentication)
+
+**Purpose:** Tell a user how to sign the runtime in.
+
+**Algorithm:** The runtime's own status message, if any; that the Copilot CLI's own sign-in is not
+used, because the runtime keeps credentials in AgentKit's data directory with the system keychain off;
+then every remedy — the `gitHubToken` option, `COPILOT_GITHUB_TOKEN`, `GH_TOKEN` or `GITHUB_TOKEN`,
+`gh auth login` with `gh` on `PATH`, and `COPILOT_GH_HOST` for GitHub Enterprise Cloud with data
+residency.
 
 #### PrepareDataDirectory(string dataDirectory)
 
@@ -170,15 +245,17 @@ the replacement environment. An entry whose name or value is not a string is ski
 adds its own settings — the data directory as `COPILOT_HOME`, the switch that keeps credentials out
 of the system keychain, and a supplied token — so those cannot be overridden from the host either.
 
-#### BuildClientOptions(CopilotRuntimeOptions options, string dataDirectory, IDictionary hostEnvironment)
+#### BuildClientOptions(CopilotRuntimeOptions options, string dataDirectory, IDictionary hostEnvironment, string? cliPath)
 
 **Purpose:** The single place the client is configured.
 
 **Algorithm:** Set `Mode` to `CopilotClientMode.Empty` and `Runtime` to
-`RuntimeConnection.ForSpawnedStdio(environment: BuildRuntimeEnvironment(hostEnvironment),
-baseDirectory: dataDirectory)`, with no runtime path, no arguments and no child working directory.
-Copy the token, log level and logger. Everything else keeps the SDK's default, which for every
-capability channel is none.
+`RuntimeConnection.ForSpawnedStdio(path: cliPath, environment: BuildRuntimeEnvironment(hostEnvironment),
+baseDirectory: dataDirectory)`, with no arguments and no child working directory. `cliPath` is the
+CLI `ResolveLaunchAsync` resolved, or `null` (the parameter's default) for the runtime the SDK
+provisions; the SDK would otherwise consult `COPILOT_CLI_PATH`, but reads it from the replacement
+environment, which withholds it. Copy the token, log level and logger. Everything else keeps the
+SDK's default, which for every capability channel is none, and is identical for both executables.
 
 The SDK's client options, classified:
 
@@ -188,7 +265,8 @@ The SDK's client options, classified:
 | `Runtime` spawned over stdio | Forced | A child process whose environment AgentKit decides |
 | ↳ `BaseDirectory` | Forced | The prepared data directory |
 | ↳ `Environment` | Forced | The host's minus Copilot configuration variables |
-| ↳ `Path`, `Args` | Not expressible | A foreign runtime or flags such as approve-all |
+| ↳ `Path` | Forced | The resolved installed CLI, or none for the bundled runtime |
+| ↳ `Args` | Not expressible | Flags such as approve-all |
 | ↳ `WorkingDirectory`, `SessionIdleTimeoutSeconds` | Not exposed | Neutral; sessions carry a working directory |
 | In-process, spawned TCP | Not expressible | The host's whole environment; a TCP listener |
 | External TCP, default | Not expressible | A runtime not AgentKit's; an environment switch |
@@ -204,28 +282,37 @@ The SDK's client options, classified:
 | `Observability.Telemetry`, `Network`, `ClientInfo` | Not exposed | Neutral; deferred |
 | `Entra`, `Models.OnListModels`, `GitHub.OnTelemetry` | Not exposed | Neutral; deferred |
 
-#### StartClientAsync(Func&lt;CancellationToken, Task&gt; start, CancellationToken cancellationToken)
+#### StartClientAsync(Func&lt;CancellationToken, Task&gt; start, CopilotRuntimeLaunch? launch, CancellationToken cancellationToken)
 
-**Purpose:** Run a client's start and explain its failure. Shared by `StartAsync` and by the turn
-channel's discovery, which starts a client idempotently before using its RPC surface.
+**Purpose:** Run a client's start and explain its failure for what was launched. `StartAsync` passes
+its launch; an overload without the launch passes `null` and serves the turn channel's discovery,
+which starts a client idempotently before using its RPC surface.
 
 **Algorithm:** Await the start. An `OperationCanceledException` propagates unchanged. Any other
 exception is rethrown as an `InvalidOperationException` whose message is `ExplainStartFailure` of it
-and whose `InnerException` is the original.
+and the launch, and whose `InnerException` is the original.
 
-#### ExplainStartFailure(Exception failure)
+#### ExplainStartFailure(Exception failure, CopilotRuntimeLaunch? launch)
 
 **Purpose:** Compose the explanation.
 
-**Algorithm:** The runtime's own error first. Then the runtime AgentKit runs (the one
-`Microsoft.Copilot.SDK` provisions into the application's output, as a child process), and the common
-cause of a runtime that was not found: a host application that does not reference
-`Microsoft.Copilot.SDK` directly, with the remedy of adding that reference. Then the pass-through set
-and the authentication sources — the token in the options, `COPILOT_GITHUB_TOKEN`, `GH_TOKEN`,
-`GITHUB_TOKEN` and the signed-in GitHub CLI user — so an authentication or network failure can be
-traced. A runtime path
-override can no longer be the cause, because `COPILOT_CLI_PATH` is withheld. A null message is
-tolerated.
+**Algorithm:** The runtime's own error first. Then the cause:
+
+- When the error is the SDK's protocol-version mismatch and the launch is not the bundled runtime,
+  `CopilotCli.ExplainProtocolMismatch` with the CLI's path and version and the protocol the runtime
+  reported: a CLI too old to upgrade, or one newer than this release of AgentKit.
+- For the bundled runtime, the runtime `Microsoft.Copilot.SDK` provisions into the application's
+  output and the common cause of a runtime that was not found — a host application that does not
+  reference `Microsoft.Copilot.SDK` directly — with the remedy of adding that reference or running the
+  installed CLI instead.
+- For an installed CLI, the CLI's path and version, that the error is that CLI's, and how to check it;
+  no package-reference advice.
+- When the launch is not known, both sources.
+
+Then the pass-through set and the authentication sources — the token in the options,
+`COPILOT_GITHUB_TOKEN`, `GH_TOKEN`, `GITHUB_TOKEN` and the signed-in GitHub CLI user — so an
+authentication or network failure can be traced. A runtime path override can no longer be the cause,
+because `COPILOT_CLI_PATH` is withheld. A null message is tolerated.
 
 #### StartOwnedAsync&lt;T&gt;(create, start, dispose, cancellationToken)
 
@@ -272,6 +359,13 @@ restart the client for that open. Disposal is not serialized against open runs, 
 | --- | --- |
 | Null options | `ArgumentNullException` |
 | Null, blank or invalid data directory | `ArgumentNullException` or `ArgumentException` naming `dataDirectory` |
+| Undefined runtime source | `ArgumentOutOfRangeException` naming `runtimeSource` |
+| CLI path relative, a batch file, invalid, or given with `Bundled` | `ArgumentException` naming `cliPath` |
+| Named CLI does not exist | `InvalidOperationException` before any client exists |
+| No installed CLI found | `InvalidOperationException` listing where AgentKit looked and how to install |
+| CLI version cannot be read, or is too old | `InvalidOperationException` before any client exists |
+| SDK refuses the runtime's protocol | client disposed; `InvalidOperationException` explaining too old or too new |
+| Started runtime not signed in | client disposed; `InvalidOperationException` naming every way to sign in |
 | Data directory path names a file | `InvalidOperationException` naming the path |
 | Non-empty data directory without the marker | `InvalidOperationException` naming the directory |
 | Directory or marker cannot be created | `IOException` or `UnauthorizedAccessException` propagates |
@@ -283,8 +377,11 @@ restart the client for that open. Disposal is not serialized against open runs, 
 
 ### Dependencies
 
-- **Microsoft.Copilot.SDK** — supplies `CopilotClient`, its options, the spawned stdio connection and
-  the provisioned runtime; see *Microsoft.Copilot.SDK Design*.
+- **CopilotCli** — discovery of the installed CLI, the version probe and policy, and the guidance its
+  refusals carry; see *CopilotCli Unit Design*.
+- **Microsoft.Copilot.SDK** — supplies `CopilotClient`, its options, the spawned stdio connection,
+  the status and authentication reads, the protocol handshake and the provisioned runtime; see
+  *Microsoft.Copilot.SDK Design*.
 
 ### Callers
 

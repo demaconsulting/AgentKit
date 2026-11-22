@@ -137,6 +137,9 @@ words:
   - nestings
   - unconfigured
   - marshalled
+  - linuxbrew
+  - pipefail
+  - JOBOBJECT
 
 ignorePaths:
   - '**/.git/**'

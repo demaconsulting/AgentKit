@@ -52,6 +52,9 @@ We follow a standard GitHub workflow for contributions:
 - [PowerShell 7+][pwsh] to run `build.ps1`, `fix.ps1`, and `lint.ps1`
 - [Python 3][python] (`lint.ps1` installs the YAML linters `yamllint` and `yamlfix` into a local `.venv`)
 - A code editor (Visual Studio, VS Code, or Rider recommended)
+- Only to run the Copilot samples or the opt-in live Copilot suite: the [GitHub Copilot CLI][copilot-cli] 1.0.113
+  or later (check it with `copilot --no-auto-update --version`), and a GitHub sign-in through `gh auth login` or
+  `GH_TOKEN`. The live suite's bundled variant needs no CLI; `build.ps1` needs neither
 
 The remaining linters (TextLint for spell-checking and LintMark for Markdown) are .NET local tools restored by
 `dotnet tool restore`; no Node.js or npm installation is required.
@@ -311,3 +314,4 @@ Thank you for contributing to AgentKit!
 [discussions]: https://github.com/demaconsulting/AgentKit/discussions
 [issues]: https://github.com/demaconsulting/AgentKit/issues
 [security]: https://github.com/demaconsulting/AgentKit/blob/main/SECURITY.md
+[copilot-cli]: https://github.com/github/copilot-cli

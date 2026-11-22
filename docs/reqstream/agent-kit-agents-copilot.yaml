@@ -326,21 +326,66 @@ sections:
 
       - id: AgentKitAgentsCopilot-RuntimeStartup-Diagnosable
         title: >-
-          The library shall report a Copilot runtime that cannot start with the runtime's own error
-          and the likely cause and remedy, and shall pass a canceled start through unchanged.
+          The library shall report a Copilot runtime that cannot start — no installed CLI found, a CLI
+          too old or too new for the library, a CLI whose version cannot be read, a bundled runtime
+          that was not provisioned, or a runtime that is not signed in — with the runtime's own error
+          where there is one and the likely cause and remedy, and shall pass a canceled start through
+          unchanged.
         justification: |
-          The library starts the runtime that the Copilot SDK provisions into the application's
-          output, which happens only when the application references the SDK directly. A host that
-          relied on the library's reference alone has no runtime, and the runtime's own error names a
-          missing file and neither the cause nor the remedy, so a host author can lose hours to it.
-          Because the library withholds the host's Copilot configuration variables from the runtime,
-          an ambient runtime-path override, set by every Copilot CLI shell, can no longer be the
-          cause.
+          Each of these failures otherwise surfaces as an error that names neither the cause nor the
+          remedy: a missing file, an SDK handshake failure that tells the user to update the SDK, or
+          a first turn that fails for lack of credentials. A host author can lose hours to any of
+          them. The installed CLI changes independently of the library, so its version is the
+          commonest cause, and the refusal says how to check the version the library runs and how to
+          upgrade each installation. The bundled runtime is provisioned only when the application
+          references the SDK directly. Because the library withholds the host's Copilot configuration
+          variables from the runtime, an ambient runtime-path override, set by every Copilot CLI
+          shell, can no longer be the cause.
         children:
           - AgentKitAgentsCopilot-CopilotRuntime-ExplainsAMissingRuntime
+          - AgentKitAgentsCopilot-CopilotRuntime-RefusesAnUnsupportedCli
+          - AgentKitAgentsCopilot-CopilotRuntime-RefusesAnUnauthenticatedRuntime
           - AgentKitAgentsCopilot-CopilotRuntime-PassesCancellationThrough
+          - AgentKitAgentsCopilot-CopilotCli-ReportsWhereItLooked
+          - AgentKitAgentsCopilot-CopilotCli-RequiresTheMinimumVersion
+          - AgentKitAgentsCopilot-CopilotCli-ExplainsAProbeThatFails
         tests:
           - AgentKitAgentsCopilot_Runtime_FailedStart_IsExplained
+          - AgentKitAgentsCopilot_Runtime_UnsupportedCli_IsRefusedWithUpgradeGuidance
+          - AgentKitAgentsCopilot_Runtime_Unauthenticated_IsRefusedWithSignInGuidance
+
+      - id: AgentKitAgentsCopilot-Runtime-InstalledCliByDefault
+        title: >-
+          The library shall run the GitHub Copilot CLI installed on the machine as the Copilot runtime
+          by default — the CLI the host names, or one it finds where the usual installation methods
+          put it, passing over editor launchers — accepting only a CLI at least the minimum version
+          the library supports, and shall run the runtime the Copilot SDK bundles instead only when
+          the host chooses it, under the same confinement either way.
+        tags: [security]
+        justification: |
+          The runtime the SDK bundles adds several hundred megabytes to every output folder of every
+          application, for a program most users of a Copilot application already have installed.
+          Running the installed CLI keeps an application small; the bundled runtime stays available
+          for a machine without a suitable CLI. The installed CLI's version is the machine's, not the
+          library's, and the SDK accepts exactly one protocol version, so the version that will run is
+          read first and an older CLI is refused with how to upgrade it. Which executable runs is the
+          host's choice, never the ambient environment, and either executable runs in Empty mode, as a
+          child process with the host's Copilot variables withheld, on the data directory the library
+          owns, so the choice never changes what reaches the model. Authentication is unchanged: the
+          CLI's own sign-in is not used.
+        children:
+          - AgentKitAgentsCopilot-CopilotRuntime-SpawnsTheSelectedRuntime
+          - AgentKitAgentsCopilot-CopilotRuntime-RefusesAnUnsupportedCli
+          - AgentKitAgentsCopilot-CopilotRuntime-ReportsTheRuntimeVersion
+          - AgentKitAgentsCopilot-CopilotCli-FindsTheInstalledCli
+          - AgentKitAgentsCopilot-CopilotCli-SkipsLaunchers
+          - AgentKitAgentsCopilot-CopilotCli-ReadsTheVersionTheRuntimeRuns
+          - AgentKitAgentsCopilot-CopilotCli-StopsWhatTheProbeStarted
+          - AgentKitAgentsCopilot-CopilotCli-RequiresTheMinimumVersion
+        tests:
+          - AgentKitAgentsCopilot_Runtime_DefaultsToTheInstalledCli
+          - AgentKitAgentsCopilot_Runtime_UnsupportedCli_IsRefusedWithUpgradeGuidance
+          - AgentKitAgentsCopilot_Runtime_ClientOptionsAreConfined
 
       - id: AgentKitAgentsCopilot-ToolOutput-ReadersPublishedAndPermitted
         title: >-
@@ -371,7 +416,8 @@ sections:
       - id: AgentKitAgentsCopilot-Runtime-OwnedAndConfined
         title: >-
           The library shall start, confine and own the Copilot runtime every agent, provider session
-          and summarizer runs on — in Empty mode, as a child process with the host's COPILOT_ and
+          and summarizer runs on — the installed Copilot CLI or the bundled runtime alike — in Empty
+          mode, as a child process with the host's COPILOT_ and
           GITHUB_COPILOT_ variables withheld apart from an allow-listed credential, network and telemetry-off set, on
           a data directory the library owns — and shall accept no client a host built.
         tags: [security]
@@ -391,7 +437,7 @@ sections:
           while the same probes do execute without it.
         children:
           - AgentKitAgentsCopilot-CopilotRuntime-ForcesEmptyMode
-          - AgentKitAgentsCopilot-CopilotRuntime-SpawnsTheBundledRuntime
+          - AgentKitAgentsCopilot-CopilotRuntime-SpawnsTheSelectedRuntime
           - AgentKitAgentsCopilot-CopilotRuntime-WithholdsCopilotEnvironment
           - AgentKitAgentsCopilot-CopilotRuntime-OwnsACleanDataDirectory
           - AgentKitAgentsCopilot-CopilotRuntime-OffersOnlyNeutralOptions

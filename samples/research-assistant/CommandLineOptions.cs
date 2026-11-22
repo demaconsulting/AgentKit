@@ -12,8 +12,8 @@ namespace DemaConsulting.AgentKit.Samples.ResearchAssistant;
 public enum AgentProvider
 {
     /// <summary>
-    ///     The GitHub Copilot SDK runtime, used through the logged-in Copilot CLI or an explicit
-    ///     GitHub token. Ignores <see cref="CommandLineOptions.Host"/>; honors
+    ///     The installed GitHub Copilot CLI, run by AgentKit as a confined runtime and signed in
+    ///     through the GitHub CLI or an explicit GitHub token. Ignores <see cref="CommandLineOptions.Host"/>; honors
     ///     <see cref="CommandLineOptions.Model"/>.
     /// </summary>
     Copilot,

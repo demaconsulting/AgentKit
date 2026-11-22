@@ -46,6 +46,7 @@ sections:
           - AgentKitAgentsCopilot-RuntimeStartup-Diagnosable
           - AgentKitAgentsCopilot-ToolOutput-ReadersPublishedAndPermitted
           - AgentKitAgentsCopilot-Runtime-OwnedAndConfined
+          - AgentKitAgentsCopilot-Runtime-InstalledCliByDefault
           - AgentKit-OTS-MicrosoftCopilotSDK-SessionOptions
           - AgentKit-OTS-MicrosoftCopilotSDK-PermissionRpc
           - AgentKit-OTS-MicrosoftCopilotSDK-SessionLifecycle

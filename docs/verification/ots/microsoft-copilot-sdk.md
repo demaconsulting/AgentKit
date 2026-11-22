@@ -257,11 +257,22 @@ installed plugins are cleared, the server is disabled, and the session is refuse
 #### AgentKitAgentsCopilot_Runtime_ClientOptionsAreConfined
 
 **Scenario**: The runtime's client options are built from a hostile host environment on a fresh data
-directory.
+directory, for the installed CLI and for the bundled runtime.
 
-**Expected**: The SDK's options carry Empty mode and a spawned stdio connection with no runtime path
-or arguments, the prepared data directory as its base directory, and a replacement environment free
-of `COPILOT_` and `GITHUB_COPILOT_` variables.
+**Expected**: The SDK's options carry Empty mode and a spawned stdio connection — to the resolved CLI
+by path, or with no path for the provisioned runtime — with no arguments, the prepared data directory
+as its base directory, and a replacement environment free of `COPILOT_` and `GITHUB_COPILOT_`
+variables.
+
+**Requirement coverage**: `AgentKit-OTS-MicrosoftCopilotSDK-EmptyModeSpawnedRuntime`.
+
+#### CopilotRuntime_BuildClientOptions_InstalledCli_SpawnsTheResolvedCliOverStdio
+
+**Scenario**: The client options are built for an installed CLI path and for the bundled runtime from
+the same host environment.
+
+**Expected**: The SDK's spawned stdio connection carries exactly the CLI path, and otherwise the same
+mode, base directory and replacement environment as the bundled runtime's.
 
 **Requirement coverage**: `AgentKit-OTS-MicrosoftCopilotSDK-EmptyModeSpawnedRuntime`.
 
@@ -295,6 +306,11 @@ installs one. The Empty-mode spawned runtime is qualified the same way: the offl
 accepts the options AgentKit builds, and the live suite shows the runtime honors them — every scenario
 runs on such a runtime, and one started under a bogus runtime-path variable and an approve-all switch
 opens a confined session while an in-process client under the same environment fails to start (L11).
+That the SDK spawns a supplied CLI path with the same arguments, environment and data directory,
+refuses a runtime on another protocol at start, and reports the started runtime's version, protocol
+and authentication, is likewise shown live: the suite runs whole on an installed standalone CLI and on
+the provisioned runtime, L0 reads the version and protocol each reports, and a run against a CLI on
+the older protocol is refused (recorded in *AgentKitAgentsCopilot System Verification Design*).
 
 - **`AgentKit-OTS-MicrosoftCopilotSDK-SessionOptions`**:
   AgentKitAgentsCopilot_BuildSessionConfig_AvailableToolsDerivedFromSuppliedTools,
@@ -324,7 +340,8 @@ opens a confined session while an in-process client under the same environment f
   AgentKitAgentsCopilot_EverySession_AmbientMcpServersAreClosed
 - **`AgentKit-OTS-MicrosoftCopilotSDK-EmptyModeSpawnedRuntime`** _(evidence above the runtime only)_:
   AgentKitAgentsCopilot_Runtime_ClientOptionsAreConfined,
-  CopilotRuntime_DisposeAsync_IsIdempotentAndClientIsThenUnavailable
+  CopilotRuntime_DisposeAsync_IsIdempotentAndClientIsThenUnavailable,
+  CopilotRuntime_BuildClientOptions_InstalledCli_SpawnsTheResolvedCliOverStdio
 
 The live suite's supplementary evidence for the same functionality, by scenario:
 
@@ -353,4 +370,5 @@ The live suite's supplementary evidence for the same functionality, by scenario:
   `AgentKitAgentsCopilotLive_OwnedRuntime_WorkspaceMcpServerWithConfigDiscovery_IsExecuted`,
   `AgentKitAgentsCopilotLive_OwnedRuntime_AmbientChannels_AreAbsent`
 - **Empty-mode spawned runtime**: `AgentKitAgentsCopilotLive_Runtime_AmbientCopilotEnvironment_DoesNotReachTheRuntime`,
-  and the fixture every scenario runs on
+  `AgentKitAgentsCopilotLive_Runtime_ReportsASupportedRuntime`, and the fixture every scenario runs
+  on, on the installed CLI and on the provisioned runtime

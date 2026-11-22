@@ -11,7 +11,7 @@
     <Version>0.0.0</Version>
     <Authors>DEMA Consulting</Authors>
     <Company>DEMA Consulting</Company>
-    <Description>A Microsoft Agent Framework AIAgent on a GitHub Copilot runtime AgentKit starts and owns (Empty mode, the host's COPILOT_ and GITHUB_COPILOT_ variables withheld apart from an allow-listed credential, network and telemetry-off set, a data directory AgentKit owns), which suppresses the Copilot runtime's built-in tools through a source-qualified allow-list derived from the supplied tools, plus an AgentKit compacting session over the same runtime</Description>
+    <Description>A Microsoft Agent Framework AIAgent on a GitHub Copilot runtime AgentKit starts and owns (the installed Copilot CLI by default, version-checked, or the SDK's bundled runtime on request; Empty mode, the host's COPILOT_ and GITHUB_COPILOT_ variables withheld apart from an allow-listed credential, network and telemetry-off set, a data directory AgentKit owns), which suppresses the Copilot runtime's built-in tools through a source-qualified allow-list derived from the supplied tools, plus an AgentKit compacting session over the same runtime</Description>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageProjectUrl>https://github.com/demaconsulting/AgentKit</PackageProjectUrl>
     <RepositoryUrl>https://github.com/demaconsulting/AgentKit</RepositoryUrl>
@@ -44,14 +44,20 @@
          parameter will see the same diagnostic from their own build. -->
     <NoWarn>$(NoWarn);MCPSDK001</NoWarn>
 
+    <!-- The CLI version probe places the CLI in a Windows job object through source-generated
+         LibraryImport stubs, which the generator emits as unsafe code; no hand-written unsafe code
+         is used. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+
     <!-- Copilot Runtime Provisioning -->
     <!-- Microsoft.Copilot.SDK downloads its native runtime (about 270 MB per target framework in obj,
          about 356 MB per output directory) at build time, through targets that run only in a project
-         that references the SDK directly. This library ships no runtime: its unit tests drive a
-         scripted turn channel and never start one, and the application that hosts the runtime
-         provisions it by referencing Microsoft.Copilot.SDK itself. Skipping the download here keeps
-         the runtime out of this library's outputs, out of every project that references this one,
-         and out of the package. -->
+         that references the SDK directly. This library never provisions a runtime: by default it runs
+         the Copilot CLI installed on the machine (CopilotRuntimeSource.InstalledCli), so a host needs no
+         runtime in its output at all; only a host that opts into CopilotRuntimeSource.Bundled provisions
+         one, by referencing Microsoft.Copilot.SDK itself. Skipping the download here keeps the runtime
+         out of this library's outputs, out of every project that references this one, and out of the
+         package. -->
     <CopilotSkipCliDownload>true</CopilotSkipCliDownload>
 
     <!-- Polyfill Configuration -->
@@ -90,6 +96,9 @@
 
   <!-- Build Tool Dependencies -->
   <ItemGroup>
+    <!-- The SDK fixes the protocol version a runtime must speak. When this reference is updated,
+         revisit CopilotCli.MinimumVersion (the first Copilot CLI that speaks the SDK's protocol) and
+         CopilotCli.SupportedProtocolVersion, and run the live suite against the installed CLI. -->
     <PackageReference Include="Microsoft.Copilot.SDK" Version="2.0.1" />
     <PackageReference Include="Microsoft.Agents.AI.Abstractions" Version="1.28.0" />
     <!-- Build-time only: PrivateAssets="All" keeps the documentation generator out of any

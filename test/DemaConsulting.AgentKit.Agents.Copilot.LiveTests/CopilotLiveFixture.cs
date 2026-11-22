@@ -19,9 +19,16 @@ namespace DemaConsulting.AgentKit.Agents.Copilot.LiveTests;
 ///     </para>
 ///     <para>
 ///     One <see cref="CopilotRuntime"/> serves the whole run, started exactly as a host starts one —
-///     Empty mode, the bundled runtime spawned with the host's Copilot variables withheld, a data
+///     Empty mode, the selected runtime spawned with the host's Copilot variables withheld, a data
 ///     directory AgentKit created under the run's root — authenticated as the logged-in user (or
 ///     from <c>GH_TOKEN</c>/<c>GITHUB_TOKEN</c> in CI), and disposed when the run ends.
+///     </para>
+///     <para>
+///     <b>The runtime source is selectable.</b> <see cref="RuntimeVariable"/> chooses
+///     <c>installed</c> (the default, as for a host) or <c>bundled</c>. For the installed CLI,
+///     <see cref="CliPathVariable"/> names the CLI to run; when it is unset, discovery chooses, exactly
+///     as for a host. Every runtime the suite starts — the fixture's, the tampered ones, the second
+///     runtime and the CodingAgent control clients — runs the same executable.
 ///     </para>
 /// </remarks>
 public sealed class CopilotLiveFixture : IAsyncLifetime
@@ -35,6 +42,16 @@ public sealed class CopilotLiveFixture : IAsyncLifetime
     ///     The environment variable naming the folder the run's log is written to.
     /// </summary>
     internal const string LogDirectoryVariable = "AGENTKIT_COPILOT_LIVE_LOG_DIRECTORY";
+
+    /// <summary>
+    ///     The environment variable choosing the runtime source: <c>installed</c> (the default) or <c>bundled</c>.
+    /// </summary>
+    internal const string RuntimeVariable = "AGENTKIT_COPILOT_LIVE_RUNTIME";
+
+    /// <summary>
+    ///     The environment variable naming the installed Copilot CLI to run; discovery chooses when it is unset.
+    /// </summary>
+    internal const string CliPathVariable = "AGENTKIT_COPILOT_LIVE_CLI_PATH";
 
     /// <summary>
     ///     The codeword the readable sandbox file carries.
@@ -67,6 +84,26 @@ public sealed class CopilotLiveFixture : IAsyncLifetime
     internal string? Model { get; } = NullIfBlank(Environment.GetEnvironmentVariable(ModelVariable));
 
     /// <summary>
+    ///     Gets the runtime source the run uses, or <see langword="null"/> when
+    ///     <see cref="RuntimeVariable"/> names neither source.
+    /// </summary>
+    internal CopilotRuntimeSource? RuntimeSource { get; } =
+        NullIfBlank(Environment.GetEnvironmentVariable(RuntimeVariable))?.ToUpperInvariant() switch
+        {
+            null or "INSTALLED" => CopilotRuntimeSource.InstalledCli,
+            "BUNDLED" => CopilotRuntimeSource.Bundled,
+            _ => null,
+        };
+
+    /// <summary>
+    ///     Gets the full path of the installed Copilot CLI the run names, or <see langword="null"/> to
+    ///     let discovery choose.
+    /// </summary>
+    internal string? CliPath { get; } = NullIfBlank(Environment.GetEnvironmentVariable(CliPathVariable)) is { } path
+        ? Path.GetFullPath(path)
+        : null;
+
+    /// <summary>
     ///     Gets the run's root folder, under the system temporary folder.
     /// </summary>
     internal string Root { get; } = Path.Combine(Path.GetTempPath(), "agentkit-copilot-live", Guid.NewGuid().ToString("N"));
@@ -94,6 +131,13 @@ public sealed class CopilotLiveFixture : IAsyncLifetime
     internal CopilotClient Client => Runtime.Client;
 
     /// <summary>
+    ///     Gets the executable the run's runtimes spawn: the installed CLI the fixture's runtime runs,
+    ///     or <see langword="null"/> for the bundled runtime.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">The run did not opt in.</exception>
+    internal string? RuntimeCliPath => Runtime.CliPath;
+
+    /// <summary>
     ///     Gets the AgentKit tools under test: a confined text-file reader and image reader.
     /// </summary>
     internal IList<AIFunction> ReadTools { get; private set; } = [];
@@ -110,6 +154,18 @@ public sealed class CopilotLiveFixture : IAsyncLifetime
         Assert.SkipUnless(
             Model is not null,
             $"Live Copilot tests run only when {ModelVariable} names the model to use.");
+
+    /// <summary>
+    ///     Builds the options of a runtime AgentKit owns for this run: the selected source and, for the
+    ///     installed CLI, the named path.
+    /// </summary>
+    /// <param name="dataDirectory">The runtime's data directory, under the run's root.</param>
+    /// <returns>The options.</returns>
+    internal CopilotRuntimeOptions CreateOptions(string dataDirectory) =>
+        new(
+            dataDirectory,
+            runtimeSource: RuntimeSource ?? CopilotRuntimeSource.InstalledCli,
+            cliPath: RuntimeSource == CopilotRuntimeSource.Bundled ? null : CliPath);
 
     /// <summary>
     ///     Writes one line to the run's log and to the current test's output.
@@ -159,9 +215,26 @@ public sealed class CopilotLiveFixture : IAsyncLifetime
                 .Where(tool => tool.Name is "text_file_read" or "image_read"),
         ];
 
-        // One runtime for the run, started exactly as a host starts one
-        _runtime = await CopilotRuntime.StartAsync(new CopilotRuntimeOptions(Path.Combine(Root, "copilot-home")));
-        Log($"Runtime started on {_runtime.DataDirectory}.");
+        // One runtime for the run, started exactly as a host starts one, on the selected source
+        if (RuntimeSource is null)
+        {
+            throw new InvalidOperationException($"{RuntimeVariable} must be 'installed' or 'bundled'.");
+        }
+
+        var cli = RuntimeSource == CopilotRuntimeSource.Bundled ? "(bundled)" : CliPath ?? "(discovered)";
+        Log($"Runtime source: {RuntimeSource} cli={cli}");
+        try
+        {
+            _runtime = await CopilotRuntime.StartAsync(CreateOptions(Path.Combine(Root, "copilot-home")));
+        }
+        catch (Exception ex)
+        {
+            // A refused start is evidence too: keep its text in the log the run's artifacts carry
+            Log($"Runtime start refused: {ex.GetType().Name}: {ex.Message}");
+            throw;
+        }
+
+        Log($"Runtime started on {_runtime.DataDirectory}: cli={_runtime.CliPath ?? "(bundled)"} version={_runtime.RuntimeVersion} protocol={_runtime.ProtocolVersion}.");
     }
 
     /// <inheritdoc/>

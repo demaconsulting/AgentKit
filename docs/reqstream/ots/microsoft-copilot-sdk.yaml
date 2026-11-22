@@ -139,9 +139,12 @@ sections:
 
           - id: AgentKit-OTS-MicrosoftCopilotSDK-EmptyModeSpawnedRuntime
             title: >-
-              Microsoft.Copilot.SDK shall start the runtime it provisions into an application's output
-              as a child process, in Empty mode, with a supplied replacement environment and a supplied
-              data directory, and shall stop it when the client is disposed.
+              Microsoft.Copilot.SDK shall start a supplied runtime executable, or the runtime it
+              provisions into an application's output when none is supplied, as a child process, in
+              Empty mode, with a supplied replacement environment and a supplied data directory; shall
+              refuse at start a runtime whose protocol version it does not support; shall report the
+              started runtime's version, protocol version and authentication status; and shall stop the
+              runtime when the client is disposed.
             justification: |
               The Copilot package starts and owns the runtime every session runs on, and its
               confinement rests on three client-level facts the SDK must honor: Empty mode, which
@@ -153,8 +156,14 @@ sections:
               opt-in live suite shows the runtime honors them: a runtime started this way under a
               bogus runtime-path variable and an approve-all switch still starts and opens a confined
               session, while an in-process client under the same environment fails to start (L11),
-              and every scenario of the suite runs on such a runtime.
+              and every scenario of the suite runs on such a runtime. The package runs the installed
+              Copilot CLI by default by supplying its path, which the SDK spawns with the same
+              arguments, environment and data directory as its own runtime, and reads the started
+              runtime's status and authentication to report its version and refuse one that is not
+              signed in. The live suite runs on both executables, and reports the version and protocol
+              each started runtime gives (L0).
             tags: [ots]
             tests:
               - AgentKitAgentsCopilot_Runtime_ClientOptionsAreConfined
               - CopilotRuntime_DisposeAsync_IsIdempotentAndClientIsThenUnavailable
+              - CopilotRuntime_BuildClientOptions_InstalledCli_SpawnsTheResolvedCliOverStdio

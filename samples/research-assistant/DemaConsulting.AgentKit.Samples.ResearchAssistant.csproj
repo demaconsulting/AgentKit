@@ -39,15 +39,14 @@
     <ProjectReference Include="..\..\src\DemaConsulting.AgentKit.Agents.Ollama\DemaConsulting.AgentKit.Agents.Ollama.csproj" />
   </ItemGroup>
 
-  <!-- Copilot Runtime Provisioning: this sample hosts the Copilot runtime, so it references
-       Microsoft.Copilot.SDK directly. The SDK's build targets download the native runtime for the
-       build machine's platform (verified against the release's published checksums) and copy it
-       into this project's output; they run only in a project that references the SDK directly,
-       and the AgentKit Copilot library deliberately ships no runtime. The version matches the
-       library's own reference, and dependabot updates both together. -->
-  <ItemGroup>
-    <PackageReference Include="Microsoft.Copilot.SDK" Version="2.0.1" />
-  </ItemGroup>
+  <!-- Copilot Runtime: this sample runs the Copilot CLI installed on the machine (at least
+       CopilotCli.MinimumVersion; the user guide's Installing the Copilot CLI says how to check
+       it), which is the AgentKit Copilot library's default, so it ships no runtime and needs no
+       reference to Microsoft.Copilot.SDK of its own. To run the runtime the SDK bundles instead, pass
+       runtimeSource: CopilotRuntimeSource.Bundled to CopilotRuntimeOptions in AgentComposition.cs
+       and add <PackageReference Include="Microsoft.Copilot.SDK" Version="..." /> here, at the
+       library's version: the SDK then downloads its native runtime (several hundred megabytes) into
+       this project's output at build time. -->
 
   <!-- Package References: OllamaSharp is still referenced directly because the sample needs more of
        it than the Ollama adapter does — the IChatClient it points at an Ollama host, and the

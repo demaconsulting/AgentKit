@@ -29,11 +29,15 @@ namespace DemaConsulting.AgentKit.Agents.Copilot;
 ///         <c>CopilotClientMode.Empty</c>, so the SDK supplies none of its coding-agent defaults.
 ///       </description></item>
 ///       <item><description>
-///         The bundled runtime that <c>Microsoft.Copilot.SDK</c> provisions into the application's
-///         output, spawned as a child process over standard input and output. No runtime path,
-///         runtime arguments, in-process hosting, TCP connection or external runtime can be
-///         chosen: in-process hosting gives the runtime the host's whole environment, and an
-///         external runtime's mode, data directory and environment are not this client's.
+///         A runtime spawned as a child process over standard input and output: by default the
+///         Copilot CLI installed on the machine — the path the host names, or the one
+///         <see cref="CopilotCli.FindInstalled()"/> finds — whose version is checked against
+///         <see cref="CopilotCli.MinimumVersion"/> before it is used; or, when the host opts in with
+///         <see cref="CopilotRuntimeSource.Bundled"/>, the runtime <c>Microsoft.Copilot.SDK</c>
+///         provisions into the application's output. No runtime arguments, in-process hosting, TCP
+///         connection or external runtime can be chosen: in-process hosting gives the runtime the
+///         host's whole environment, and an external runtime's mode, data directory and environment
+///         are not this client's. Everything else in this list applies to either executable alike.
 ///       </description></item>
 ///       <item><description>
 ///         A replacement environment for that process: the host's environment without any variable
@@ -140,6 +144,17 @@ public sealed class CopilotRuntime : IAsyncDisposable
     internal const string OwnershipMarkerFileName = ".agentkit-copilot-runtime";
 
     /// <summary>
+    ///     The likely cause of a bundled runtime that failed to start.
+    /// </summary>
+    private const string BundledRuntimeCause =
+        "The bundled runtime is the one Microsoft.Copilot.SDK provisions into this application's output "
+        + "(runtimes/<rid>/native/copilot-runtime). If the error is that the runtime was not found, the most common "
+        + "cause is a host application that does not reference Microsoft.Copilot.SDK directly: the SDK provisions its "
+        + "runtime only into a project that references the package itself, so add a PackageReference to "
+        + "Microsoft.Copilot.SDK to the host application, or run the installed Copilot CLI instead "
+        + "(CopilotRuntimeSource.InstalledCli).";
+
+    /// <summary>
     ///     Gets the exact bytes of the ownership marker: UTF-8 without a byte order mark, LF line
     ///     endings and a final line feed.
     /// </summary>
@@ -182,14 +197,24 @@ public sealed class CopilotRuntime : IAsyncDisposable
     ///     Internal: production obtains a runtime only from <see cref="StartAsync"/>, which builds and
     ///     starts the client itself. A unit test passes a client that was never started, which spawns
     ///     nothing; the opt-in live suite passes a started client of another mode, to show the
-    ///     session-level confinement holding on a client AgentKit would never build.
+    ///     session-level confinement holding on a client AgentKit would never build. A runtime built
+    ///     without a launch or a status reports no CLI path, an empty runtime version and protocol 0.
     /// </remarks>
     /// <param name="client">The client this runtime owns and disposes.</param>
     /// <param name="dataDirectory">The prepared data directory's full path.</param>
-    internal CopilotRuntime(CopilotClient client, string dataDirectory)
+    /// <param name="launch">What <see cref="StartAsync"/> launched, or <see langword="null"/> when it did not start this runtime.</param>
+    /// <param name="status">The started runtime's status, or <see langword="null"/> when it was not read.</param>
+    internal CopilotRuntime(
+        CopilotClient client,
+        string dataDirectory,
+        CopilotRuntimeLaunch? launch = null,
+        GetStatusResponse? status = null)
     {
         _client = client;
         DataDirectory = dataDirectory;
+        CliPath = launch?.CliPath;
+        RuntimeVersion = status?.Version ?? string.Empty;
+        ProtocolVersion = status?.ProtocolVersion ?? 0;
     }
 
     /// <summary>
@@ -227,6 +252,33 @@ public sealed class CopilotRuntime : IAsyncDisposable
     public string DataDirectory { get; }
 
     /// <summary>
+    ///     Gets the full path of the installed Copilot CLI this runtime runs, or <see langword="null"/>
+    ///     when it runs the runtime <c>Microsoft.Copilot.SDK</c> bundles.
+    /// </summary>
+    /// <remarks>Remains available after disposal.</remarks>
+    public string? CliPath { get; }
+
+    /// <summary>
+    ///     Gets the version the started runtime reports, such as <c>1.0.113</c>.
+    /// </summary>
+    /// <remarks>
+    ///     Read from the runtime once it has started, so it is the version that actually runs — for an
+    ///     installed CLI, the one built into the installed executable rather than a newer one that
+    ///     auto-update or <c>copilot update</c> downloaded into the CLI's package cache. Remains available
+    ///     after disposal.
+    /// </remarks>
+    public string RuntimeVersion { get; }
+
+    /// <summary>
+    ///     Gets the SDK protocol version the started runtime speaks.
+    /// </summary>
+    /// <remarks>
+    ///     The SDK refuses at start a runtime whose protocol it does not support, so a started runtime
+    ///     always reports a supported one. Remains available after disposal.
+    /// </remarks>
+    public int ProtocolVersion { get; }
+
+    /// <summary>
     ///     Gets the client this runtime owns.
     /// </summary>
     /// <remarks>
@@ -260,15 +312,22 @@ public sealed class CopilotRuntime : IAsyncDisposable
     /// </summary>
     /// <remarks>
     ///     <para>
-    ///     Prepares the data directory, builds the client options — Empty mode, the bundled runtime
-    ///     spawned over standard input and output, the host's Copilot configuration variables
-    ///     withheld — and starts the runtime process. A start that fails or is canceled disposes the
-    ///     client, so no runtime process is left behind.
+    ///     Prepares the data directory; resolves the runtime executable — for the installed CLI, the
+    ///     path the host named or the one <see cref="CopilotCli.FindInstalled()"/> finds, whose version
+    ///     is then read with <c>--no-auto-update --version</c> and refused when older than
+    ///     <see cref="CopilotCli.MinimumVersion"/>; for the bundled runtime, the one the SDK
+    ///     provisioned; builds the client options — Empty mode, that executable spawned over standard
+    ///     input and output, the host's Copilot configuration variables withheld — and starts the
+    ///     runtime process. Once it has started, its status and authentication are read: the version
+    ///     and protocol are kept on the runtime, and a runtime that is not signed in is refused. A start
+    ///     that fails or is canceled at any step disposes the client, so no runtime process is left
+    ///     behind.
     ///     </para>
     ///     <para>
-    ///     Side effects: creates the data directory and its ownership marker when they do not exist,
-    ///     and starts a child process that runs until the runtime is disposed. Reads the process
-    ///     environment once; never changes it.
+    ///     Side effects: creates the data directory and its ownership marker when they do not exist;
+    ///     for the installed CLI, runs it once to read its version (which, on the first run of a CLI
+    ///     version, unpacks the CLI's package into the user's cache); and starts a child process that
+    ///     runs until the runtime is disposed. Reads the process environment once; never changes it.
     ///     </para>
     /// </remarks>
     /// <param name="options">The runtime's options. Must not be <see langword="null"/>.</param>
@@ -278,9 +337,13 @@ public sealed class CopilotRuntime : IAsyncDisposable
     /// <exception cref="InvalidOperationException">
     ///     The data directory names a file, is a non-empty directory AgentKit did not create, or has a
     ///     marker entry that is not exactly the marker AgentKit writes — give AgentKit a new or empty
-    ///     directory the application owns; or the runtime failed to start —
+    ///     directory the application owns; or no installed Copilot CLI was found, the named one does
+    ///     not exist, its version could not be read or is older than
+    ///     <see cref="CopilotCli.MinimumVersion"/> — the message says where AgentKit looked, which
+    ///     version it found and how to install or upgrade the CLI; or the runtime failed to start —
     ///     the message reports the runtime's own error and the likely cause, and the original failure
-    ///     is the <see cref="Exception.InnerException"/>.
+    ///     is the <see cref="Exception.InnerException"/>; or the started runtime is not signed in —
+    ///     the message names the ways it authenticates.
     /// </exception>
     /// <exception cref="IOException">The data directory or its marker could not be created or read.</exception>
     /// <exception cref="UnauthorizedAccessException">The data directory is not writable, or its marker is not readable.</exception>
@@ -295,17 +358,33 @@ public sealed class CopilotRuntime : IAsyncDisposable
         // The data directory is settled before any client exists, so a foreign directory is
         // refused without a runtime ever reading it.
         var dataDirectory = PrepareDataDirectory(options.DataDirectory);
-        var clientOptions = BuildClientOptions(options, dataDirectory, Environment.GetEnvironmentVariables());
+        var hostEnvironment = Environment.GetEnvironmentVariables();
+
+        // The executable is resolved, and an installed CLI's version checked, before any client
+        // exists, so a CLI that cannot work is refused without a runtime process ever starting.
+        var launch = await ResolveLaunchAsync(
+            options,
+            dataDirectory,
+            hostEnvironment,
+            CopilotCliSearchContext.Current(),
+            CopilotCli.RunProcessAsync,
+            cancellationToken).ConfigureAwait(false);
+        var clientOptions = BuildClientOptions(options, dataDirectory, hostEnvironment, launch.CliPath);
 
         // Started here and disposed on any failure: a runtime that never reaches the caller must not
-        // leave its process running.
+        // leave its process running - including one that started but is not signed in.
+        GetStatusResponse? status = null;
         var client = await StartOwnedAsync(
             () => new CopilotClient(clientOptions),
-            (created, token) => StartClientAsync(created.StartAsync, token),
+            async (created, token) =>
+            {
+                await StartClientAsync(created.StartAsync, launch, token).ConfigureAwait(false);
+                status = await VerifyStartedAsync(created.GetStatusAsync, created.GetAuthStatusAsync, token).ConfigureAwait(false);
+            },
             created => created.DisposeAsync(),
             cancellationToken).ConfigureAwait(false);
 
-        return new CopilotRuntime(client, dataDirectory);
+        return new CopilotRuntime(client, dataDirectory, launch, status);
     }
 
     /// <summary>
@@ -768,17 +847,24 @@ public sealed class CopilotRuntime : IAsyncDisposable
     /// <remarks>
     ///     The single place the client is configured. Every value that decides what a session can
     ///     receive is forced here; only the token, the log level and the logger come from
-    ///     <paramref name="options"/>. Everything left unset keeps the SDK's default, which for each
-    ///     capability channel is none.
+    ///     <paramref name="options"/>, and the executable from <see cref="ResolveLaunchAsync"/>.
+    ///     Everything left unset keeps the SDK's default, which for each capability channel is none.
+    ///     The mode, environment and data directory are the same whichever executable runs.
     /// </remarks>
     /// <param name="options">The host's options.</param>
     /// <param name="dataDirectory">The prepared data directory's full path.</param>
     /// <param name="hostEnvironment">The host's environment, from which the runtime's is built.</param>
+    /// <param name="cliPath">
+    ///     The installed Copilot CLI to spawn, as <see cref="ResolveLaunchAsync"/> resolved it, or
+    ///     <see langword="null"/> for the runtime the SDK provisions. Because the runtime's environment
+    ///     withholds <c>COPILOT_CLI_PATH</c>, nothing else can choose the executable.
+    /// </param>
     /// <returns>The client options.</returns>
     internal static CopilotClientOptions BuildClientOptions(
         CopilotRuntimeOptions options,
         string dataDirectory,
-        IDictionary hostEnvironment)
+        IDictionary hostEnvironment,
+        string? cliPath = null)
     {
         var clientOptions = new CopilotClientOptions
         {
@@ -786,9 +872,10 @@ public sealed class CopilotRuntime : IAsyncDisposable
             // directory rather than the system keychain, and the environment context removed.
             Mode = CopilotClientMode.Empty,
 
-            // The bundled runtime as a child process, so its environment is this library's to
-            // decide: no runtime path, no runtime arguments, no in-process or external runtime.
+            // The resolved executable as a child process, so its environment is this library's to
+            // decide: no runtime arguments, no in-process or external runtime.
             Runtime = RuntimeConnection.ForSpawnedStdio(
+                path: cliPath,
                 environment: BuildRuntimeEnvironment(hostEnvironment),
                 baseDirectory: dataDirectory),
         };
@@ -802,13 +889,134 @@ public sealed class CopilotRuntime : IAsyncDisposable
     }
 
     /// <summary>
-    ///     Runs a client's start and explains its failure.
+    ///     Resolves the executable a runtime runs and, for an installed CLI, checks its version.
     /// </summary>
     /// <remarks>
-    ///     Shared by <see cref="StartAsync"/> and by the session channel's discovery, which starts a
-    ///     client idempotently before using its RPC surface, so a runtime that cannot start says why
-    ///     on either path. The start is injected because the SDK's client cannot be made to fail on
-    ///     demand without a broken runtime.
+    ///     <para>
+    ///     For <see cref="CopilotRuntimeSource.Bundled"/> nothing is searched or run: the SDK
+    ///     provisioned the runtime and pins its version. For <see cref="CopilotRuntimeSource.InstalledCli"/>
+    ///     the CLI is the path the host named, which must exist, or the one discovery finds; its version
+    ///     is read as the SDK will run it, and a version older than
+    ///     <see cref="CopilotCli.MinimumVersion"/> is refused before any client exists. Output that
+    ///     names no version is left to the SDK's protocol handshake, which fails closed.
+    ///     </para>
+    ///     <para>
+    ///     The search context and process runner are injected so every outcome is testable without a
+    ///     CLI on the machine.
+    ///     </para>
+    /// </remarks>
+    /// <param name="options">The host's options.</param>
+    /// <param name="dataDirectory">The prepared data directory's full path.</param>
+    /// <param name="hostEnvironment">The host's environment.</param>
+    /// <param name="context">The platform and file system discovery searches.</param>
+    /// <param name="runner">Runs the version probe.</param>
+    /// <param name="cancellationToken">Cancels the resolution.</param>
+    /// <returns>What to launch.</returns>
+    /// <exception cref="InvalidOperationException">
+    ///     The named CLI does not exist, none was found, its version could not be read, or it is too old.
+    /// </exception>
+    /// <exception cref="OperationCanceledException">The resolution was canceled.</exception>
+    internal static async Task<CopilotRuntimeLaunch> ResolveLaunchAsync(
+        CopilotRuntimeOptions options,
+        string dataDirectory,
+        IDictionary hostEnvironment,
+        CopilotCliSearchContext context,
+        CopilotCliProcessRunner runner,
+        CancellationToken cancellationToken)
+    {
+        // The bundled runtime is the SDK's, of the version the SDK was built for
+        if (options.RuntimeSource == CopilotRuntimeSource.Bundled)
+        {
+            return new CopilotRuntimeLaunch(CopilotRuntimeSource.Bundled, null, null);
+        }
+
+        // The host's own choice wins; otherwise discovery chooses, never the ambient environment
+        string cliPath;
+        if (options.CliPath is not null)
+        {
+            cliPath = context.FileExists(options.CliPath)
+                ? options.CliPath
+                : throw new InvalidOperationException(CopilotCli.ExplainExplicitPathMissing(options.CliPath));
+        }
+        else
+        {
+            var found = CopilotCli.FindInstalled(context);
+            cliPath = found.Path ?? throw new InvalidOperationException(CopilotCli.ExplainNotFound(found));
+        }
+
+        // The version the runtime will run, checked before a runtime process exists
+        var version = await CopilotCli.ReadVersionAsync(
+            cliPath,
+            dataDirectory,
+            BuildRuntimeEnvironment(hostEnvironment),
+            context,
+            runner,
+            cancellationToken).ConfigureAwait(false);
+        if (version is not null && !CopilotCli.IsSupported(version))
+        {
+            throw new InvalidOperationException(CopilotCli.ExplainTooOld(cliPath, version));
+        }
+
+        return new CopilotRuntimeLaunch(CopilotRuntimeSource.InstalledCli, cliPath, version);
+    }
+
+    /// <summary>
+    ///     Reads a started runtime's status and refuses it when it is not signed in.
+    /// </summary>
+    /// <remarks>
+    ///     Run inside the start step of <see cref="StartAsync"/>, so a refused runtime's client is
+    ///     disposed. The reads are injected because the SDK's client cannot report a status on demand
+    ///     without a runtime.
+    /// </remarks>
+    /// <param name="readStatus">Reads the runtime's version and protocol.</param>
+    /// <param name="readAuthentication">Reads the runtime's authentication status.</param>
+    /// <param name="cancellationToken">Cancels the reads.</param>
+    /// <returns>The runtime's status.</returns>
+    /// <exception cref="InvalidOperationException">The runtime is not signed in; the message says how to sign it in.</exception>
+    /// <exception cref="OperationCanceledException">The reads were canceled.</exception>
+    internal static async Task<GetStatusResponse> VerifyStartedAsync(
+        Func<CancellationToken, Task<GetStatusResponse>> readStatus,
+        Func<CancellationToken, Task<GetAuthStatusResponse>> readAuthentication,
+        CancellationToken cancellationToken)
+    {
+        var status = await readStatus(cancellationToken).ConfigureAwait(false);
+        var authentication = await readAuthentication(cancellationToken).ConfigureAwait(false);
+        return authentication.IsAuthenticated
+            ? status
+            : throw new InvalidOperationException(ExplainUnauthenticated(authentication));
+    }
+
+    /// <summary>
+    ///     Composes the explanation for a runtime that started but is not signed in.
+    /// </summary>
+    /// <remarks>
+    ///     The runtime's own status message comes first. The Copilot CLI's own sign-in is named as not
+    ///     used — the runtime keeps credentials in AgentKit's data directory and the system keychain is
+    ///     off — because a user signed in to the CLI otherwise expects it to apply.
+    /// </remarks>
+    /// <param name="authentication">The runtime's authentication status.</param>
+    /// <returns>The explanation.</returns>
+    internal static string ExplainUnauthenticated(GetAuthStatusResponse authentication)
+    {
+        var status = string.IsNullOrWhiteSpace(authentication.StatusMessage)
+            ? string.Empty
+            : $" (the runtime reports: {authentication.StatusMessage.Trim()})";
+
+        return "The Copilot runtime started but is not signed in to GitHub" + status + ", so AgentKit stopped it. "
+            + "The Copilot CLI's own sign-in is not used: AgentKit keeps the runtime's credentials in its own data "
+            + "directory and the system keychain is not consulted. Sign the runtime in by passing a GitHub token as "
+            + "CopilotRuntimeOptions' gitHubToken; by setting COPILOT_GITHUB_TOKEN, GH_TOKEN or GITHUB_TOKEN in the "
+            + "application's environment; or by signing in to the GitHub CLI ('gh auth login') with gh on PATH. For "
+            + "GitHub Enterprise Cloud with data residency, also set COPILOT_GH_HOST to the account's host.";
+    }
+
+    /// <summary>
+    ///     Runs a client's start and explains its failure, without knowing what was launched.
+    /// </summary>
+    /// <remarks>
+    ///     Used by the session channel's discovery, which starts a client idempotently before using its
+    ///     RPC surface, so a runtime that cannot start says why on that path too; the explanation then
+    ///     covers both runtime sources.
     /// </remarks>
     /// <param name="start">Starts the client.</param>
     /// <param name="cancellationToken">Cancels the start.</param>
@@ -818,7 +1026,30 @@ public sealed class CopilotRuntime : IAsyncDisposable
     ///     original failure is the <see cref="Exception.InnerException"/>.
     /// </exception>
     /// <exception cref="OperationCanceledException">The start was canceled. It propagates unchanged.</exception>
-    internal static async Task StartClientAsync(Func<CancellationToken, Task> start, CancellationToken cancellationToken)
+    internal static Task StartClientAsync(Func<CancellationToken, Task> start, CancellationToken cancellationToken) =>
+        StartClientAsync(start, launch: null, cancellationToken);
+
+    /// <summary>
+    ///     Runs a client's start and explains its failure.
+    /// </summary>
+    /// <remarks>
+    ///     Shared by <see cref="StartAsync"/>, which knows what it launched, and by the session
+    ///     channel's discovery, which does not. The start is injected because the SDK's client cannot be
+    ///     made to fail on demand without a broken runtime.
+    /// </remarks>
+    /// <param name="start">Starts the client.</param>
+    /// <param name="launch">What was launched, or <see langword="null"/> when it is not known.</param>
+    /// <param name="cancellationToken">Cancels the start.</param>
+    /// <returns>A task that completes when the start has completed.</returns>
+    /// <exception cref="InvalidOperationException">
+    ///     The start failed. The message reports the runtime's own error and the likely cause; the
+    ///     original failure is the <see cref="Exception.InnerException"/>.
+    /// </exception>
+    /// <exception cref="OperationCanceledException">The start was canceled. It propagates unchanged.</exception>
+    internal static async Task StartClientAsync(
+        Func<CancellationToken, Task> start,
+        CopilotRuntimeLaunch? launch,
+        CancellationToken cancellationToken)
     {
         try
         {
@@ -826,7 +1057,7 @@ public sealed class CopilotRuntime : IAsyncDisposable
         }
         catch (Exception failure) when (failure is not OperationCanceledException)
         {
-            throw new InvalidOperationException(ExplainStartFailure(failure), failure);
+            throw new InvalidOperationException(ExplainStartFailure(failure, launch), failure);
         }
     }
 
@@ -834,25 +1065,51 @@ public sealed class CopilotRuntime : IAsyncDisposable
     ///     Composes the explanation for a runtime that failed to start.
     /// </summary>
     /// <remarks>
-    ///     The runtime's own error comes first. The common cause of a runtime that was not found is
-    ///     named next: the SDK provisions its runtime only into a project that references the package
-    ///     directly. Because AgentKit withholds the host's Copilot configuration variables, a runtime
-    ///     path override cannot be the cause, and the explanation says which variables do pass and which
-    ///     sources the runtime authenticates from, so an authentication or network failure can be traced.
-    ///     A failure whose message is null is still explained.
+    ///     <para>
+    ///     The runtime's own error comes first. A protocol-version mismatch the SDK reports is then
+    ///     explained as a CLI too old (upgrade it) or too new (update AgentKit) for this release. Next
+    ///     comes the cause that fits what was launched: for the bundled runtime, a host application that
+    ///     does not reference <c>Microsoft.Copilot.SDK</c> directly, so the runtime was never
+    ///     provisioned; for an installed CLI, the CLI that ran and its version, with no advice about
+    ///     package references; when the launch is not known, both. Because AgentKit withholds the host's
+    ///     Copilot configuration variables, a runtime path override cannot be the cause, and the
+    ///     explanation says which variables do pass and which sources the runtime authenticates from,
+    ///     so an authentication or network failure can be traced. A failure whose message is null is
+    ///     still explained.
+    ///     </para>
     /// </remarks>
     /// <param name="failure">The failure the start raised.</param>
+    /// <param name="launch">What was launched, or <see langword="null"/> when it is not known.</param>
     /// <returns>The explanation.</returns>
-    internal static string ExplainStartFailure(Exception failure) =>
-        "The Copilot runtime could not start: " + failure.Message + " AgentKit runs the runtime that "
-        + "Microsoft.Copilot.SDK provisions into this application's output (runtimes/<rid>/native/copilot-runtime), "
-        + "as a child process. If the error is that the runtime was not found, the most common cause is a host "
-        + "application that does not reference Microsoft.Copilot.SDK directly: the SDK provisions its runtime only "
-        + "into a project that references the package itself, so add a PackageReference to Microsoft.Copilot.SDK to "
-        + "the host application. The runtime receives none of the host's COPILOT_ or GITHUB_COPILOT_ variables "
-        + "except " + string.Join(", ", PassThroughVariables.Order(StringComparer.Ordinal)) + "; it authenticates "
-        + "with the token in CopilotRuntimeOptions, COPILOT_GITHUB_TOKEN, GH_TOKEN, GITHUB_TOKEN or the signed-in "
-        + "GitHub CLI user. The inner exception carries the runtime's own error.";
+    internal static string ExplainStartFailure(Exception failure, CopilotRuntimeLaunch? launch)
+    {
+        var message = failure.Message;
+        string cause;
+        if (launch?.Source != CopilotRuntimeSource.Bundled && CopilotCli.IsProtocolMismatch(message))
+        {
+            cause = CopilotCli.ExplainProtocolMismatch(launch?.CliPath, launch?.CliVersion, CopilotCli.ParseServerProtocol(message));
+        }
+        else
+        {
+            cause = launch?.Source switch
+            {
+                CopilotRuntimeSource.Bundled => BundledRuntimeCause,
+                CopilotRuntimeSource.InstalledCli =>
+                    $"AgentKit ran the installed Copilot CLI at '{launch.CliPath}' "
+                    + (launch.CliVersion is null ? "(its version could not be read)" : $"(version {launch.CliVersion})")
+                    + " as a child process; the error above is that CLI's. Check that it runs on its own with "
+                    + "'copilot --no-auto-update --version', or pass another CLI as CopilotRuntimeOptions' cliPath.",
+                _ => "AgentKit runs either the installed Copilot CLI or, when the host opts in, the runtime "
+                    + "Microsoft.Copilot.SDK bundles, as a child process. " + BundledRuntimeCause,
+            };
+        }
+
+        return "The Copilot runtime could not start: " + message + " " + cause + " The runtime receives none of the "
+            + "host's COPILOT_ or GITHUB_COPILOT_ variables except "
+            + string.Join(", ", PassThroughVariables.Order(StringComparer.Ordinal)) + "; it authenticates with the token "
+            + "in CopilotRuntimeOptions, COPILOT_GITHUB_TOKEN, GH_TOKEN, GITHUB_TOKEN or the signed-in GitHub CLI user. "
+            + "The inner exception carries the runtime's own error.";
+    }
 
     /// <summary>
     ///     Creates a resource, starts it, and disposes it if the start fails or is canceled.
@@ -910,3 +1167,15 @@ public sealed class CopilotRuntime : IAsyncDisposable
             && !PassThroughVariables.Contains(name);
     }
 }
+
+/// <summary>
+///     What <see cref="CopilotRuntime.StartAsync"/> launched: the runtime source and, for an installed
+///     CLI, its path and the version it reported.
+/// </summary>
+/// <param name="Source">The runtime source.</param>
+/// <param name="CliPath">The installed CLI's full path, or <see langword="null"/> for the bundled runtime.</param>
+/// <param name="CliVersion">
+///     The version the installed CLI reported, or <see langword="null"/> for the bundled runtime or when
+///     the CLI's output named none.
+/// </param>
+internal sealed record CopilotRuntimeLaunch(CopilotRuntimeSource Source, string? CliPath, Version? CliVersion);

@@ -20,7 +20,8 @@ safety-critical behavior of the whole increment.
 
 The system also wires a permission handler that is safe by default — approving exactly the supplied
 tools and rejecting every other request — while letting a host supply its own; see *Permission
-Handling Is Default-Deny*. And it starts the runtime itself — `CopilotRuntime`, in Empty mode, as a
+Handling Is Default-Deny*. And it starts the runtime itself — `CopilotRuntime`, the installed Copilot
+CLI by default or the SDK's bundled runtime on request, in Empty mode, as a
 child process with the host's `COPILOT_`/`GITHUB_COPILOT_` variables withheld apart from an
 allow-listed credential, network and telemetry-off set, on a data directory it owns — because what reaches a session
 depends on the client as much as on the session; see
@@ -373,69 +374,104 @@ here would carry the image a second time onto a user message, duplicating conten
 received. This absence is intentional, applies to the session path as much as to the agent path, and
 is recorded here and in the units so a future maintainer does not "helpfully" add it.
 
-## Deployment: The Host Application Provisions the Runtime
+## Deployment: The Installed Copilot CLI by Default, the Bundled Runtime on Request
 
-The Copilot runtime is a native component, specific to a runtime identifier, and `Microsoft.Copilot.SDK`
-does not carry it inside its package. The SDK's build targets download the runtime archive from the
-Copilot CLI's GitHub releases at build time, verify it against the release's published SHA-256
-checksums, extract it under the project's intermediate folder — about 270 MB per target framework —
-and copy it into the output directory, about 356 MB per output in some hundred files under
-`runtimes/<rid>/native`. The runtime version is pinned by the SDK version, so the two cannot be
-mismatched.
+The runtime is a native executable. Two of them can play the part, and `CopilotRuntimeOptions`
+chooses between them (`CopilotRuntimeSource`); everything else about the runtime — Empty mode, the
+child process over stdio, the withheld environment, the data directory AgentKit owns — is the same
+code path for both.
 
-**Only a project that references the SDK directly provisions the runtime.** The SDK's targets ship in
-the package's `build` folder rather than its `buildTransitive` folder, so they run only in a project
-holding a direct reference to `Microsoft.Copilot.SDK`. An application that reaches the SDK
-transitively, through this package, provisions nothing, and its runtime then fails to start. **A host
-application must therefore add its own direct reference to `Microsoft.Copilot.SDK`**, at the version
-this package depends on or a later compatible one. `CopilotRuntime` names this as the likely cause
-when a start fails; see *Runtime Ownership*.
+**The installed Copilot CLI is the default.** A host application ships no runtime and needs no
+reference to `Microsoft.Copilot.SDK` of its own; its output is the size of its managed assemblies.
+The machine needs the GitHub Copilot CLI, installed by WinGet, Homebrew, npm or the install script,
+at least `CopilotCli.MinimumVersion`. `CopilotRuntime.StartAsync` takes the CLI the host names, or
+finds one (*CopilotCli Unit Design*), reads the version it will run and refuses an older one with how
+to upgrade it. The SDK spawns it exactly as it would spawn its own runtime: the same arguments, the
+replacement environment and the data directory as `COPILOT_HOME`.
 
-**This package ships no runtime.** Its project sets `CopilotSkipCliDownload`, which the SDK's targets
-honor by skipping the download, the copy to the output and the content registration alike. That
-keeps the runtime out of this library's outputs, out of every project that references it — including
-its own unit tests, which drive a scripted turn channel and never start a runtime — and out of the
-package. The SDK reference is deliberately **not** made to flow its build assets to consumers: that
-would make every project in a consumer's graph, test projects included, download and copy the
-runtime, which is exactly the duplication the host-provisions rule avoids.
+Facts of running the installed CLI that a host should know, measured against the live CLI:
+
+- **The version that runs is the built-in one.** AgentKit starts the CLI with `--no-auto-update`, so
+  it runs the version built into the installed executable, not a newer one that auto-update or
+  `copilot update` downloaded into the CLI's package cache. Measured with an installed executable
+  older than a version already in that cache: `copilot --version` reported the cached version, while
+  `copilot --no-auto-update --version` reported the version built into the executable, which is the
+  one AgentKit runs. Only an upgrade of the installation itself changes it.
+- **The CLI's package cache is shared with the user.** The loader unpacks its built-in version into
+  the platform cache folder (`%LOCALAPPDATA%\copilot\pkg` on Windows, `~/Library/Caches/copilot` on
+  macOS, `$XDG_CACHE_HOME/copilot` elsewhere), which the user's interactive CLI uses too. The first
+  start of a CLI version takes several seconds for that; later starts take a second or two, against a
+  fraction of a second for the bundled runtime. Organization policy in the cache's managed-settings
+  folder is read from there as well; it can only restrict.
+- **The CLI's own configuration and sign-in are not used.** `COPILOT_HOME` is AgentKit's data
+  directory, so the user's Copilot home — configuration, MCP servers, installed plugins, trusted
+  folders and stored credentials — is never read, and the system keychain is off in Empty mode.
+
+**The bundled runtime is the opt-in.** A host that passes `CopilotRuntimeSource.Bundled` runs the
+runtime the SDK provisions, and must provision it. The SDK's build targets download the runtime
+archive from the Copilot CLI's GitHub releases at build time, verify it against the release's
+published SHA-256 checksums, extract it under the project's intermediate folder — about 270 MB per
+target framework — and copy it into the output directory, about 356 MB per output in some hundred
+files under `runtimes/<rid>/native`. The runtime version is pinned by the SDK version, so the two
+cannot be mismatched, and no version check runs.
+
+**Only a project that references the SDK directly provisions the bundled runtime.** The SDK's targets
+ship in the package's `build` folder rather than its `buildTransitive` folder, so they run only in a
+project holding a direct reference to `Microsoft.Copilot.SDK`. **A host application that opts into the
+bundled runtime must therefore add its own direct reference to `Microsoft.Copilot.SDK`**, at the
+version this package depends on or a later compatible one. `CopilotRuntime` names this as the likely
+cause when a bundled start fails; see *Runtime Ownership*. `CopilotCliBinaryPath` set to a standalone
+CLI executable is an alternative bundled form: the SDK copies only that single file and runs it.
+
+**This package never provisions a runtime.** Its project sets `CopilotSkipCliDownload`, which the
+SDK's targets honor by skipping the download, the copy to the output and the content registration
+alike. That keeps the runtime out of this library's outputs, out of every project that references it —
+including its own unit tests, which drive a scripted turn channel and never start a runtime — and out
+of the package. The SDK reference is deliberately **not** made to flow its build assets to consumers:
+that would make every project in a consumer's graph download and copy the runtime, and every host
+pay for the bundled runtime whether or not it runs it.
 
 **The merge gate is hermetic.** The continuous-integration build workflow sets `CopilotSkipCliDownload`
 for the whole workflow as an environment variable, which MSBuild reads as a property, so the build
 matrix, the code analysis, the documentation build and the compile-only build of the opt-in live
 suite never contact GitHub releases and never copy the runtime; no test there needs it. The
-live-samples workflow builds without the property, so the
-samples and the opt-in live suite get the runtime, and caches the extracted bundle between runs. A
-local build downloads the runtime once per hosting project and keeps it in that project's
-intermediate folder, so each hosting project's output carries its own copy.
+live-samples workflow installs a standalone Copilot CLI, verified against its release checksums, and
+builds the samples and the installed-CLI variants of the live suite with the property set, so they
+prove no bundled runtime is needed; only the bundled variant of the live suite builds without it and
+caches the extracted bundle between runs.
 
-**Mirrors and offline builds** use the SDK's own controls: `CopilotCliReleaseBaseUrl`, or the
-`COPILOT_CLI_DOWNLOAD_BASE_URL` environment variable, redirects the download to a mirror;
-`CopilotCliBinaryPath` supplies a runtime already on disk; `CopilotCliDownloadTimeout` bounds the
-download; and `CopilotSkipCliDownload` turns provisioning off entirely.
+**Mirrors and offline builds** of the bundled runtime use the SDK's own controls:
+`CopilotCliReleaseBaseUrl`, or the `COPILOT_CLI_DOWNLOAD_BASE_URL` environment variable, redirects the
+download to a mirror; `CopilotCliBinaryPath` supplies a runtime already on disk;
+`CopilotCliDownloadTimeout` bounds the download; and `CopilotSkipCliDownload` turns provisioning off
+entirely.
 
-**Runtime identifiers.** The runtime is published for `win-x64`, `win-arm64`, `linux-x64`,
+**Runtime identifiers.** The bundled runtime is published for `win-x64`, `win-arm64`, `linux-x64`,
 `linux-arm64`, `linux-musl-x64`, `linux-musl-arm64`, `osx-x64` and `osx-arm64`. A build with an
 explicit runtime identifier provisions the runtime for that identifier; a build without one
 provisions the runtime for the build machine's own platform, so a portable build deployed to a
-different platform does not carry the runtime that platform needs.
+different platform does not carry the runtime that platform needs. The installed CLI has no such
+constraint: it is the machine's own.
 
-These are properties of the off-the-shelf SDK rather than of AgentKit's code, and they are why the
-dependency is isolated in its own package. They are recorded again in *Microsoft.Copilot.SDK Design*.
+These are properties of the off-the-shelf SDK and CLI rather than of AgentKit's code, and they are
+why the dependency is isolated in its own package. They are recorded again in
+*Microsoft.Copilot.SDK Design*.
 
 ## Dependency Isolation
 
-This system carries `Microsoft.Copilot.SDK` — and, through the host's own reference, its native
-runtime — and `Microsoft.Agents.AI.Abstractions`, the Agent Framework's abstractions package, for the
-`AIAgent` base type the agent derives from. Core admits none of that weight: it takes exactly one
-runtime dependency, as recorded in *AgentKitCore System Design*. Isolating them in their own package
-is exactly what the dependencies justify: an application that never builds a Copilot agent never
-takes the SDK, its native runtime, or the agent abstractions. The system references Core,
-`Microsoft.Copilot.SDK` and `Microsoft.Agents.AI.Abstractions`, and nothing else at run time.
+This system carries `Microsoft.Copilot.SDK` — and, only for a host that opts into the bundled runtime and references the
+SDK itself, its native runtime — and `Microsoft.Agents.AI.Abstractions`, the Agent Framework's abstractions package, for
+the `AIAgent` base type the agent derives from. Core admits none of that weight: it takes exactly one runtime
+dependency, as recorded in *AgentKitCore System Design*. Isolating them in their own package is exactly what the
+dependencies justify: an application that never builds a Copilot agent never takes the SDK, its native runtime, or the
+agent abstractions. The system references Core, `Microsoft.Copilot.SDK` and `Microsoft.Agents.AI.Abstractions`, and
+nothing else at run time.
 
 ## Architecture
 
-The system holds eight units: the runtime, the agent and its factory that a host composing a Copilot
-agent uses, and the five that carry a Core session over the runtime.
+The system holds nine units: the runtime and the installed CLI it runs by default, the agent and its
+factory that a host composing a Copilot agent uses, and the five that carry a Core session over the
+runtime.
 
 - **CopilotAgentFactory (Unit)** — the static factory that validates its arguments, refuses a tool
   named like a built-in, derives the allow-list from the supplied tools, withholds the runtime's
@@ -449,11 +485,18 @@ agent uses, and the five that carry a Core session over the runtime.
   releases a conversation's runtime session without deleting it after every run (deleting only the session of a run made
   without a conversation), serializes a conversation so it can outlive the process, and serializes runs on one
   conversation.
-- **CopilotRuntime (Unit)** — the runtime AgentKit starts, confines and owns, with its options type:
-  builds the only Copilot client the package runs on — Empty mode, the provisioned runtime spawned as
-  a child process with the host's `COPILOT_`/`GITHUB_COPILOT_` variables withheld apart from an
-  allow-listed credential, network and telemetry-off set, a data directory it owns — exposes only neutral options,
-  explains a runtime that cannot start, and is disposed by whoever started it.
+- **CopilotRuntime (Unit)** — the runtime AgentKit starts, confines and owns, with its options and
+  runtime-source types: resolves the executable — the installed CLI the host names or discovery
+  finds, version-checked, or the bundled runtime on request — and builds the only Copilot client the
+  package runs on — Empty mode, that executable spawned as a child process with the host's
+  `COPILOT_`/`GITHUB_COPILOT_` variables withheld apart from an allow-listed credential, network and
+  telemetry-off set, a data directory it owns — exposes only neutral options, reports the started
+  runtime's version, refuses one that is not signed in, explains a runtime that cannot start, and is
+  disposed by whoever started it.
+- **CopilotCli (Unit)** — the installed Copilot CLI: finds it on `PATH` and in the platform's
+  well-known installation locations, passing over editor launchers; reads the version it runs under
+  the SDK, without a shell and under the runtime's environment; holds the minimum version; and
+  composes the guidance its refusals carry.
 - **CopilotProviderSession (Unit)** — an `IProviderSession` over one Copilot session: sends a turn,
   carries the seeded record ahead of the first message it sends, refuses a turn that reported no
   usage or whose history the runtime rewrote, ends the session on any turn the runtime processed that
@@ -481,20 +524,24 @@ reads occupancy through the observer and deletes each rotated session.
 
 ## External Interfaces
 
-The system's public API is six types. `CopilotRuntime` and `CopilotRuntimeOptions` start the runtime;
-the factory, the provider-session factory and the summarizer take that runtime, which the host
-started and will dispose; and `CopilotAgentSession` is what the agent hands back for a conversation.
-Everything else in the package is internal, including the runtime's client.
+The system's public API is nine types. `CopilotRuntime`, `CopilotRuntimeOptions` and
+`CopilotRuntimeSource` start the runtime, and `CopilotCli` with `CopilotCliSearchResult` reports which
+installed CLI it would run and the minimum version; the factory, the provider-session factory and the
+summarizer take that runtime, which the host started and will dispose; and `CopilotAgentSession` is
+what the agent hands back for a conversation. Everything else in the package is internal, including
+the runtime's client.
 
 | Interface | Direction | Format | Constraints |
 | --- | --- | --- | --- |
 | `CopilotRuntime.StartAsync` | Inbound | `CopilotRuntimeOptions` | Data directory new, empty or AgentKit's |
+| `CopilotCli.FindInstalled` | Inbound | Search result | Ignores `COPILOT_CLI_PATH`; starts no process |
 | `CopilotAgentFactory.Create` | Inbound | Runtime, tools, settings | Tools non-empty, unique, not built-in |
 | `CopilotAgentSession` | Outbound | Agent session, JSON | Runtime session kept until deleted |
 | `CopilotProviderSessionFactory` | Outbound | Core session factory | One session per rotation |
 | `CopilotSummarizer` | Outbound | Core summarizer | Separate tool-free session |
 | `CopilotRuntime` | Inbound | Started runtime | Host-owned; never disposed by what uses it |
 | Runtime process | Outbound | Copilot SDK, stdio | Empty mode; Copilot variables withheld |
+| CLI version probe | Outbound | `--no-auto-update --version` | No shell; withheld environment; bounded time |
 | Session event stream | Inbound | Copilot SDK events | Registered before session creation |
 
 `Create` takes the runtime, the tools, and optionally the instructions, a permission handler, the
@@ -509,7 +556,12 @@ stream, as recorded in *Occupancy Comes From the Runtime*.
 
 **AgentKit starts the runtime itself, and offers no way to supply a client.** A host calls
 `CopilotRuntime.StartAsync` with `CopilotRuntimeOptions` — a data directory, and optionally a GitHub
-token, a log level and a logger — and disposes the runtime when finished. The runtime is in Empty
+token, a log level, a logger, and the runtime executable: the installed Copilot CLI by default (a
+named path, or the one discovery finds) or the bundled runtime — and disposes the runtime when
+finished. The executable is the host's choice, never the ambient environment: `COPILOT_CLI_PATH` is
+withheld from the runtime and ignored by discovery. An installed CLI older than the minimum is
+refused before any runtime starts, and a runtime the SDK refuses for its protocol version is
+explained as a CLI too old or too new for this release. The runtime is in Empty
 mode, runs as a child process whose environment carries none of the host's `COPILOT_` or
 `GITHUB_COPILOT_` configuration variables apart from a credential, network and telemetry-off
 pass-through set, and keeps its state in a data directory AgentKit created and marked; any other
@@ -571,7 +623,10 @@ hooks being off, no installed plugin, and a fresh data directory, which holds no
 
 **Identity.** The runtime authenticates with the token in `CopilotRuntimeOptions` when one is given;
 otherwise as the signed-in user, from `COPILOT_GITHUB_TOKEN`, `GH_TOKEN` or `GITHUB_TOKEN`, from
-credentials stored in its data directory, or from the GitHub CLI.
+credentials stored in its data directory, or from the GitHub CLI. The same holds for either runtime
+source: the Copilot CLI's own sign-in, kept in the user's Copilot home and the system keychain, is
+not used. A runtime that started but is not signed in is refused at start, with every way to sign it
+in, rather than failing on its first turn.
 
 **There is no client-level working directory.** The runtime takes a working directory per session,
 and only this system builds a session's options, so the working directory is a parameter of
@@ -582,6 +637,24 @@ working directory grants nothing: what an agent may read or write is decided by 
 policy. `CopilotSummarizer` takes none, because a consolidation session offers no tools.
 
 ## Data Flow
+
+The runtime start:
+
+```text
+Application
+        │  CopilotRuntimeOptions (data directory, token, runtime source, CLI path)
+        ▼
+CopilotRuntime.StartAsync ──► PrepareDataDirectory (marked, AgentKit's own)
+        │
+        ├─ installed CLI ──► CopilotCli.FindInstalled (unless named) ──► CopilotCli.ReadVersionAsync
+        │                       (PATH, well-known locations)            (--no-auto-update --version)
+        ├─ bundled ──────► the runtime the SDK provisioned (no search, no probe)
+        ▼
+CopilotClient (Empty mode, spawned over stdio, withheld environment) ──► protocol handshake
+        │  status (version, protocol), authentication
+        ▼
+CopilotRuntime (CliPath, RuntimeVersion, ProtocolVersion) ──► Application
+```
 
 The agent path:
 
@@ -629,16 +702,20 @@ src/DemaConsulting.AgentKit.Agents.Copilot/
 ├── CopilotAgentFactory.cs            — builds a Copilot agent, and every session's options
 ├── CopilotAgentSession.cs            — one agent conversation: its runtime session and state bag
 ├── CopilotProviderSession.cs         — an AgentKit session over one Copilot session
+├── CopilotCli.cs                     — finds the installed Copilot CLI and checks its version
+├── CopilotCliSearchResult.cs         — what discovery found, searched and passed over
 ├── CopilotProviderSessionFactory.cs  — creates one seeded Copilot session per rotation
 ├── CopilotRuntime.cs                 — the runtime AgentKit starts, confines and owns
 ├── CopilotRuntimeOptions.cs          — the neutral options a host may give the runtime
+├── CopilotRuntimeSource.cs           — the installed CLI or the bundled runtime
 ├── CopilotSessionObserver.cs         — watches the runtime's event stream
 ├── CopilotSummarizer.cs              — consolidates on a separate tool-free session
 └── CopilotTurnChannel.cs             — the seam over the sealed SDK session types
 ```
 
 `CopilotAgent.cs` and `CopilotAgentSession.cs` together form the `CopilotAgent` unit;
-`CopilotRuntime.cs` and `CopilotRuntimeOptions.cs` together form the `CopilotRuntime` unit.
+`CopilotRuntime.cs`, `CopilotRuntimeOptions.cs` and `CopilotRuntimeSource.cs` together form the
+`CopilotRuntime` unit; `CopilotCli.cs` and `CopilotCliSearchResult.cs` form the `CopilotCli` unit.
 
 ## Dependencies
 
@@ -651,8 +728,8 @@ src/DemaConsulting.AgentKit.Agents.Copilot/
   session options and their shared base, the message options and blob attachments, the permission
   RPC, the published set of isolated built-in tool names, the MCP discovery and configuration RPC
   and the session-options patch, and the session event stream; see
-  *Microsoft.Copilot.SDK Design*. Its native runtime is provisioned by the host application, as
-  recorded above.
+  *Microsoft.Copilot.SDK Design*. Its native runtime is provisioned only by a host application that
+  opts into the bundled runtime, as recorded above; by default the installed Copilot CLI runs instead.
 - **Microsoft.Agents.AI.Abstractions** — supplies the `AIAgent` base type, `AgentSession` with its
   state bag, and the response and update types the agent produces; see
   *Microsoft.Agents.AI.Abstractions Design*.
@@ -693,7 +770,17 @@ so no path can acquire capability another path withholds.
   child process with the host's `COPILOT_`/`GITHUB_COPILOT_` variables withheld apart from an
   allow-listed credential, network and telemetry-off set, on a data directory AgentKit owns; no client of the
   host's is accepted. This is what prevents the user, workspace and plugin sources, which Empty mode
-  alone does not; see *Runtime Ownership*.
+  alone does not; see *Runtime Ownership*. The installed CLI and the bundled runtime run on this one
+  path, so choosing either never changes what reaches the model.
+- **The runtime executable is the host's choice, and checked.** The ambient environment cannot choose
+  the binary a confined runtime runs: `COPILOT_CLI_PATH` is withheld and ignored by discovery, relative
+  and drive-relative `PATH` entries are never searched, a batch file is refused as a `cliPath`, and an
+  editor's launcher, which forwards to another CLI and can prompt, is passed over. An installed CLI's
+  version is read under the runtime's environment and
+  an unsupported one refused, so version skew between the machine's CLI and the SDK surfaces as an
+  explained refusal rather than as behavior the live suite never saw. The installed CLI shares the
+  user's package cache and reads organization policy from it; that state is the user's own and can
+  only restrict.
 - **The refused built-in names.** A supplied tool cannot carry a built-in tool's name, and AgentKit
   never marks a tool as overriding a built-in, so no supplied tool can stand in for one the model
   associates with other behavior.
@@ -729,7 +816,9 @@ for is ended rather than reused. Both are argued above.
   host process
 - **Isolated dependency**: `Microsoft.Copilot.SDK` and `Microsoft.Agents.AI.Abstractions` reach an
   application only through this package; the SDK's native runtime reaches it only through the host
-  application's own direct reference to the SDK
+  application's own direct reference to the SDK, made only when the host opts into the bundled runtime
+- **A supported runtime only**: an installed CLI runs only at or above `CopilotCli.MinimumVersion`,
+  which is revisited with every update of the SDK reference
 - **Compliance**: all functionality must be traceable to requirements
 - **Quality**: zero warnings, full test coverage, complete documentation
 - **Portability**: compatible across supported .NET platforms, within the target frameworks and

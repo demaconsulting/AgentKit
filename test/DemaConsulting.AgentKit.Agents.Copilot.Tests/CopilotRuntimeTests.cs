@@ -6,14 +6,16 @@ namespace DemaConsulting.AgentKit.Agents.Copilot.Tests;
 
 /// <summary>
 ///     Unit tests for <see cref="CopilotRuntime"/> and <see cref="CopilotRuntimeOptions"/>: the client
-///     options AgentKit builds are confined, the runtime's environment withholds the host's Copilot
-///     configuration variables, the data directory is one AgentKit owns, a failed start is explained
-///     and releases the client, and disposal is idempotent.
+///     options AgentKit builds are confined for either runtime source, the runtime's environment
+///     withholds the host's Copilot configuration variables, the data directory is one AgentKit owns,
+///     the runtime executable is resolved and an installed CLI's version checked, a failed or
+///     unauthenticated start is explained and releases the client, and disposal is idempotent.
 /// </summary>
 /// <remarks>
 ///     No test starts a runtime or changes the process environment: the host environment is passed
-///     in, the start and disposal are injected through the internal seams, and every data directory
-///     is created under the system temporary folder and deleted afterwards.
+///     in, discovery and the version probe run on a fake machine, the start, status reads and
+///     disposal are injected through the internal seams, and every data directory is created under
+///     the system temporary folder and deleted afterwards.
 /// </remarks>
 public class CopilotRuntimeTests
 {
@@ -35,18 +37,19 @@ public class CopilotRuntimeTests
     }
 
     /// <summary>
-    ///     Proves the client options spawn the bundled runtime over stdio on the prepared data
-    ///     directory, with no runtime path, arguments or child working directory of the host's.
+    ///     Proves the client options for the bundled runtime spawn the runtime the SDK provisioned over
+    ///     stdio on the prepared data directory, with no runtime path, arguments or child working
+    ///     directory of the host's.
     /// </summary>
     [Fact]
-    public void CopilotRuntime_BuildClientOptions_SpawnsTheBundledRuntimeOverStdio()
+    public void CopilotRuntime_BuildClientOptions_Bundled_SpawnsTheProvisionedRuntimeOverStdio()
     {
         // Arrange
         using var directory = new TemporaryDirectory();
-        var options = new CopilotRuntimeOptions(directory.Path);
+        var options = new CopilotRuntimeOptions(directory.Path, runtimeSource: CopilotRuntimeSource.Bundled);
 
         // Act
-        var clientOptions = CopilotRuntime.BuildClientOptions(options, directory.Path, new Hashtable());
+        var clientOptions = CopilotRuntime.BuildClientOptions(options, directory.Path, new Hashtable(), cliPath: null);
 
         // Assert
         var connection = Assert.IsType<SpawnedStdioRuntimeConnection>(clientOptions.Runtime);
@@ -55,6 +58,38 @@ public class CopilotRuntimeTests
         Assert.Null(connection.WorkingDirectory);
         Assert.Equal(directory.Path, connection.BaseDirectory);
         Assert.NotNull(connection.Environment);
+    }
+
+    /// <summary>
+    ///     Proves the client options for the installed CLI spawn exactly the resolved CLI over stdio,
+    ///     with the same mode, data directory and environment as the bundled runtime and no runtime
+    ///     arguments or child working directory.
+    /// </summary>
+    [Fact]
+    public void CopilotRuntime_BuildClientOptions_InstalledCli_SpawnsTheResolvedCliOverStdio()
+    {
+        // Arrange
+        using var directory = new TemporaryDirectory();
+        var cli = Path.Combine(directory.Path, "copilot.exe");
+        var host = new Hashtable { ["COPILOT_CLI_PATH"] = "/elsewhere/copilot", ["PATH"] = "/usr/bin" };
+
+        // Act
+        var installed = CopilotRuntime.BuildClientOptions(new CopilotRuntimeOptions(directory.Path), directory.Path, host, cli);
+        var bundled = CopilotRuntime.BuildClientOptions(
+            new CopilotRuntimeOptions(directory.Path, runtimeSource: CopilotRuntimeSource.Bundled),
+            directory.Path,
+            host);
+
+        // Assert
+        var connection = Assert.IsType<SpawnedStdioRuntimeConnection>(installed.Runtime);
+        var bundledConnection = Assert.IsType<SpawnedStdioRuntimeConnection>(bundled.Runtime);
+        Assert.Equal(cli, connection.Path);
+        Assert.Null(connection.Args);
+        Assert.Null(connection.WorkingDirectory);
+        Assert.Equal(CopilotClientMode.Empty, installed.Mode);
+        Assert.Equal(bundled.Mode, installed.Mode);
+        Assert.Equal(bundledConnection.BaseDirectory, connection.BaseDirectory);
+        Assert.Equal(bundledConnection.Environment!.OrderBy(entry => entry.Key, StringComparer.Ordinal), connection.Environment!.OrderBy(entry => entry.Key, StringComparer.Ordinal));
     }
 
     /// <summary>
@@ -671,6 +706,125 @@ public class CopilotRuntimeTests
     }
 
     /// <summary>
+    ///     Proves the options default to the installed Copilot CLI, found by discovery.
+    /// </summary>
+    [Fact]
+    public void CopilotRuntimeOptions_Constructor_Defaults_InstalledCliWithNoPath()
+    {
+        // Act
+        var options = new CopilotRuntimeOptions("copilot-runtime");
+
+        // Assert
+        Assert.Equal(CopilotRuntimeSource.InstalledCli, options.RuntimeSource);
+        Assert.Null(options.CliPath);
+    }
+
+    /// <summary>
+    ///     Proves a fully qualified CLI path is kept, normalized, for the installed CLI.
+    /// </summary>
+    [Fact]
+    public void CopilotRuntimeOptions_Constructor_FullyQualifiedCliPath_IsKept()
+    {
+        // Arrange
+        var cli = Path.Combine(Path.GetTempPath(), "tools", "..", "copilot", "copilot.exe");
+
+        // Act
+        var options = new CopilotRuntimeOptions("copilot-runtime", cliPath: cli);
+
+        // Assert
+        Assert.Equal(Path.GetFullPath(cli), options.CliPath);
+        Assert.Equal(CopilotRuntimeSource.InstalledCli, options.RuntimeSource);
+    }
+
+    /// <summary>
+    ///     Proves a CLI path together with the bundled runtime is refused naming the parameter.
+    /// </summary>
+    [Fact]
+    public void CopilotRuntimeOptions_Constructor_CliPathWithBundled_Throws()
+    {
+        // Arrange
+        var cli = Path.Combine(Path.GetTempPath(), "copilot.exe");
+
+        // Act
+        var failure = Assert.Throws<ArgumentException>(
+            () => new CopilotRuntimeOptions("copilot-runtime", runtimeSource: CopilotRuntimeSource.Bundled, cliPath: cli));
+
+        // Assert
+        Assert.Equal("cliPath", failure.ParamName);
+        Assert.Contains("Bundled", failure.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves a CLI path that is not fully qualified is refused, so the executable never depends on
+    ///     the current directory.
+    /// </summary>
+    [Fact]
+    public void CopilotRuntimeOptions_Constructor_RelativeCliPath_Throws()
+    {
+        // Act
+        var failure = Assert.Throws<ArgumentException>(
+            () => new CopilotRuntimeOptions("copilot-runtime", cliPath: Path.Combine("tools", "copilot")));
+
+        // Assert
+        Assert.Equal("cliPath", failure.ParamName);
+        Assert.Contains("fully qualified", failure.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves a CLI path naming a batch file is refused, in any case, because Windows would run it
+    ///     through <c>cmd.exe</c>, and the refusal points to <c>copilot.exe</c> or <c>npm-loader.js</c>.
+    /// </summary>
+    /// <param name="fileName">The batch file's name.</param>
+    [Theory]
+    [InlineData("copilot.cmd")]
+    [InlineData("copilot.CMD")]
+    [InlineData("copilot.bat")]
+    public void CopilotRuntimeOptions_Constructor_BatchFileCliPath_Throws(string fileName)
+    {
+        // Arrange
+        var cli = Path.Combine(Path.GetTempPath(), fileName);
+
+        // Act
+        var failure = Assert.Throws<ArgumentException>(() => new CopilotRuntimeOptions("copilot-runtime", cliPath: cli));
+
+        // Assert
+        Assert.Equal("cliPath", failure.ParamName);
+        Assert.Contains("batch file", failure.Message, StringComparison.Ordinal);
+        Assert.Contains("copilot.exe", failure.Message, StringComparison.Ordinal);
+        Assert.Contains("npm-loader.js", failure.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves a runtime source that is not a defined value is refused.
+    /// </summary>
+    [Fact]
+    public void CopilotRuntimeOptions_Constructor_UndefinedSource_Throws()
+    {
+        // Act
+        var failure = Assert.Throws<ArgumentOutOfRangeException>(
+            () => new CopilotRuntimeOptions("copilot-runtime", runtimeSource: (CopilotRuntimeSource)7));
+
+        // Assert
+        Assert.Equal("runtimeSource", failure.ParamName);
+    }
+
+    /// <summary>
+    ///     Proves a blank CLI path is treated as none, for either source.
+    /// </summary>
+    [Fact]
+    public void CopilotRuntimeOptions_Constructor_BlankCliPath_IsNull()
+    {
+        // Act
+        var installed = new CopilotRuntimeOptions("copilot-runtime", cliPath: " ");
+        var bundled = new CopilotRuntimeOptions("copilot-runtime", runtimeSource: CopilotRuntimeSource.Bundled, cliPath: string.Empty);
+
+        // Assert
+        Assert.Null(installed.CliPath);
+        Assert.Null(bundled.CliPath);
+        Assert.Equal(CopilotRuntimeSource.Bundled, bundled.RuntimeSource);
+    }
+
+    /// <summary>
     ///     Proves missing options are refused.
     /// </summary>
     [Fact]
@@ -682,20 +836,23 @@ public class CopilotRuntimeTests
     }
 
     /// <summary>
-    ///     Proves a start that fails is explained — the runtime's own error first, then the missing
-    ///     direct SDK reference as the common cause of a runtime that was not found, then every source
-    ///     the runtime authenticates from — with the original failure kept as the cause, including a
-    ///     failure whose message is null.
+    ///     Proves a start that fails on the bundled runtime is explained — the runtime's own error
+    ///     first, then the missing direct SDK reference as the common cause of a runtime that was not
+    ///     found, then every source the runtime authenticates from — with the original failure kept as
+    ///     the cause, and that a start whose launch is not known, including one whose failure message
+    ///     is null, is explained for both sources.
     /// </summary>
     [Fact]
     public async Task CopilotRuntime_StartClient_FailedStart_ExplainsTheMissingRuntimeAndKeepsTheCause()
     {
         // Arrange: the error the SDK raises when the bundled runtime is not in the output
         var cause = new InvalidOperationException("Copilot runtime wrapper not found at 'runtimes/win-x64/native/copilot-runtime.exe'.");
+        var bundled = new CopilotRuntimeLaunch(CopilotRuntimeSource.Bundled, null, null);
 
         // Act
         var failure = await Assert.ThrowsAsync<InvalidOperationException>(() => CopilotRuntime.StartClientAsync(
             _ => Task.FromException(cause),
+            bundled,
             TestContext.Current.CancellationToken));
         var nullMessage = new NullMessageException();
         var nullFailure = await Assert.ThrowsAsync<InvalidOperationException>(() => CopilotRuntime.StartClientAsync(
@@ -712,6 +869,82 @@ public class CopilotRuntimeTests
             StringComparison.Ordinal);
         Assert.Same(nullMessage, nullFailure.InnerException);
         Assert.Contains("Microsoft.Copilot.SDK", nullFailure.Message, StringComparison.Ordinal);
+        Assert.Contains("installed Copilot CLI", nullFailure.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves an installed CLI that fails to start is explained with its path and version, and is
+    ///     not blamed on a missing SDK package reference.
+    /// </summary>
+    [Fact]
+    public async Task CopilotRuntime_StartClient_InstalledCliFailure_DoesNotBlameTheSdkReference()
+    {
+        // Arrange
+        var cause = new IOException("The pipe has been ended.");
+        var launch = new CopilotRuntimeLaunch(CopilotRuntimeSource.InstalledCli, "/fake/bin/copilot", new Version(1, 0, 114));
+
+        // Act
+        var failure = await Assert.ThrowsAsync<InvalidOperationException>(() => CopilotRuntime.StartClientAsync(
+            _ => Task.FromException(cause),
+            launch,
+            TestContext.Current.CancellationToken));
+
+        // Assert
+        Assert.Same(cause, failure.InnerException);
+        Assert.Contains(cause.Message, failure.Message, StringComparison.Ordinal);
+        Assert.Contains("'/fake/bin/copilot' (version 1.0.114)", failure.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("PackageReference", failure.Message, StringComparison.Ordinal);
+        Assert.Contains("GH_TOKEN", failure.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves the SDK's refusal of a runtime on an older protocol is explained as a CLI too old,
+    ///     with upgrade guidance, keeping the SDK's error.
+    /// </summary>
+    [Fact]
+    public async Task CopilotRuntime_StartClient_ProtocolMismatchOlderServer_IsExplainedAsTooOld()
+    {
+        // Arrange: the error SDK 2.0.1 raises for a CLI on protocol 3
+        var cause = new InvalidOperationException(
+            "SDK protocol version mismatch: SDK supports versions 4-4, but server reports version 3. Please update your SDK or server to ensure compatibility.");
+        var launch = new CopilotRuntimeLaunch(CopilotRuntimeSource.InstalledCli, "/fake/bin/copilot", null);
+
+        // Act
+        var failure = await Assert.ThrowsAsync<InvalidOperationException>(() => CopilotRuntime.StartClientAsync(
+            _ => Task.FromException(cause),
+            launch,
+            TestContext.Current.CancellationToken));
+
+        // Assert
+        Assert.Same(cause, failure.InnerException);
+        Assert.Contains(cause.Message, failure.Message, StringComparison.Ordinal);
+        Assert.Contains("speaks SDK protocol version 3", failure.Message, StringComparison.Ordinal);
+        Assert.Contains($"{CopilotCli.MinimumVersion} or later", failure.Message, StringComparison.Ordinal);
+        Assert.Contains("winget upgrade GitHub.Copilot", failure.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("PackageReference to Microsoft.Copilot.SDK to the host", failure.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves the SDK's refusal of a runtime on a newer protocol is explained as a CLI newer than
+    ///     this release of AgentKit.
+    /// </summary>
+    [Fact]
+    public async Task CopilotRuntime_StartClient_ProtocolMismatchNewerServer_IsExplainedAsTooNew()
+    {
+        // Arrange
+        var cause = new InvalidOperationException(
+            "SDK protocol version mismatch: SDK supports versions 4-4, but server reports version 5. Please update your SDK or server to ensure compatibility.");
+        var launch = new CopilotRuntimeLaunch(CopilotRuntimeSource.InstalledCli, "/fake/bin/copilot", new Version(1, 2, 0));
+
+        // Act
+        var failure = await Assert.ThrowsAsync<InvalidOperationException>(() => CopilotRuntime.StartClientAsync(
+            _ => Task.FromException(cause),
+            launch,
+            TestContext.Current.CancellationToken));
+
+        // Assert
+        Assert.Contains("speaks SDK protocol version 5", failure.Message, StringComparison.Ordinal);
+        Assert.Contains("Update AgentKit", failure.Message, StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -891,6 +1124,324 @@ public class CopilotRuntimeTests
         // Act / Assert
         await Assert.ThrowsAsync<ObjectDisposedException>(() => runtime.DeleteSessionAsync("session", TestContext.Current.CancellationToken));
     }
+
+    /// <summary>
+    ///     Proves the bundled runtime is launched without discovery or a version probe.
+    /// </summary>
+    [Fact]
+    public async Task CopilotRuntime_ResolveLaunch_Bundled_SkipsDiscoveryAndTheVersionProbe()
+    {
+        // Arrange: a machine with a CLI on PATH that must not be chosen
+        var machine = new FakeCopilotCliMachine();
+        machine.AddFile(Path.Combine("/fake/bin", "copilot"));
+        var options = new CopilotRuntimeOptions("copilot-runtime", runtimeSource: CopilotRuntimeSource.Bundled);
+
+        // Act
+        var launch = await CopilotRuntime.ResolveLaunchAsync(
+            options,
+            FakeDataDirectory,
+            new Hashtable(),
+            machine.Context(CopilotCliPlatform.Linux, "/fake/bin"),
+            machine.RunAsync,
+            TestContext.Current.CancellationToken);
+
+        // Assert
+        Assert.Equal(new CopilotRuntimeLaunch(CopilotRuntimeSource.Bundled, null, null), launch);
+        Assert.Empty(machine.Started);
+    }
+
+    /// <summary>
+    ///     Proves a CLI path the host names wins over the one discovery would find, and is probed.
+    /// </summary>
+    [Fact]
+    public async Task CopilotRuntime_ResolveLaunch_ExplicitPath_WinsOverDiscovery()
+    {
+        // Arrange
+        var machine = new FakeCopilotCliMachine();
+        machine.AddFile(Path.Combine("/fake/bin", "copilot"));
+        var named = machine.AddFile(Path.GetFullPath(Path.Combine(Path.GetTempPath(), "pinned", "copilot")));
+        var options = new CopilotRuntimeOptions("copilot-runtime", cliPath: named);
+
+        // Act
+        var launch = await CopilotRuntime.ResolveLaunchAsync(
+            options,
+            FakeDataDirectory,
+            new Hashtable(),
+            machine.Context(CopilotCliPlatform.Linux, "/fake/bin"),
+            machine.RunAsync,
+            TestContext.Current.CancellationToken);
+
+        // Assert
+        Assert.Equal(named, launch.CliPath);
+        Assert.Equal(named, Assert.Single(machine.Started).FileName);
+    }
+
+    /// <summary>
+    ///     Proves a CLI path the host names that does not exist is refused before anything runs.
+    /// </summary>
+    [Fact]
+    public async Task CopilotRuntime_ResolveLaunch_ExplicitPathMissing_IsRefused()
+    {
+        // Arrange
+        var machine = new FakeCopilotCliMachine();
+        var named = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "missing", "copilot"));
+        var options = new CopilotRuntimeOptions("copilot-runtime", cliPath: named);
+
+        // Act
+        var failure = await Assert.ThrowsAsync<InvalidOperationException>(() => CopilotRuntime.ResolveLaunchAsync(
+            options,
+            FakeDataDirectory,
+            new Hashtable(),
+            machine.Context(CopilotCliPlatform.Linux),
+            machine.RunAsync,
+            TestContext.Current.CancellationToken));
+
+        // Assert
+        Assert.Contains(named, failure.Message, StringComparison.Ordinal);
+        Assert.Contains("does not exist", failure.Message, StringComparison.Ordinal);
+        Assert.Empty(machine.Started);
+    }
+
+    /// <summary>
+    ///     Proves a machine without a CLI is refused with where AgentKit looked and how to install one.
+    /// </summary>
+    [Fact]
+    public async Task CopilotRuntime_ResolveLaunch_NothingFound_IsRefusedWithInstallGuidance()
+    {
+        // Arrange
+        var machine = new FakeCopilotCliMachine();
+
+        // Act
+        var failure = await Assert.ThrowsAsync<InvalidOperationException>(() => CopilotRuntime.ResolveLaunchAsync(
+            new CopilotRuntimeOptions("copilot-runtime"),
+            FakeDataDirectory,
+            new Hashtable(),
+            machine.Context(CopilotCliPlatform.Windows, "/fake/bin"),
+            machine.RunAsync,
+            TestContext.Current.CancellationToken));
+
+        // Assert
+        Assert.Contains(Path.Combine("/fake/bin", "copilot.exe"), failure.Message, StringComparison.Ordinal);
+        Assert.Contains("winget install GitHub.Copilot", failure.Message, StringComparison.Ordinal);
+        Assert.Contains("CopilotRuntimeSource.Bundled", failure.Message, StringComparison.Ordinal);
+        Assert.Empty(machine.Started);
+    }
+
+    /// <summary>
+    ///     Proves <c>COPILOT_CLI_PATH</c> in the host's environment never chooses the CLI: discovery
+    ///     ignores it, so a machine with nothing else installed is refused.
+    /// </summary>
+    [Fact]
+    public async Task CopilotRuntime_ResolveLaunch_CopilotCliPathVariable_IsIgnored()
+    {
+        // Arrange: the variable names a CLI that exists, but no discovery location holds one
+        var machine = new FakeCopilotCliMachine();
+        var ambient = machine.AddFile(Path.Combine("/fake/ambient", "copilot"));
+        var host = new Hashtable { ["COPILOT_CLI_PATH"] = ambient };
+
+        // Act
+        var failure = await Assert.ThrowsAsync<InvalidOperationException>(() => CopilotRuntime.ResolveLaunchAsync(
+            new CopilotRuntimeOptions("copilot-runtime"),
+            FakeDataDirectory,
+            host,
+            machine.Context(CopilotCliPlatform.Linux, "/fake/bin"),
+            machine.RunAsync,
+            TestContext.Current.CancellationToken));
+
+        // Assert
+        Assert.Contains("could not find an installed GitHub Copilot CLI", failure.Message, StringComparison.Ordinal);
+        Assert.Empty(machine.Started);
+    }
+
+    /// <summary>
+    ///     Proves a CLI older than the minimum is refused with upgrade guidance before any client exists.
+    /// </summary>
+    [Fact]
+    public async Task CopilotRuntime_ResolveLaunch_TooOldCli_IsRefusedBeforeAnyClientExists()
+    {
+        // Arrange: the installed CLI reports 1.0.106
+        var machine = new FakeCopilotCliMachine
+        {
+            Result = new(0, "GitHub Copilot CLI 1.0.106.\nRun 'copilot update' to check for updates.\n", string.Empty, TimedOut: false),
+        };
+        var cli = machine.AddFile(Path.Combine("/fake/bin", "copilot"));
+
+        // Act
+        var failure = await Assert.ThrowsAsync<InvalidOperationException>(() => CopilotRuntime.ResolveLaunchAsync(
+            new CopilotRuntimeOptions("copilot-runtime"),
+            FakeDataDirectory,
+            new Hashtable(),
+            machine.Context(CopilotCliPlatform.Linux, "/fake/bin"),
+            machine.RunAsync,
+            TestContext.Current.CancellationToken));
+
+        // Assert
+        Assert.Contains(cli, failure.Message, StringComparison.Ordinal);
+        Assert.Contains("1.0.106", failure.Message, StringComparison.Ordinal);
+        Assert.Contains($"{CopilotCli.MinimumVersion} or later", failure.Message, StringComparison.Ordinal);
+        Assert.Contains("copilot --no-auto-update --version", failure.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves a supported CLI is launched with its path and the version it reported.
+    /// </summary>
+    [Fact]
+    public async Task CopilotRuntime_ResolveLaunch_SupportedCli_CarriesPathAndVersion()
+    {
+        // Arrange
+        var machine = new FakeCopilotCliMachine();
+        var cli = machine.AddFile(Path.Combine("/fake/bin", "copilot"));
+
+        // Act
+        var launch = await CopilotRuntime.ResolveLaunchAsync(
+            new CopilotRuntimeOptions("copilot-runtime"),
+            FakeDataDirectory,
+            new Hashtable(),
+            machine.Context(CopilotCliPlatform.Linux, "/fake/bin"),
+            machine.RunAsync,
+            TestContext.Current.CancellationToken);
+
+        // Assert
+        Assert.Equal(new CopilotRuntimeLaunch(CopilotRuntimeSource.InstalledCli, cli, new Version(1, 0, 113)), launch);
+    }
+
+    /// <summary>
+    ///     Proves the installed CLI's version probe runs under the same withheld environment the runtime
+    ///     gets, so a host's Copilot configuration variable never reaches the CLI on that path either.
+    /// </summary>
+    [Fact]
+    public async Task CopilotRuntime_ResolveLaunch_ProbesUnderTheWithheldEnvironment()
+    {
+        // Arrange: a host environment carrying Copilot configuration
+        var machine = new FakeCopilotCliMachine();
+        machine.AddFile(Path.Combine("/fake/bin", "copilot"));
+        var host = new Hashtable { ["COPILOT_ALLOW_ALL"] = "1", ["COPILOT_GITHUB_TOKEN"] = "token", ["PATH"] = "/fake/bin" };
+
+        // Act
+        await CopilotRuntime.ResolveLaunchAsync(
+            new CopilotRuntimeOptions("copilot-runtime"),
+            FakeDataDirectory,
+            host,
+            machine.Context(CopilotCliPlatform.Linux, "/fake/bin"),
+            machine.RunAsync,
+            TestContext.Current.CancellationToken);
+
+        // Assert
+        var environment = Assert.Single(machine.Started).Environment;
+        Assert.Equal(
+            CopilotRuntime.BuildRuntimeEnvironment(host).Append(new("COPILOT_HOME", FakeDataDirectory)).OrderBy(entry => entry.Key, StringComparer.Ordinal),
+            environment.Select(entry => new KeyValuePair<string, string>(entry.Key, entry.Value!)).OrderBy(entry => entry.Key, StringComparer.Ordinal));
+        Assert.False(environment.ContainsKey("COPILOT_ALLOW_ALL"));
+    }
+
+    /// <summary>
+    ///     Proves a CLI whose output names no version is launched, leaving the decision to the SDK's
+    ///     protocol handshake.
+    /// </summary>
+    [Fact]
+    public async Task CopilotRuntime_ResolveLaunch_NoVersionReported_DefersToTheHandshake()
+    {
+        // Arrange
+        var machine = new FakeCopilotCliMachine { Result = new(0, "development build", string.Empty, TimedOut: false) };
+        var cli = machine.AddFile(Path.Combine("/fake/bin", "copilot"));
+
+        // Act
+        var launch = await CopilotRuntime.ResolveLaunchAsync(
+            new CopilotRuntimeOptions("copilot-runtime"),
+            FakeDataDirectory,
+            new Hashtable(),
+            machine.Context(CopilotCliPlatform.Linux, "/fake/bin"),
+            machine.RunAsync,
+            TestContext.Current.CancellationToken);
+
+        // Assert
+        Assert.Equal(cli, launch.CliPath);
+        Assert.Null(launch.CliVersion);
+    }
+
+    /// <summary>
+    ///     Proves a runtime that started but is not signed in is refused, with the runtime's own status
+    ///     and every way to sign it in, and with the Copilot CLI's own sign-in named as not used.
+    /// </summary>
+    [Fact]
+    public async Task CopilotRuntime_VerifyStarted_Unauthenticated_IsRefusedWithSignInGuidance()
+    {
+        // Arrange
+        var status = new GetStatusResponse { Version = "1.0.113", ProtocolVersion = 4 };
+        var authentication = new GetAuthStatusResponse { IsAuthenticated = false, StatusMessage = "Not authenticated" };
+
+        // Act
+        var failure = await Assert.ThrowsAsync<InvalidOperationException>(() => CopilotRuntime.VerifyStartedAsync(
+            _ => Task.FromResult(status),
+            _ => Task.FromResult(authentication),
+            TestContext.Current.CancellationToken));
+
+        // Assert
+        Assert.Contains("Not authenticated", failure.Message, StringComparison.Ordinal);
+        Assert.Contains("Copilot CLI's own sign-in is not used", failure.Message, StringComparison.Ordinal);
+        Assert.Contains("gitHubToken", failure.Message, StringComparison.Ordinal);
+        Assert.Contains("COPILOT_GITHUB_TOKEN, GH_TOKEN or GITHUB_TOKEN", failure.Message, StringComparison.Ordinal);
+        Assert.Contains("gh auth login", failure.Message, StringComparison.Ordinal);
+        Assert.Contains("COPILOT_GH_HOST", failure.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves a signed-in runtime's status is returned.
+    /// </summary>
+    [Fact]
+    public async Task CopilotRuntime_VerifyStarted_Authenticated_ReturnsTheStatus()
+    {
+        // Arrange
+        var status = new GetStatusResponse { Version = "1.0.114", ProtocolVersion = 4 };
+        var authentication = new GetAuthStatusResponse { IsAuthenticated = true, AuthType = "gh-cli" };
+
+        // Act
+        var verified = await CopilotRuntime.VerifyStartedAsync(
+            _ => Task.FromResult(status),
+            _ => Task.FromResult(authentication),
+            TestContext.Current.CancellationToken);
+
+        // Assert
+        Assert.Same(status, verified);
+    }
+
+    /// <summary>
+    ///     Proves the runtime reports the CLI it launched and the version and protocol the started
+    ///     runtime reported, and that a runtime not started by <c>StartAsync</c> reports none.
+    /// </summary>
+    [Fact]
+    public async Task CopilotRuntime_Properties_ReportTheLaunchAndTheStatus()
+    {
+        // Arrange: runtimes over clients that were never started
+        using var directory = new TemporaryDirectory();
+        var launch = new CopilotRuntimeLaunch(CopilotRuntimeSource.InstalledCli, "/fake/bin/copilot", new Version(1, 0, 114));
+        var status = new GetStatusResponse { Version = "1.0.114", ProtocolVersion = 4 };
+
+        // Act
+        await using var started = new CopilotRuntime(NewClient(directory.Path), directory.Path, launch, status);
+        await using var bare = new CopilotRuntime(NewClient(directory.Path), directory.Path);
+
+        // Assert
+        Assert.Equal("/fake/bin/copilot", started.CliPath);
+        Assert.Equal("1.0.114", started.RuntimeVersion);
+        Assert.Equal(4, started.ProtocolVersion);
+        Assert.Null(bare.CliPath);
+        Assert.Equal(string.Empty, bare.RuntimeVersion);
+        Assert.Equal(0, bare.ProtocolVersion);
+    }
+
+    /// <summary>
+    ///     Builds a client that is never started, so it spawns nothing.
+    /// </summary>
+    /// <param name="dataDirectory">The data directory.</param>
+    /// <returns>The client.</returns>
+    private static CopilotClient NewClient(string dataDirectory) =>
+        new(CopilotRuntime.BuildClientOptions(new CopilotRuntimeOptions(dataDirectory), dataDirectory, new Hashtable()));
+
+    /// <summary>
+    ///     A fake data directory for launch resolution, which never touches it.
+    /// </summary>
+    private static readonly string FakeDataDirectory = Path.Combine("/fake", "data");
 
     /// <summary>
     ///     Builds the content of a marker that is not the one AgentKit writes.
