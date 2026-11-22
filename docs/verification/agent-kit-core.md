@@ -418,6 +418,9 @@ without network access.
 
 Reflects over the built assembly and asserts the public surface is exactly the deliberate list of
 exported types, so a type becoming public is a decision someone made rather than an accident. The
+list includes the model-selection types — `ModelInfo` and its enumerations and records,
+`IModelCatalog`, `CachingModelCatalog`, `ModelQuery`, `ModelCatalogExtensions`, `ModelSettings`,
+`ModelSelection`, `ModelSettingsException` and `ModelSettingsChatClient`. The
 companion test asserts deleted or internal compaction-core types are not exported, keeping the
 merged API boundary verifiable.
 
@@ -428,9 +431,36 @@ merged API boundary verifiable.
 Compiles every shipped XML documentation example against the real API. A stale example that names a
 removed member or omits the new response signals fails here before a consumer follows it.
 
+### Model Selection: A Vision-Only Application Lists, Selects and Gates the Image Family
+
+**Test**: `AgentKitCore_SystemModelSelection_VisionOnlyApp_SelectsAndGatesTheImageFamily`
+
+Verifies `AgentKitCore-ModelSelection-ListedAndFilteredByCapability` and
+`AgentKitCore-ModelSelection-HostCapabilitiesFromTheModel`. A catalog holds a text model, a vision
+model and an unusable model. Listing with `Require = Vision | ToolCalls` returns only the vision model;
+`SelectAsync` with the same requirement and an effort selects it; and a `ToolPackBuilder` declared
+with `selection.HostCapabilities` offers the image family's tool.
+
+### Model Selection: A Persisted Choice That No Longer Fits Is Refused at Session Start
+
+**Test**: `AgentKitCore_SystemModelSelection_PersistedTextModel_IsRefusedAtSessionStart`
+
+Verifies `AgentKitCore-ModelSelection-ValidatedAtSessionStart`. A vision-only application whose
+persisted choice is a text model calls `SelectAsync` at session start, which throws
+`ModelSettingsException` with the single problem "Model 'text-small' does not support vision, which
+this application requires."
+
+### Model Selection: Settings Reach the Provider on Every Request
+
+**Test**: `AgentKitCore_SystemModelSelection_SettingsReachTheProviderOnEveryRequest`
+
+Verifies `AgentKitCore-ModelSelection-AppliedToEveryRequest`. A selection with a low effort and a
+2,000-token output limit is applied through `ModelSettingsChatClient`, and both of two requests reach
+the provider carrying the model identifier, `ReasoningEffort.Low` and the output limit.
+
 ## Acceptance Criteria
 
-A system-level test run passes when all thirty-three scenarios above pass without error or exception
+A system-level test run passes when all forty-two scenarios above pass without error or exception
 beyond those explicitly asserted. Any unexpected exception, wrong exception type, wrong return
 value, permitted path that should have been refused, relative path resolved against the process
 working directory, escaped file appearing in a listing, denial message that fails to echo the
@@ -445,4 +475,7 @@ For the session scenarios, any session that
 stops answering as the conversation grows, any rotation that leaks a superseded provider session, any
 comparison that mixes a figure one party counted with a figure another did, any pathological
 compaction that fails to terminate, any missing dropped-material signal, any lost early detail, or
-any public-surface drift likewise constitutes a failure.
+any public-surface drift likewise constitutes a failure. For the model-selection scenarios, a model
+listed without a required capability, a stale or incapable choice that starts a session, a problem
+not worded for a user, or a request that reaches the provider without the selection constitutes a
+failure.

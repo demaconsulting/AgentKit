@@ -1,0 +1,48 @@
+---
+# Software Unit Requirements for ModelSettingsChatClient
+#
+# These requirements describe the design-level behavior of the ModelSettingsChatClient unit: the
+# decorator that applies a validated model selection to every request an IChatClient pipeline
+# sends.
+
+sections:
+  - title: AgentKitCore Requirements
+    sections:
+      - title: ModelSettingsChatClient Requirements
+        requirements:
+          - id: AgentKitCore-ModelSettingsChatClient-AppliesToEveryRequest
+            title: >-
+              The unit shall send the selected model, the provider-neutral form of the chosen
+              reasoning effort, and the chosen output limit on every request, streaming or not.
+            justification: |
+              An IChatClient has no session to configure once; each request carries its own options.
+              A choice applied to the first request and not the rest would let later requests — the
+              ones after a tool ran — run on the provider's defaults without anything reporting it.
+            tests:
+              - ModelSettingsChatClient_GetResponseAsync_AppliesTheSelection
+              - ModelSettingsChatClient_GetStreamingResponseAsync_AppliesTheSelection
+
+          - id: AgentKitCore-ModelSettingsChatClient-PreservesTheCallersRequest
+            title: >-
+              The unit shall leave a value the caller set on a request as the caller set it, shall
+              not write to the caller's options, and shall send no reasoning option when no effort
+              was chosen.
+            justification: |
+              A caller that set a value on one request decided it for that request. The caller's
+              options object is commonly reused for every request of a session, so writing to it
+              would leak the selection outward. With no effort chosen, sending none is what leaves
+              the model's own default in force.
+            tests:
+              - ModelSettingsChatClient_GetResponseAsync_CallerValuesWinAndAreNotMutated
+              - ModelSettingsChatClient_GetResponseAsync_NoEffortChosen_SendsNoReasoning
+
+          - id: AgentKitCore-ModelSettingsChatClient-RefusesWhatItCannotApply
+            title: >-
+              The unit shall refuse, when constructed, a selection carrying a context tier or a
+              reasoning effort with no provider-neutral equivalent.
+            justification: |
+              An IChatClient has no context tiers and expresses effort only on the neutral scale, so
+              either setting would be dropped silently. Refusing it where the pipeline is composed
+              names the mistake instead.
+            tests:
+              - ModelSettingsChatClient_Construct_InapplicableSelection_Throws

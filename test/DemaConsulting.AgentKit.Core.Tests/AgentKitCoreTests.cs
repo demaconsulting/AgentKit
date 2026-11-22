@@ -746,6 +746,124 @@ public class AgentKitCoreTests
     }
 
     /// <summary>
+    ///     Proves a vision-only application lists only the models that can see, starts a session only
+    ///     on one, and offers the image family only because the selected model accepts images.
+    /// </summary>
+    /// <remarks>
+    ///     The whole pattern an application follows: filter the picker by the requirement, re-enforce
+    ///     it when the session starts, and derive the host's vision declaration from the selection.
+    /// </remarks>
+    [Fact]
+    public async Task AgentKitCore_SystemModelSelection_VisionOnlyApp_SelectsAndGatesTheImageFamily()
+    {
+        // Arrange: a catalog with a vision model, a text model and an unusable one
+        const ModelCapabilities required = ModelCapabilities.Vision | ModelCapabilities.ToolCalls;
+        var catalog = new ScriptedModelCatalog(
+            [ModelTestData.TextModel(), ModelTestData.VisionModel(), ModelTestData.UnusableModel()]);
+        var image = new StubToolPack("image", HostCapabilities.Vision, [StubToolPack.Tool("image_read")]);
+
+        // Act: list for the picker, select the vision model, compose its tools
+        var listed = await catalog.ListAsync(new ModelQuery { Require = required }, TestContext.Current.CancellationToken);
+        var selection = await catalog.SelectAsync(
+            new ModelSettings(listed[0].Id) { ReasoningEffort = "high" },
+            required,
+            TestContext.Current.CancellationToken);
+        var tools = new ToolPackBuilder(CreateUnrestrictedPolicy())
+            .WithHostCapabilities(selection.HostCapabilities)
+            .Add(image)
+            .Build();
+
+        // Assert: only the vision model was listed, and the image family was offered to it
+        Assert.Equal(["vision-large"], listed.Select(model => model.Id));
+        Assert.Equal(["image_read"], tools.Select(tool => tool.Name));
+    }
+
+    /// <summary>
+    ///     Proves a persisted choice of a model that cannot satisfy the application is refused at
+    ///     session start, with a reason a user can read.
+    /// </summary>
+    [Fact]
+    public async Task AgentKitCore_SystemModelSelection_PersistedTextModel_IsRefusedAtSessionStart()
+    {
+        // Arrange: a vision-only application whose persisted choice is a text model
+        var catalog = new ScriptedModelCatalog([ModelTestData.TextModel(), ModelTestData.VisionModel()]);
+
+        // Act
+        var failure = await Assert.ThrowsAsync<ModelSettingsException>(
+            () => catalog.SelectAsync(new ModelSettings("text-small"), ModelCapabilities.Vision, TestContext.Current.CancellationToken));
+
+        // Assert
+        Assert.Equal(
+            "Model 'text-small' does not support vision, which this application requires.",
+            Assert.Single(failure.Problems));
+    }
+
+    /// <summary>
+    ///     Proves the selected settings reach every request an IChatClient pipeline sends.
+    /// </summary>
+    [Fact]
+    public async Task AgentKitCore_SystemModelSelection_SettingsReachTheProviderOnEveryRequest()
+    {
+        // Arrange
+        var catalog = new ScriptedModelCatalog([ModelTestData.VisionModel()]);
+        var selection = await catalog.SelectAsync(
+            new ModelSettings("vision-large") { ReasoningEffort = "low", MaxOutputTokens = 2000 },
+            cancellationToken: TestContext.Current.CancellationToken);
+        var provider = new OptionsCapturingChatClient();
+        using var client = new ModelSettingsChatClient(provider, selection);
+
+        // Act: two requests
+        await client.GetResponseAsync("one", cancellationToken: TestContext.Current.CancellationToken);
+        await client.GetResponseAsync("two", cancellationToken: TestContext.Current.CancellationToken);
+
+        // Assert
+        Assert.Equal(2, provider.Received.Count);
+        Assert.All(provider.Received, options =>
+        {
+            Assert.Equal("vision-large", options.ModelId);
+            Assert.Equal(ReasoningEffort.Low, options.Reasoning?.Effort);
+            Assert.Equal(2000, options.MaxOutputTokens);
+        });
+    }
+
+    /// <summary>
+    ///     A chat client that records the options of every request, standing in for a provider.
+    /// </summary>
+    private sealed class OptionsCapturingChatClient : IChatClient
+    {
+        /// <summary>
+        ///     Gets the options each request arrived with.
+        /// </summary>
+        public List<ChatOptions> Received { get; } = [];
+
+        /// <inheritdoc/>
+        public Task<ChatResponse> GetResponseAsync(
+            IEnumerable<ChatMessage> messages,
+            ChatOptions? options = null,
+            CancellationToken cancellationToken = default)
+        {
+            Received.Add(options ?? new ChatOptions());
+            return Task.FromResult(new ChatResponse(new ChatMessage(ChatRole.Assistant, "ok")));
+        }
+
+        /// <inheritdoc/>
+        public IAsyncEnumerable<ChatResponseUpdate> GetStreamingResponseAsync(
+            IEnumerable<ChatMessage> messages,
+            ChatOptions? options = null,
+            CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException("The scenario sends no streamed request.");
+
+        /// <inheritdoc/>
+        public object? GetService(Type serviceType, object? serviceKey = null) => null;
+
+        /// <inheritdoc/>
+        public void Dispose()
+        {
+            // Nothing is held.
+        }
+    }
+
+    /// <summary>
     ///     Creates a policy whose working directory is also its single read-write grant.
     /// </summary>
     /// <param name="root">The location that is both the anchor and the grant.</param>

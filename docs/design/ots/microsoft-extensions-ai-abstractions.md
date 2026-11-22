@@ -26,7 +26,11 @@ NuGet dependency AgentKit Core carries.
 - `IChatReducer` — the contract `AgentKitChatReducer` implements so a host-owned chat history can be
   reduced through AgentKit's consolidation in whatever reducer hook the host already has
 - `IChatClient`, `DelegatingChatClient` and `ChatMessage` — the chat abstractions
-  `ImagePromotingChatClient` decorates and `AgentKitChatReducer` reads
+  `ImagePromotingChatClient` and `ModelSettingsChatClient` decorate and `AgentKitChatReducer` reads
+- `ChatOptions` — its `ModelId`, `MaxOutputTokens` and `Reasoning` members, with `ReasoningOptions`
+  and the `ReasoningEffort` scale, which carry a model selection on every request
+  `ModelSettingsChatClient` forwards; and `AdditionalPropertiesDictionary`, which `ModelInfo` carries
+  provider-specific facts in
 
 ### Integration Pattern
 

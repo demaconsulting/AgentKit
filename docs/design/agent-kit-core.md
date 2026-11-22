@@ -73,6 +73,16 @@ The system consists of:
 - **AgentKitChatReducer Unit**: A chat reducer for a host that owns its chat history, consolidating
   older messages through the injected summarizer and consolidation prompt into one record while
   keeping the system messages and a verbatim tail of whole turns
+- **ModelInfo Unit**: The provider-neutral description of a model — its capabilities, the settings it
+  accepts, its efforts and tiers, its ceiling window, whether it is usable, and its notices — and the
+  conversion of its capabilities into host capabilities
+- **ModelCatalog Unit**: The catalog contract, the query, and the caching base: a five-minute
+  lifetime, one shared read at a time, no cached failures, a refresh on request, and the `SelectAsync`
+  gate a session starts through
+- **ModelSettings Unit**: The persistable settings a user chooses, their validation against a model,
+  and the validated `ModelSelection` a provider factory accepts
+- **ModelSettingsChatClient Unit**: The decorator that applies a selection to every `IChatClient`
+  request without overriding what the caller set
 
 There are no subsystems. The three path-safety units form one collaboration:
 `PathPolicy` makes a relative request absolute against its `WorkingDirectory`, resolves the
@@ -330,6 +340,26 @@ public because an application author writing a summarizer or exercising a sessio
 layout, the transcript and the rotation engine are internal, along with the slot and tier storage
 used by the round-robin layout, because pinning the shape of the machinery in a consumer would make
 any change to the arrangement a breaking one.
+
+### Model Selection Is Provider-Neutral and Validated at Session Start
+
+The four model-selection units form a fifth collaboration, and nothing in the session engine depends
+on it. `ModelCatalog` returns `ModelInfo` descriptions. `ModelSettings` validates against a
+`ModelInfo`, and `SelectAsync` on a catalog is, beside `ModelSettings.Bind`, the only producer of a
+`ModelSelection`. `ModelSettingsChatClient` reads a `ModelSelection`. `ModelInfo.ToHostCapabilities`
+links the collaboration to the `HostCapabilities` of `ToolPack`, and to nothing else.
+
+Validation happens at session start rather than when the user chose, because a persisted choice
+outlives the provider's offering: a model may be withdrawn, lose a capability, or stop accepting a
+setting. Holding a `ModelSelection` is the proof that the check ran, so an unvalidated choice cannot
+reach a provider factory. The catalog caches its listing for five minutes because a picker lists far
+more often than a provider's offering changes, and it caches no failure, so a provider that was
+briefly unreachable is read again on the next query.
+
+Host capabilities are derived from the selected model but stay explicit. The host still passes them
+to `ToolPackBuilder.WithHostCapabilities`, so it can narrow or widen what the model reported. See
+*ModelInfo Unit Design*, *ModelCatalog Unit Design*, *ModelSettings Unit Design* and
+*ModelSettingsChatClient Unit Design*.
 
 ## External Interfaces
 
@@ -601,6 +631,33 @@ Tools a session carries are `Microsoft.Extensions.AI` `AIFunction` instances, th
 the rest of AgentKit uses, so a session accepts exactly what a tool pack produces with no conversion
 layer.
 
+The system additionally exposes the model-selection API:
+
+- **`IModelCatalog`**: `ProviderName`, `ListAsync(ModelQuery? query, CancellationToken)`,
+  `GetAsync(string modelId, CancellationToken)` and `RefreshAsync(CancellationToken)`. A query's
+  `Require` names the capabilities a listed model must report, and `IncludeUnusable` lists the models
+  AgentKit cannot run as well.
+- **`CachingModelCatalog`**: The abstract base a provider's catalog derives from. It supplies the
+  cache (`DefaultLifetime` is five minutes), the single shared read, and the ordinal `IdEquals` a
+  provider may override.
+- **`ModelSettings.Validate(ModelInfo model, ModelCapabilities required)`**: Returns every problem,
+  each worded to be shown to a user. **`ModelSettings.Bind`** returns a `ModelSelection` or throws
+  `ModelSettingsException` carrying the same problems.
+- **`ModelCatalogExtensions.SelectAsync(this IModelCatalog catalog, ModelSettings settings,
+  ModelCapabilities required, CancellationToken)`**: Looks the model up and binds the settings to it.
+  A model the provider does not offer is refused with `ModelSettingsException`.
+- **`new ModelSettingsChatClient(IChatClient innerClient, ModelSelection selection)`**: Applies the
+  selection's model, effort and output limit to every request. A selection carrying a context tier,
+  or an effort with no provider-neutral equivalent, is refused with `ArgumentException`.
+
+| Interface | Direction | Format | Constraints |
+| --- | --- | --- | --- |
+| `IModelCatalog.ListAsync` / `GetAsync` | In/Out | Method call / `Task` | Model id non-blank |
+| `IModelCatalog.RefreshAsync` | Inbound | Method call / `Task` | None |
+| `ModelSettings.Validate` / `Bind` | Inbound | Method call | Model non-null |
+| `SelectAsync` | In/Out | Extension method / `Task<ModelSelection>` | Catalog and settings non-null |
+| `new ModelSettingsChatClient(...)` | Inbound | Constructor call | No tier; effort has a neutral equivalent |
+
 ## Dependencies
 
 The AgentKit Core takes exactly one runtime NuGet dependency,
@@ -610,7 +667,10 @@ and any `Microsoft.Extensions.AI` `IChatClient`. Depending on the abstractions p
 than on any provider, runtime or agent loop — is what lets one guarded tool be offered to all of
 them without Core choosing a provider on the application's behalf. Its `DelegatingAIFunction` is
 what lets a guarded tool resolve an oversized output on the way out while forwarding every piece of
-its metadata unchanged. Nothing further is taken:
+its metadata unchanged. The model-selection units use its `ReasoningOptions` and `ReasoningEffort`,
+the `ModelId` and `MaxOutputTokens` request options, and `AdditionalPropertiesDictionary`, so a
+selection travels on the request options every provider's client already reads. Nothing further is
+taken:
 there is no provider package, no agent framework package and no transitive runtime. As a
 third-party published library, `Microsoft.Extensions.AI.Abstractions` is an OTS item; its
 integration is recorded in *OTS Integration Design* (`docs/design/ots.md`) and its dedicated
@@ -830,6 +890,20 @@ application message
   -> return the answer, usage, rotation flag, level and dropped-material flag
 ```
 
+**Model selection path:**
+
+```text
+IModelCatalog.ListAsync(query)   -> ModelInfo list a picker shows
+user's choice                    -> ModelSettings, persisted by the application
+at every session start:
+  catalog.SelectAsync(settings, required)
+    -> GetAsync(model id)        -> ModelInfo, or refused: not offered
+    -> settings.Validate(model, required) -> every problem, or none
+    -> ModelSelection
+  selection.HostCapabilities     -> ToolPackBuilder.WithHostCapabilities
+  selection                      -> a provider factory, or ModelSettingsChatClient
+```
+
 ## Design Constraints
 
 - **Minimal contract**: The smallest public surface that packs must share, changed slowly,
@@ -893,3 +967,9 @@ APIs, or framework-version-specific features are used.
   The forwarded tool result carries a short placeholder in place of each promoted image, so an
   adapter that flattens tool-result content into text cannot send the image a second time as
   base64. A host whose provider already delivers images from tool results installs nothing.
+- **A Vision-Only Application**: An application that offers only models that can see states the
+  requirement twice. It lists with `ModelQuery.Require` set to `Vision | ToolCalls`, and it passes the
+  same requirement to `SelectAsync` at session start, so a model that lost the capability in between
+  is refused rather than run. It then hands `selection.HostCapabilities` to
+  `ToolPackBuilder.WithHostCapabilities`, so the image family is offered because the model can see.
+  The declaration stays the host's, so the host can still override it.

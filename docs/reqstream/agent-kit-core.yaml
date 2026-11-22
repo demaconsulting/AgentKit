@@ -795,3 +795,85 @@ sections:
           - AgentKit-OTS-MicrosoftExtensionsAIAbstractions-FunctionFactory
         tests:
           - AgentKitSessions_LongConversation_RotatesRepeatedlyAndKeepsAnswering
+
+      - id: AgentKitCore-ModelSelection-ListedAndFilteredByCapability
+        title: >-
+          The library shall describe the models a provider offers in provider-neutral terms and
+          shall list them filtered by the capabilities an application requires, reading the
+          provider once per short lifetime, sharing one read among concurrent callers, caching no
+          failure, and reading again on request.
+        tags: [system]
+        justification: |
+          An application lets its user choose a model, and the first one built on AgentKit is a
+          vision application that must offer only models that can see. The library cannot know
+          which provider an application uses, so the description and the filtering are defined
+          once, provider-neutrally, and each provider package supplies the reading. A picker
+          lists far more often than a provider's offering changes, so the reading is cached
+          briefly, shared, and never cached when it fails.
+        children:
+          - AgentKitCore-ModelInfo-DescribesAModel
+          - AgentKitCore-ModelInfo-CapabilitiesCombine
+          - AgentKitCore-ModelCatalog-FiltersByRequirement
+          - AgentKitCore-ModelCatalog-CachesForALifetime
+          - AgentKitCore-ModelCatalog-SharesOneRead
+          - AgentKitCore-ModelCatalog-DoesNotCacheFailures
+          - AgentKitCore-ModelCatalog-RefreshesOnRequest
+        tests:
+          - AgentKitCore_SystemModelSelection_VisionOnlyApp_SelectsAndGatesTheImageFamily
+
+      - id: AgentKitCore-ModelSelection-ValidatedAtSessionStart
+        title: >-
+          The library shall let a session start on a model only through settings validated against
+          that model as the provider now describes it, refusing a withdrawn model, a model missing a
+          capability the application requires, and any effort, tier, window or output limit the
+          model does not accept, with every reason worded to be shown to a user.
+        tags: [system]
+        justification: |
+          A persisted choice outlives the provider's offering: a model may be withdrawn, lose a
+          capability, or stop accepting a setting. Validating at every session start, through the
+          only form a provider factory accepts, makes an unvalidated or stale choice impossible to
+          run rather than a provider error part-way through a conversation.
+        children:
+          - AgentKitCore-ModelCatalog-GatesSessionStart
+          - AgentKitCore-ModelSettings-Persistable
+          - AgentKitCore-ModelSettings-NamesTheModelItIsCheckedAgainst
+          - AgentKitCore-ModelSettings-RefusesUnusableOrIncapableModels
+          - AgentKitCore-ModelSettings-RefusesUnofferedEffortsAndTiers
+          - AgentKitCore-ModelSettings-HoldsTheWindowToTheModel
+          - AgentKitCore-ModelSettings-HoldsTheOutputLimitToTheModel
+          - AgentKitCore-ModelSettings-ReportsEveryProblem
+          - AgentKitCore-ModelSettings-OnlyValidatedSelectionsExist
+          - AgentKitCore-ModelSettings-DefaultsInventNothing
+        tests:
+          - AgentKitCore_SystemModelSelection_PersistedTextModel_IsRefusedAtSessionStart
+
+      - id: AgentKitCore-ModelSelection-HostCapabilitiesFromTheModel
+        title: >-
+          The library shall let a host derive its vision declaration from the selected model, so
+          the image tool family is offered only to a model that accepts images, while the host's
+          declaration stays explicit.
+        tags: [system]
+        justification: |
+          Whether a model can see used to be the host's to assert, with nothing to assert it from.
+          A model catalog now says, so the declaration can follow the model rather than a setting
+          that might disagree with it; it remains explicit so a host can still narrow or widen it.
+        children:
+          - AgentKitCore-ModelInfo-HostCapabilitiesFromModel
+        tests:
+          - AgentKitCore_SystemModelSelection_VisionOnlyApp_SelectsAndGatesTheImageFamily
+
+      - id: AgentKitCore-ModelSelection-AppliedToEveryRequest
+        title: >-
+          The library shall apply a validated model selection to every request an IChatClient
+          pipeline sends, without overriding what the caller set on a request.
+        tags: [system]
+        justification: |
+          A chat client has no session to configure once, so the choice must ride on every request
+          or later requests run on the provider's defaults without anything saying so.
+        children:
+          - AgentKitCore-ModelSettingsChatClient-AppliesToEveryRequest
+          - AgentKitCore-ModelSettingsChatClient-PreservesTheCallersRequest
+          - AgentKitCore-ModelSettingsChatClient-RefusesWhatItCannotApply
+          - AgentKit-OTS-MicrosoftExtensionsAIAbstractions-ReasoningOptions
+        tests:
+          - AgentKitCore_SystemModelSelection_SettingsReachTheProviderOnEveryRequest
