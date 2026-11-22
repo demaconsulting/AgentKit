@@ -497,7 +497,7 @@ public sealed class CommandLineOptions
                                       session folder, and the agent recover by writing there)
            --prompt "Read ../outside-workspace.txt"      (watch containment refuse it)
            --prompt "Use text_file_read on diagram.png"  (watch the binary guard redirect to image_read)
-           --prompt "Diagram the release process described in release-process.md"
+           --prompt "Diagram the release process in release-process.md and save it in the session folder"
                                      (watch the agent draw a flowchart, look at it, fix it, and save
                                       release-process.png into the session folder)
          """;

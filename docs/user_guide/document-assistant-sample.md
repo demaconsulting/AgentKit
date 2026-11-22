@@ -287,7 +287,7 @@ one decision in it — a natural flowchart. Ask the agent to draw it:
 dotnet run --project samples/document-assistant -- \
   --workspace samples/document-assistant/workspace \
   --provider ollama --host http://your-ollama-host:11434 --model gemma4:26b \
-  --prompt "Diagram the release process described in release-process.md."
+  --prompt "Diagram the release process in release-process.md and save it in the session folder."
 ```
 
 The sample composes `DiagramPack.For(host)` from the same host capabilities it declares on the
@@ -298,11 +298,17 @@ the session folder's absolute path ending in `release-process.png`, check the re
 source, then link the picture from the Markdown it writes. The printed tool calls show each step,
 including any `diagram_help` topic the agent reads first.
 
-When the run ends, the session folder holds `release-process.mmd` and `release-process.png`. The
-session folder is the destination because it is the only location writable in both workspace
-modes; `save_as` replaces an earlier picture of the same name, so the agent can save on every
-attempt. A source that cannot be drawn comes back with its line, its column, the offending line
-with a caret and the `diagram_help` topic to read, so the agent can fix it rather than guess.
+When the agent follows the workflow, the session folder ends up holding `release-process.mmd` and
+`release-process.png`. The session folder is the destination because it is the only location
+writable in both workspace modes; `save_as` replaces an earlier picture of the same name, so the
+agent can save on every attempt. A source that cannot be drawn comes back with its line, its
+column, the offending line with a caret and the `diagram_help` topic to read, so the agent can fix
+it rather than guess.
+
+How closely a model follows the workflow varies, which is why the prompt names the session folder.
+Given only the request to diagram the document, `gemma4:26b` with reasoning off read it and two
+`diagram_help` topics and drew a correct flowchart on its first `diagram_render` call, but returned
+the picture without saving it.
 
 Run the same prompt with `--no-vision` to see text preview. `diagram_render` then requires
 `save_as`, and the model receives the picture's size, the labels and features it contains and its

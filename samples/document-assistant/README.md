@@ -280,8 +280,8 @@ The default session folder is `document-assistant-session` beneath the system te
 - **Capability gating.** Add `--no-vision` and ask the agent to list its tools: `image_read`,
   `image_crop`, `image_auto_crop` and `image_view` are gone, while `diagram_help` and
   `diagram_render` remain in text preview. Add `--no-diagrams` and those two are gone too.
-- **Diagramming a document.** "Diagram the release process described in release-process.md." See
-  [Diagramming a document](#diagramming-a-document) below.
+- **Diagramming a document.** "Diagram the release process described in release-process.md and save
+  it in the session folder." See [Diagramming a document](#diagramming-a-document) below.
 
 ## Diagramming a document
 
@@ -292,13 +292,13 @@ tools let it draw one from source it writes, look at the result, fix it and save
 dotnet run --project samples/document-assistant -- `
   --workspace samples/document-assistant/workspace `
   --provider ollama --host http://your-ollama-host:11434 --model gemma4:26b `
-  --prompt "Diagram the release process described in release-process.md."
+  --prompt "Diagram the release process in release-process.md and save it in the session folder."
 ```
 
 The instructions the sample builds carry two parts. The first is `DiagramPack.Instructions`, the
 paragraph the pack offers for its preview mode, which the sample appends itself — the pack never
 adds it anywhere. The second is the sample's own description of the workflow, and the printed tool
-calls follow it:
+calls show how closely the model follows it:
 
 1. The agent reads `release-process.md` (`markdown_outline` shows its sections).
 2. It may read a `diagram_help` topic for the diagram type, for example the Mermaid flowchart card.
@@ -314,6 +314,11 @@ Expected outputs in the session folder: `release-process.mmd` and `release-proce
 again under the same name replaces the earlier picture, so the agent can save on every attempt.
 Both files go to the session folder because it is the only location writable in both workspace
 modes.
+
+How closely a model follows the workflow varies, which is why the prompt names the session folder.
+Given only "Diagram the release process described in release-process.md.", `gemma4:26b` with
+reasoning off read the document and two `diagram_help` topics and drew a correct flowchart on its
+first `diagram_render` call, but returned the picture without saving it.
 
 With `--no-vision` the same scenario runs in text preview: `diagram_render` requires `save_as`, and
 instead of the picture the model receives its size, the labels and features it contains and its

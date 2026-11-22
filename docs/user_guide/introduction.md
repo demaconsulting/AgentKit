@@ -18,6 +18,8 @@ This user guide covers:
 - Opt-in retention of tool outputs too large to return, paged through by reference
 - Using the tools and their controls in an agent runtime the application builds itself
 - The session engine: how a conversation outlives the provider's context window
+- The image and diagram tools in `DemaConsulting.AgentKit.Tools.Visual`, and migrating to that
+  package from the image family's earlier home
 - Three runnable samples: consuming the shipped tools (*document assistant*), an agent whose work
   spans turns and compacts its own context (*research assistant*), and writing your own guarded
   tools (*custom tools*)
@@ -53,7 +55,9 @@ dotnet add package DemaConsulting.AgentKit.Tools.Visual   # optional: the image 
 
 The image and diagram families ship in their own package, `DemaConsulting.AgentKit.Tools.Visual`,
 because they need an imaging library; an application that attaches neither leaves it out, and
-`DemaConsulting.AgentKit.Tools` then brings no imaging dependency.
+`DemaConsulting.AgentKit.Tools` then brings no imaging dependency. An application that used the
+image family from `DemaConsulting.AgentKit.Tools` should read *Migrating from
+`DemaConsulting.AgentKit.Tools`* in the *Images, Documents and Diagrams* chapter.
 
 To build an agent from a provider, add the adapter for the provider you target:
 
@@ -683,7 +687,9 @@ on every attempt. `diagram_help` returns an index of topics, then one topic's ca
 sources; the cards written for the application rather than the model are not served.
 `DiagramPackOptions` chooses the languages and the `VisualOptions` bounds, and
 `DiagramPack.Instructions` is a short paragraph an application may add to its agent's instructions;
-the pack never adds it itself.
+the pack never adds it itself. The *Images, Documents and Diagrams* chapter covers both packs in
+depth: choosing between `image_read` and `image_view`, the preview modes, the help filtering,
+saving, referenced files, the `VisualOptions` bounds, warming up and the known limitations.
 
 Three of the families carry state or collaborators beyond the path policy, and an application
 should know what it is attaching:
