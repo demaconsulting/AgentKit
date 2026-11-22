@@ -510,7 +510,7 @@ internal sealed class CopilotSessionChannel : ICopilotTurnChannel
     ///     The client's RPC surface exists only once the client has started, so the client is
     ///     started first. Starting is idempotent on a started client — a <see cref="CopilotRuntime"/>
     ///     hands over a started one — and it reconnects a client whose connection was lost; it goes
-    ///     through <see cref="CopilotRuntime.StartClientAsync"/> so a runtime that cannot start still
+    ///     through <see cref="CopilotRuntime.StartClientAsync(Func{CancellationToken, Task}, CancellationToken)"/> so a runtime that cannot start still
     ///     reports why. The client is read from the runtime first, so a disposed runtime fails here
     ///     with <see cref="ObjectDisposedException"/> rather than being started again.
     /// </remarks>

@@ -185,10 +185,14 @@ software items, specifically:
   in-memory attachments, and releases a conversation's session without deleting it after every run
   (a run made without a conversation deletes its session)
 - **CopilotRuntime (Unit)** — The Copilot runtime AgentKit starts, confines and owns: Empty mode,
-  the provisioned runtime spawned as a child process with the host's `COPILOT_`/`GITHUB_COPILOT_`
+  the installed Copilot CLI by default (version-checked) or the SDK's bundled runtime on request,
+  spawned as a child process with the host's `COPILOT_`/`GITHUB_COPILOT_`
   variables withheld apart from an allow-listed credential, network and telemetry-off set, a data directory AgentKit
-  owns; exposes only neutral options, explains a runtime that cannot start, and lets the host delete a
-  kept conversation
+  owns; exposes only neutral options, reports the started runtime's version, refuses one that is not
+  signed in, explains a runtime that cannot start, and lets the host delete a kept conversation
+- **CopilotCli (Unit)** — The installed Copilot CLI: found on `PATH` and in the platform's well-known
+  installation locations with editor launchers passed over, its version read as the SDK runs it, the
+  minimum version enforced, and refusals explained with install and upgrade guidance
 - **CopilotProviderSession (Unit)** — One Core session over one Copilot session: sends a turn,
   carries the seeded record ahead of its first message, records the runtime's tool traffic, reports
   the runtime's own occupancy, and ends the session on a turn it cannot account for
@@ -346,8 +350,9 @@ justified by runtime dependencies that must be kept out of Core: `AgentKitAgents
 `Microsoft.Agents.AI.Abstractions`. `AgentKitAgentsChatClient` builds its agent through the Agent
 Framework's own `ChatClientAgent`; the Copilot SDK ships no Agent Framework agent, so
 `AgentKitAgentsCopilot` carries an agent of its own over confined Copilot sessions.
-`AgentKitAgentsCopilot` carries eight units: that agent, its factory, the runtime it starts and owns,
-a provider session, its factory, a summarizer, the observer that
+`AgentKitAgentsCopilot` carries nine units: that agent, its factory, the runtime it starts and owns,
+the installed CLI that runtime runs by default, a provider session, its factory, a summarizer, the
+observer that
 reads occupancy from the runtime's event stream, and the internal turn channel that makes all of it
 testable without a live runtime. `AgentKitAgentsChatClient` holds six:
 that factory, a provider session, its factory, a summarizer, the recorder that reads occupancy
@@ -497,17 +502,23 @@ src/DemaConsulting.AgentKit.Agents.Copilot/
 ├── CopilotAgent.cs                   — AgentKit's AIAgent over confined Copilot sessions
 ├── CopilotAgentFactory.cs            — builds a Copilot agent, and every session's options
 ├── CopilotAgentSession.cs            — one agent conversation: its runtime session and state bag
+├── CopilotCli.cs                     — finds the installed Copilot CLI and checks its version
+├── CopilotCliProcessTree.cs          — stops what a timed-out or canceled version probe started
+├── CopilotCliSearchResult.cs         — what discovery found, searched and passed over
 ├── CopilotProviderSession.cs         — one Core session over one Copilot session
 ├── CopilotProviderSessionFactory.cs  — creates one seeded Copilot session per rotation
 ├── CopilotRuntime.cs                 — the runtime AgentKit starts, confines and owns
 ├── CopilotRuntimeOptions.cs          — the neutral options a host may give the runtime
+├── CopilotRuntimeSource.cs           — the installed CLI or the bundled runtime
 ├── CopilotSessionObserver.cs         — watches the runtime's event stream
 ├── CopilotSummarizer.cs              — consolidates on a separate tool-free session
 └── CopilotTurnChannel.cs             — the seam over the sealed SDK session types
 ```
 
-`CopilotAgent.cs` and `CopilotAgentSession.cs` together form the `CopilotAgent` unit; every other
-file in the Copilot tree is one unit.
+`CopilotAgent.cs` and `CopilotAgentSession.cs` together form the `CopilotAgent` unit;
+`CopilotRuntime.cs`, `CopilotRuntimeOptions.cs` and `CopilotRuntimeSource.cs` the `CopilotRuntime`
+unit; `CopilotCli.cs`, `CopilotCliSearchResult.cs` and `CopilotCliProcessTree.cs` the `CopilotCli`
+unit; every other file in the Copilot tree is one unit.
 
 `AgentKitAgentsOllama` is a two-file tree, one file per unit:
 

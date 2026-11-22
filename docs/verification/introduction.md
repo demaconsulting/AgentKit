@@ -181,9 +181,13 @@ constituent software items, specifically:
 - **CopilotAgent (Unit)** — The agent the factory builds, and its `CopilotAgentSession`: creates a
   confined Copilot session on a conversation's first run and resumes it on every later run, streams
   what the runtime produces, delivers inline data as attachments, and serializes the conversation
-- **CopilotRuntime (Unit)** — Starts, confines and owns the Copilot runtime — Empty mode, the host's
+- **CopilotRuntime (Unit)** — Starts, confines and owns the Copilot runtime — the installed Copilot
+  CLI by default or the bundled runtime on request, Empty mode, the host's
   `COPILOT_`/`GITHUB_COPILOT_` variables withheld apart from an allow-listed credential, network and
-  telemetry-off set, a data directory AgentKit owns — and explains a runtime that cannot start
+  telemetry-off set, a data directory AgentKit owns — refuses an unsupported CLI or an
+  unauthenticated runtime, and explains a runtime that cannot start
+- **CopilotCli (Unit)** — Finds the installed Copilot CLI, passing over editor launchers, reads the
+  version it runs under the SDK, enforces the minimum version, and explains each refusal
 - **CopilotProviderSession (Unit)** — One Core session over one Copilot session: sends a turn,
   carries the seeded record ahead of its first message, records the runtime's tool traffic, reports
   the runtime's own occupancy, and ends the session on a turn it cannot account for

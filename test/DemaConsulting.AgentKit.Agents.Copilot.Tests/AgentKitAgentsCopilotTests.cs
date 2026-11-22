@@ -374,8 +374,9 @@ public class AgentKitAgentsCopilotTests
     }
 
     /// <summary>
-    ///     Proves a host whose Copilot runtime cannot start is told why — the runtime's own error and
-    ///     the missing direct SDK reference that most often causes it — with the original failure kept.
+    ///     Proves a host whose bundled Copilot runtime cannot start is told why — the runtime's own
+    ///     error and the missing direct SDK reference that most often causes it — with the original
+    ///     failure kept.
     /// </summary>
     [Fact]
     public async Task AgentKitAgentsCopilot_Runtime_FailedStart_IsExplained()
@@ -387,6 +388,7 @@ public class AgentKitAgentsCopilotTests
         // Act
         var failure = await Assert.ThrowsAsync<InvalidOperationException>(() => CopilotRuntime.StartClientAsync(
             _ => Task.FromException(cause),
+            new CopilotRuntimeLaunch(CopilotRuntimeSource.Bundled, null, null),
             TestContext.Current.CancellationToken));
 
         // Assert
@@ -396,9 +398,96 @@ public class AgentKitAgentsCopilotTests
     }
 
     /// <summary>
+    ///     Proves a host that sets no runtime source runs the Copilot CLI installed on the machine: the
+    ///     CLI discovery finds is version-checked and spawned, not the SDK's bundled runtime.
+    /// </summary>
+    [Fact]
+    public async Task AgentKitAgentsCopilot_Runtime_DefaultsToTheInstalledCli()
+    {
+        // Arrange: a machine with a supported CLI on PATH, and default options
+        var machine = new FakeCopilotCliMachine();
+        var cli = machine.AddFile(Path.Combine("/fake/bin", "copilot"));
+        var dataDirectory = Path.Combine(Path.GetTempPath(), "agentkit-copilot-system-tests", Guid.NewGuid().ToString("N"));
+        var options = new CopilotRuntimeOptions(dataDirectory);
+
+        // Act
+        var launch = await CopilotRuntime.ResolveLaunchAsync(
+            options,
+            dataDirectory,
+            new System.Collections.Hashtable(),
+            machine.Context(CopilotCliPlatform.Linux, "/fake/bin"),
+            machine.RunAsync,
+            TestContext.Current.CancellationToken);
+        var clientOptions = CopilotRuntime.BuildClientOptions(options, dataDirectory, new System.Collections.Hashtable(), launch.CliPath);
+
+        // Assert
+        Assert.Equal(CopilotRuntimeSource.InstalledCli, options.RuntimeSource);
+        Assert.Equal(cli, launch.CliPath);
+        Assert.Equal(["--no-auto-update", "--version"], Assert.Single(machine.Started).ArgumentList);
+        Assert.Equal(cli, Assert.IsType<SpawnedStdioRuntimeConnection>(clientOptions.Runtime).Path);
+    }
+
+    /// <summary>
+    ///     Proves a host whose installed Copilot CLI is older than the minimum is refused before any
+    ///     runtime starts, with the version found, the version required, how to check the version
+    ///     AgentKit runs and how to upgrade.
+    /// </summary>
+    [Fact]
+    public async Task AgentKitAgentsCopilot_Runtime_UnsupportedCli_IsRefusedWithUpgradeGuidance()
+    {
+        // Arrange: the installed CLI runs 1.0.106
+        var machine = new FakeCopilotCliMachine
+        {
+            Result = new(0, "GitHub Copilot CLI 1.0.106.\n", string.Empty, TimedOut: false),
+        };
+        var cli = machine.AddFile(Path.Combine("/fake/bin", "copilot.exe"));
+
+        // Act
+        var failure = await Assert.ThrowsAsync<InvalidOperationException>(() => CopilotRuntime.ResolveLaunchAsync(
+            new CopilotRuntimeOptions("copilot-runtime"),
+            Path.Combine("/fake", "data"),
+            new System.Collections.Hashtable(),
+            machine.Context(CopilotCliPlatform.Windows, "/fake/bin"),
+            machine.RunAsync,
+            TestContext.Current.CancellationToken));
+
+        // Assert
+        Assert.Contains(cli, failure.Message, StringComparison.Ordinal);
+        Assert.Contains("version 1.0.106", failure.Message, StringComparison.Ordinal);
+        Assert.Contains($"{CopilotCli.MinimumVersion} or later", failure.Message, StringComparison.Ordinal);
+        Assert.Contains("copilot --no-auto-update --version", failure.Message, StringComparison.Ordinal);
+        Assert.Contains("winget upgrade GitHub.Copilot", failure.Message, StringComparison.Ordinal);
+        Assert.Contains("CopilotRuntimeSource.Bundled", failure.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves a runtime that started but is not signed in is refused with the ways to sign it in,
+    ///     whichever source it came from.
+    /// </summary>
+    [Fact]
+    public async Task AgentKitAgentsCopilot_Runtime_Unauthenticated_IsRefusedWithSignInGuidance()
+    {
+        // Arrange
+        var status = new GetStatusResponse { Version = "1.0.113", ProtocolVersion = 4 };
+        var authentication = new GetAuthStatusResponse { IsAuthenticated = false, StatusMessage = "Not authenticated" };
+
+        // Act
+        var failure = await Assert.ThrowsAsync<InvalidOperationException>(() => CopilotRuntime.VerifyStartedAsync(
+            _ => Task.FromResult(status),
+            _ => Task.FromResult(authentication),
+            TestContext.Current.CancellationToken));
+
+        // Assert
+        Assert.Contains("not signed in", failure.Message, StringComparison.Ordinal);
+        Assert.Contains("gh auth login", failure.Message, StringComparison.Ordinal);
+        Assert.Contains("GH_TOKEN", failure.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     ///     Proves the runtime AgentKit owns is confined before it starts, whatever the host's
-    ///     environment holds: Empty mode, the bundled runtime spawned over stdio on the prepared data
-    ///     directory, none of the host's Copilot configuration variables beyond the pass-through set,
+    ///     environment holds and whichever executable runs: Empty mode, the installed CLI or the
+    ///     bundled runtime spawned over stdio on the prepared data directory with the identical
+    ///     environment, none of the host's Copilot configuration variables beyond the pass-through set,
     ///     and no client-level channel of injected capability.
     /// </summary>
     [Fact]
@@ -406,6 +495,7 @@ public class AgentKitAgentsCopilotTests
     {
         // Arrange: a hostile host environment and a fresh data directory
         var dataDirectory = Path.Combine(Path.GetTempPath(), "agentkit-copilot-system-tests", Guid.NewGuid().ToString("N"));
+        var cli = Path.Combine(Path.GetTempPath(), "copilot-cli", "copilot");
         var host = new System.Collections.Hashtable
         {
             ["COPILOT_CLI_PATH"] = "/elsewhere/copilot",
@@ -419,21 +509,29 @@ public class AgentKitAgentsCopilotTests
         {
             // Act
             var prepared = CopilotRuntime.PrepareDataDirectory(dataDirectory);
-            var options = CopilotRuntime.BuildClientOptions(new CopilotRuntimeOptions(dataDirectory), prepared, host);
+            var installed = CopilotRuntime.BuildClientOptions(new CopilotRuntimeOptions(dataDirectory), prepared, host, cli);
+            var bundled = CopilotRuntime.BuildClientOptions(
+                new CopilotRuntimeOptions(dataDirectory, runtimeSource: CopilotRuntimeSource.Bundled),
+                prepared,
+                host);
 
             // Assert
-            var connection = Assert.IsType<SpawnedStdioRuntimeConnection>(options.Runtime);
-            Assert.Equal(CopilotClientMode.Empty, options.Mode);
-            Assert.Null(connection.Path);
-            Assert.Null(connection.Args);
-            Assert.Equal(Path.GetFullPath(dataDirectory), connection.BaseDirectory);
-            Assert.NotNull(connection.Environment);
-            Assert.DoesNotContain(connection.Environment.Keys, name => name.StartsWith("COPILOT_", StringComparison.OrdinalIgnoreCase));
-            Assert.DoesNotContain(connection.Environment.Keys, name => name.StartsWith("GITHUB_COPILOT_", StringComparison.OrdinalIgnoreCase));
-            Assert.Equal("gh", connection.Environment["GH_TOKEN"]);
-            Assert.Empty(options.Plugins.BuiltinDirectories ?? []);
-            Assert.Null(options.SessionFs);
-            Assert.Null(options.Extensions.LaunchProvider);
+            Assert.Equal(cli, Assert.IsType<SpawnedStdioRuntimeConnection>(installed.Runtime).Path);
+            Assert.Null(Assert.IsType<SpawnedStdioRuntimeConnection>(bundled.Runtime).Path);
+            foreach (var options in new[] { installed, bundled })
+            {
+                var connection = Assert.IsType<SpawnedStdioRuntimeConnection>(options.Runtime);
+                Assert.Equal(CopilotClientMode.Empty, options.Mode);
+                Assert.Null(connection.Args);
+                Assert.Equal(Path.GetFullPath(dataDirectory), connection.BaseDirectory);
+                Assert.NotNull(connection.Environment);
+                Assert.DoesNotContain(connection.Environment.Keys, name => name.StartsWith("COPILOT_", StringComparison.OrdinalIgnoreCase));
+                Assert.DoesNotContain(connection.Environment.Keys, name => name.StartsWith("GITHUB_COPILOT_", StringComparison.OrdinalIgnoreCase));
+                Assert.Equal("gh", connection.Environment["GH_TOKEN"]);
+                Assert.Empty(options.Plugins.BuiltinDirectories ?? []);
+                Assert.Null(options.SessionFs);
+                Assert.Null(options.Extensions.LaunchProvider);
+            }
         }
         finally
         {

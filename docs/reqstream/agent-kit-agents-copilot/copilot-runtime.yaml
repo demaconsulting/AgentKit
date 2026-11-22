@@ -22,21 +22,81 @@ sections:
             tests:
               - CopilotRuntime_BuildClientOptions_ForcesEmptyMode
 
-          - id: AgentKitAgentsCopilot-CopilotRuntime-SpawnsTheBundledRuntime
+          - id: AgentKitAgentsCopilot-CopilotRuntime-SpawnsTheSelectedRuntime
             title: >-
-              The runtime shall run the Copilot runtime provisioned into the application's output as a
-              child process connected over its standard input and output, and shall offer no way to
-              choose another runtime executable, runtime arguments, in-process hosting, a TCP
-              connection or an external runtime.
+              The runtime shall run, as a child process connected over its standard input and output,
+              the installed Copilot CLI by default — the CLI the host names, or else the one discovery
+              finds — or, only when the host chooses it, the Copilot runtime provisioned into the
+              application's output, with the same mode, environment and data directory for either; it
+              shall not let the host's environment choose the executable, and shall offer no way to
+              choose runtime arguments, in-process hosting, a TCP connection or an external runtime.
             tags: [security]
             justification: |
-              A child process is the only hosting whose environment the library can decide: an
-              in-process runtime receives the whole host environment, and an external runtime's mode,
-              data directory and environment are not the library's to set. A foreign runtime binary or
-              arbitrary runtime arguments, such as an approve-all switch or an additional MCP
-              configuration, could widen what reaches the model, so neither is expressible.
+              The installed CLI keeps a host application small, because the provisioned runtime adds
+              several hundred megabytes to every output folder, while the provisioned runtime remains
+              for a machine without a suitable CLI. Which executable runs is the host's code choice,
+              never the ambient environment: every Copilot CLI shell sets a runtime-path variable, so
+              honoring it would let the shell, not the application, choose the binary a confined
+              runtime runs. A child process is the only hosting whose environment the library can
+              decide: an in-process runtime receives the whole host environment, and an external
+              runtime's mode, data directory and environment are not the library's to set. Arbitrary
+              runtime arguments, such as an approve-all switch or an additional MCP configuration,
+              could widen what reaches the model, so they are not expressible. The confinement is the
+              same code path for both executables, so choosing one never weakens it.
             tests:
-              - CopilotRuntime_BuildClientOptions_SpawnsTheBundledRuntimeOverStdio
+              - CopilotRuntime_BuildClientOptions_Bundled_SpawnsTheProvisionedRuntimeOverStdio
+              - CopilotRuntime_BuildClientOptions_InstalledCli_SpawnsTheResolvedCliOverStdio
+              - CopilotRuntimeOptions_Constructor_Defaults_InstalledCliWithNoPath
+              - CopilotRuntime_ResolveLaunch_Bundled_SkipsDiscoveryAndTheVersionProbe
+              - CopilotRuntime_ResolveLaunch_ExplicitPath_WinsOverDiscovery
+              - CopilotRuntime_ResolveLaunch_SupportedCli_CarriesPathAndVersion
+              - CopilotRuntime_ResolveLaunch_CopilotCliPathVariable_IsIgnored
+
+          - id: AgentKitAgentsCopilot-CopilotRuntime-RefusesAnUnsupportedCli
+            title: >-
+              The runtime shall refuse, before any runtime process starts, an installed Copilot CLI the
+              host named that does not exist, a machine on which no CLI is found, and a CLI whose
+              version is older than the minimum the library supports, and shall explain a runtime the
+              SDK refuses for its protocol version as a CLI too old or too new for the library, keeping
+              the SDK's error.
+            justification: |
+              An installed CLI changes independently of the library, so it can be too old, or newer than
+              the library supports. Checking before a runtime starts turns a handshake failure that tells
+              the user to update the SDK into a refusal that names the CLI, its version and the remedy.
+              A CLI whose output names no version is left to the SDK's handshake, which fails closed,
+              and that failure is explained the same way.
+            tests:
+              - CopilotRuntime_ResolveLaunch_ExplicitPathMissing_IsRefused
+              - CopilotRuntime_ResolveLaunch_NothingFound_IsRefusedWithInstallGuidance
+              - CopilotRuntime_ResolveLaunch_TooOldCli_IsRefusedBeforeAnyClientExists
+              - CopilotRuntime_ResolveLaunch_NoVersionReported_DefersToTheHandshake
+              - CopilotRuntime_StartClient_ProtocolMismatchOlderServer_IsExplainedAsTooOld
+              - CopilotRuntime_StartClient_ProtocolMismatchNewerServer_IsExplainedAsTooNew
+
+          - id: AgentKitAgentsCopilot-CopilotRuntime-ReportsTheRuntimeVersion
+            title: >-
+              The runtime shall report the installed CLI it runs, or none for the bundled runtime, and
+              the version and protocol version the started runtime reports.
+            justification: |
+              With the installed CLI the version that runs is the machine's, not the library's, so a
+              host needs to log or show it to diagnose behavior; the started runtime's own report is the
+              version that actually runs, rather than one the CLI downloaded but does not use.
+            tests:
+              - CopilotRuntime_Properties_ReportTheLaunchAndTheStatus
+              - CopilotRuntime_VerifyStarted_Authenticated_ReturnsTheStatus
+
+          - id: AgentKitAgentsCopilot-CopilotRuntime-RefusesAnUnauthenticatedRuntime
+            title: >-
+              The runtime shall refuse a runtime that started but is not signed in to GitHub, reporting
+              the runtime's own status, that the Copilot CLI's own sign-in is not used, and every way to
+              sign the runtime in.
+            justification: |
+              The runtime keeps its credentials in the library's data directory with the system keychain
+              off, so a user signed in to the Copilot CLI is still not signed in for the library, and
+              would otherwise discover it only when the first turn fails. Refusing at start, with the
+              token, environment and GitHub CLI options named, makes the remedy immediate.
+            tests:
+              - CopilotRuntime_VerifyStarted_Unauthenticated_IsRefusedWithSignInGuidance
 
           - id: AgentKitAgentsCopilot-CopilotRuntime-WithholdsCopilotEnvironment
             title: >-
@@ -51,8 +111,10 @@ sections:
               session without the composing application having chosen it, so none passes. The
               pass-through set lets authentication and network settings keep working; none of its members can
               add capability to a session. Every other host variable, such as the search path, the
-              home and temporary folders and proxy settings, is kept.
+              home and temporary folders and proxy settings, is kept. The installed CLI's version check
+              runs that CLI too, so it gets the same environment.
             tests:
+              - CopilotRuntime_ResolveLaunch_ProbesUnderTheWithheldEnvironment
               - CopilotRuntime_BuildRuntimeEnvironment_RemovesCopilotConfigurationVariables
               - windows@CopilotRuntime_BuildRuntimeEnvironment_MixedCaseOnWindows_IsRemoved
               - CopilotRuntime_BuildRuntimeEnvironment_KeepsHostVariablesAndThePassThroughSet
@@ -104,35 +166,44 @@ sections:
           - id: AgentKitAgentsCopilot-CopilotRuntime-OffersOnlyNeutralOptions
             title: >-
               The runtime shall accept from the host only a data directory, a GitHub token, a log
-              level and a logger, and shall leave every client-level channel of injected capability
-              unset.
+              level, a logger, a runtime source and a fully qualified installed CLI path, and shall
+              leave every client-level channel of injected capability unset.
             tags: [security]
             justification: |
               Plugin directories, extensions, installation and model-request handlers, a session
               filesystem and test options could each hand a confined agent capability its host never
               reviewed, or move state out of the data directory the library owns. Authentication and
               host-side diagnostics cannot widen what reaches the model, so they remain the host's to
-              set. A blank token is treated as none, so the signed-in user is used.
+              set, and so does the choice of runtime executable, which runs under the same confinement
+              either way. A blank token is treated as none, so the signed-in user is used, and a blank
+              CLI path as none, so discovery chooses.
             tests:
               - CopilotRuntime_BuildClientOptions_LeavesEveryCapabilityChannelUnset
               - CopilotRuntime_BuildClientOptions_CarriesTokenLogLevelAndLogger
               - CopilotRuntimeOptions_Constructor_BlankToken_IsNull
+              - CopilotRuntimeOptions_Constructor_BlankCliPath_IsNull
+              - CopilotRuntimeOptions_Constructor_FullyQualifiedCliPath_IsKept
               - CopilotRuntimeOptions_Constructor_RelativeDataDirectory_IsResolvedToAFullPath
 
           - id: AgentKitAgentsCopilot-CopilotRuntime-ExplainsAMissingRuntime
             title: >-
               The runtime shall, when the Copilot runtime fails to start, report the runtime's own
-              error, that, if the runtime was not found, the host application must reference the
-              Copilot SDK directly so the runtime is provisioned, and the sources the runtime
-              authenticates from, keeping the original failure as the cause.
+              error and the cause that fits what it launched — for the bundled runtime, that if it was
+              not found the host application must reference the Copilot SDK directly so it is
+              provisioned; for an installed CLI, the CLI and its version and no package-reference
+              advice — and the sources the runtime authenticates from, keeping the original failure as
+              the cause.
             justification: |
               The SDK provisions its runtime only into a project that references it directly, and the
-              AgentKit library deliberately ships none, so a host that relies on the library's
-              reference alone has no runtime to start. The runtime's own error names a missing file
-              and not the remedy. Because the host's COPILOT_ variables are withheld, the explanation
-              says which credential sources still apply, so an authentication failure can be traced.
+              AgentKit library deliberately ships none, so a host that opted into the bundled runtime
+              but relies on the library's reference alone has no runtime to start. The runtime's own
+              error names a missing file and not the remedy. For an installed CLI that advice would
+              mislead, so the CLI that failed is named instead. Because the host's COPILOT_ variables
+              are withheld, the explanation says which credential sources still apply, so an
+              authentication failure can be traced.
             tests:
               - CopilotRuntime_StartClient_FailedStart_ExplainsTheMissingRuntimeAndKeepsTheCause
+              - CopilotRuntime_StartClient_InstalledCliFailure_DoesNotBlameTheSdkReference
               - CopilotRuntime_StartClient_Succeeds_DoesNotThrow
 
           - id: AgentKitAgentsCopilot-CopilotRuntime-PassesCancellationThrough
@@ -185,12 +256,20 @@ sections:
 
           - id: AgentKitAgentsCopilot-CopilotRuntime-RejectsInvalidOptions
             title: >-
-              The runtime shall reject missing options and a missing, blank or invalid data directory
-              as programming errors.
+              The runtime shall reject missing options, a missing, blank or invalid data directory, an
+              undefined runtime source, and an installed CLI path that is not fully qualified, names a
+              batch file (.cmd or .bat), or is given with the bundled runtime, as programming errors.
             justification: |
-              A runtime with no data directory could not be confined to one the library owns; the
-              defect is surfaced where the composing application wrote it.
+              A runtime with no data directory could not be confined to one the library owns; a
+              relative CLI path would make the executable depend on the current directory at start;
+              Windows runs a batch file through cmd.exe, so the CLI, probed and spawned without a
+              shell, would run under one; a CLI path for the bundled runtime is a contradiction the
+              host must resolve. Each defect is surfaced where the composing application wrote it.
             tests:
               - CopilotRuntime_StartAsync_NullOptions_Throws
               - CopilotRuntimeOptions_Constructor_BlankDataDirectory_Throws
               - CopilotRuntimeOptions_Constructor_InvalidDataDirectory_ThrowsNamingTheParameter
+              - CopilotRuntimeOptions_Constructor_UndefinedSource_Throws
+              - CopilotRuntimeOptions_Constructor_RelativeCliPath_Throws
+              - CopilotRuntimeOptions_Constructor_BatchFileCliPath_Throws
+              - CopilotRuntimeOptions_Constructor_CliPathWithBundled_Throws

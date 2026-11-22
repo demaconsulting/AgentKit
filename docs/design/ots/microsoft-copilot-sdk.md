@@ -14,9 +14,17 @@ runtime NuGet dependency of the AgentKitAgentsCopilot package only, deliberately
 ### Features Used
 
 - `CopilotClient` and `CopilotClientOptions` — the client `CopilotRuntime` builds, starts and owns:
-  `CopilotClientMode.Empty`, a `RuntimeConnection.ForSpawnedStdio` connection to the provisioned
-  runtime with a replacement environment and a base directory, and the identity the host chooses;
-  AgentKit creates, resumes and deletes sessions on it
+  `CopilotClientMode.Empty`, a `RuntimeConnection.ForSpawnedStdio` connection — to the installed
+  Copilot CLI by its path, or to the provisioned runtime when no path is given — with a replacement
+  environment and a base directory, and the identity the host chooses; AgentKit creates, resumes and
+  deletes sessions on it
+- `CopilotClient.GetStatusAsync` and `GetAuthStatusAsync` — read once the runtime has started:
+  `GetStatusResponse.Version` and `ProtocolVersion` are kept on the runtime, and
+  `GetAuthStatusResponse.IsAuthenticated` and `StatusMessage` decide whether the started runtime is
+  refused as not signed in
+- **The protocol handshake** — `CopilotClient.StartAsync` refuses a runtime whose protocol version the
+  SDK does not support with an `InvalidOperationException` reporting a protocol version mismatch and
+  the version the server reports; AgentKit recognizes that error and explains it
 - `CreateSessionOptions`, `ResumeSessionOptions` and their shared base `SessionOptionsBase` — the
   session options. Every confinement-relevant option group sits on the shared base: the tool
   definitions and the available-tools allow-list, with its source-qualified `custom:` entries; the
@@ -86,9 +94,13 @@ level and the logger:
   the variable that disables the system keychain, so credentials go to the data directory instead,
   and it does not enable runtime file logging, which it does in other modes. AgentKit sets every one of
   these session defaults itself as well, so the confinement does not rest on the mode alone.
-- **`Runtime = RuntimeConnection.ForSpawnedStdio(environment, baseDirectory)`.** The SDK launches the
-  provisioned runtime wrapper (`runtimes/<rid>/native/copilot-runtime`) with `--headless`,
-  `--no-auto-update` and `--stdio`. A supplied `Environment` **replaces** the inherited environment;
+- **`Runtime = RuntimeConnection.ForSpawnedStdio(path, environment, baseDirectory)`.** With a `path`,
+  the SDK launches that executable — a `.js` path with `node` — and with none, the provisioned runtime
+  wrapper (`runtimes/<rid>/native/copilot-runtime`); either way with `--headless`, `--no-auto-update`
+  and `--stdio`, and an explicit path is not checked for the provisioned runtime's files. Because of
+  `--no-auto-update`, an installed CLI runs the version built into its binary. The SDK resolves the
+  executable from the supplied path first, then `COPILOT_CLI_PATH`, then the provisioned runtime. A
+  supplied `Environment` **replaces** the inherited environment;
   the SDK then adds `COPILOT_HOME` (the base directory), the keychain switch and, with a token,
   `COPILOT_SDK_AUTH_TOKEN`. The SDK reads `COPILOT_CLI_PATH` from that replacement environment rather
   than from the process, so withholding it from the environment removes the runtime-path override. In-process
@@ -186,6 +198,10 @@ while a spawned client whose replacement environment omits the variable starts a
 
 ### Deployment and Runtime Provisioning
 
+AgentKit runs the installed Copilot CLI by default, which needs nothing from this section: the host
+references no SDK package of its own and ships no runtime. What follows applies to a host that opts
+into the bundled runtime (`CopilotRuntimeSource.Bundled`).
+
 The Copilot runtime is a native component the package does not carry. The SDK's build targets
 download it at build time from the Copilot CLI's GitHub releases, verify the archive against the
 release's published SHA-256 checksums, extract it under the project's intermediate folder — about
@@ -194,16 +210,17 @@ hundred files under `runtimes/<rid>/native`. The runtime version is pinned by th
 
 - **Only a direct reference provisions.** The targets ship in the package's `build` folder, not
   `buildTransitive`, so they run only in a project that references the SDK directly. A host
-  application must therefore reference `Microsoft.Copilot.SDK` itself; reaching it transitively through
-  AgentKit provisions nothing.
+  application that opts into the bundled runtime must therefore reference `Microsoft.Copilot.SDK`
+  itself; reaching it transitively through AgentKit provisions nothing.
 - **AgentKit ships no runtime.** The AgentKit library sets `CopilotSkipCliDownload`, which skips the
   download, the copy to the output and the content registration alike, keeping the runtime out of its
   outputs, its tests' outputs and its package. Its SDK reference does not flow build assets to
   consumers, so a consumer's other projects never download the runtime either.
 - **Hermetic continuous integration.** The build workflow sets `CopilotSkipCliDownload` as a
   workflow-level environment variable, which MSBuild reads as a property, so the merge gate never
-  contacts GitHub releases. The live-samples workflow builds with the download and caches the
-  extracted runtime.
+  contacts GitHub releases. The live-samples workflow installs a standalone Copilot CLI for the samples
+  and the installed-CLI live variants, and only its bundled live variant builds with the download and
+  caches the extracted runtime.
 - **Mirrors and offline builds.** `CopilotCliReleaseBaseUrl`, or the `COPILOT_CLI_DOWNLOAD_BASE_URL`
   environment variable, redirects the download to a mirror; `CopilotCliBinaryPath` supplies a runtime
   already on disk; `CopilotCliDownloadTimeout` bounds the download; `CopilotSkipCliDownload` turns
@@ -215,5 +232,5 @@ hundred files under `runtimes/<rid>/native`. The runtime version is pinned by th
 
 This is a property of the off-the-shelf SDK, and it is part of the reason the dependency is isolated in
 its own AgentKit package: an application that never builds a Copilot agent never takes the SDK or its
-native runtime. See *Deployment: The Host Application Provisions the Runtime* in
-*AgentKitAgentsCopilot System Design*.
+native runtime. See *Deployment: The Installed Copilot CLI by Default, the Bundled Runtime on Request*
+in *AgentKitAgentsCopilot System Design*.

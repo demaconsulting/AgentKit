@@ -1419,6 +1419,7 @@ reviews:
       - "docs/verification/introduction.md"                                     # verification introduction
       - "docs/verification/agent-kit-agents-copilot.md"                     # system verification
       - "test/DemaConsulting.AgentKit.Agents.Copilot.Tests/AgentKitAgentsCopilotTests.cs"  # integration tests
+      - "test/DemaConsulting.AgentKit.Agents.Copilot.Tests/FakeCopilotCliMachine.cs"  # fake CLI machine
       - "test/DemaConsulting.AgentKit.Agents.Copilot.Tests/XmlDocExampleTests.cs"  # documented-example compile tests
       - "test/DemaConsulting.AgentKit.Agents.Copilot.LiveTests/**/*.cs"      # opt-in live integration suite
 
@@ -1488,19 +1489,41 @@ reviews:
       - "test/DemaConsulting.AgentKit.Agents.Copilot.Tests/CopilotAgentFactoryTests.cs"  # unit tests
 
   # AgentKitAgentsCopilot-CopilotRuntime Review (one per unit)
+  #
+  # The fake CLI machine is claimed here as well as by the CopilotCli unit: the runtime's launch
+  # resolution tests are written against it, and a reviewer cannot judge them without it.
   - id: AgentKitAgentsCopilot-CopilotRuntime
     title: Review that AgentKitAgentsCopilot CopilotRuntime Implementation is Correct
     context:
       - "docs/design/agent-kit-agents-copilot.md"
       - "docs/reqstream/agent-kit-agents-copilot.yaml"
       - "docs/design/ots/microsoft-copilot-sdk.md"
+      - "docs/design/agent-kit-agents-copilot/copilot-cli.md"
     paths:
       - "docs/reqstream/agent-kit-agents-copilot/copilot-runtime.yaml"   # unit requirements
       - "docs/design/agent-kit-agents-copilot/copilot-runtime.md"        # unit design
       - "docs/verification/agent-kit-agents-copilot/copilot-runtime.md"  # unit verification
       - "src/DemaConsulting.AgentKit.Agents.Copilot/CopilotRuntime.cs"         # unit source
       - "src/DemaConsulting.AgentKit.Agents.Copilot/CopilotRuntimeOptions.cs"  # unit source (options type)
+      - "src/DemaConsulting.AgentKit.Agents.Copilot/CopilotRuntimeSource.cs"   # unit source (runtime source type)
       - "test/DemaConsulting.AgentKit.Agents.Copilot.Tests/CopilotRuntimeTests.cs"  # unit tests
+      - "test/DemaConsulting.AgentKit.Agents.Copilot.Tests/FakeCopilotCliMachine.cs"  # fake CLI machine
+
+  # AgentKitAgentsCopilot-CopilotCli Review (one per unit)
+  - id: AgentKitAgentsCopilot-CopilotCli
+    title: Review that AgentKitAgentsCopilot CopilotCli Implementation is Correct
+    context:
+      - "docs/design/agent-kit-agents-copilot.md"
+      - "docs/reqstream/agent-kit-agents-copilot.yaml"
+    paths:
+      - "docs/reqstream/agent-kit-agents-copilot/copilot-cli.yaml"   # unit requirements
+      - "docs/design/agent-kit-agents-copilot/copilot-cli.md"        # unit design
+      - "docs/verification/agent-kit-agents-copilot/copilot-cli.md"  # unit verification
+      - "src/DemaConsulting.AgentKit.Agents.Copilot/CopilotCli.cs"              # unit source
+      - "src/DemaConsulting.AgentKit.Agents.Copilot/CopilotCliSearchResult.cs"  # unit source (result type)
+      - "src/DemaConsulting.AgentKit.Agents.Copilot/CopilotCliProcessTree.cs"   # unit source (probe process tree)
+      - "test/DemaConsulting.AgentKit.Agents.Copilot.Tests/CopilotCliTests.cs"  # unit tests
+      - "test/DemaConsulting.AgentKit.Agents.Copilot.Tests/FakeCopilotCliMachine.cs"  # fake CLI machine
 
   # AgentKitAgentsCopilot-CopilotProviderSession Review (one per unit)
   #
