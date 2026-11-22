@@ -213,6 +213,9 @@ internal sealed partial class CopilotCliProcessTree : IDisposable
         var identities = new List<string>(2);
         foreach (var stream in new[] { process.StandardOutput.BaseStream, process.StandardError.BaseStream })
         {
+            // Outside Windows .NET exposes redirected output as an AnonymousPipeClientStream over the
+            // pipe's descriptor; FileStream is only the Windows implementation, where the job object is
+            // used instead. A stream of any other kind is skipped, leaving only the tree kill.
             if (stream is not PipeStream pipe)
             {
                 continue;
