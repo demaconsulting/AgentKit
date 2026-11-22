@@ -10,6 +10,12 @@ namespace DemaConsulting.AgentKit.Core.Tests;
 public class ModelCatalogTests
 {
     /// <summary>
+    ///     How long a step that should complete promptly is awaited before the test fails rather than
+    ///     hangs.
+    /// </summary>
+    private static readonly TimeSpan StepLimit = TimeSpan.FromSeconds(30);
+
+    /// <summary>
     ///     Proves nothing is read until the catalog is first asked.
     /// </summary>
     [Fact]
@@ -64,28 +70,65 @@ public class ModelCatalogTests
     }
 
     /// <summary>
+    ///     Proves a listing is served until it is as old as the lifetime, and read again at exactly
+    ///     that age.
+    /// </summary>
+    [Fact]
+    public async Task ModelCatalog_ListAsync_AtLifetime_ReadsAgain()
+    {
+        // Arrange
+        var clock = new ManualTimeProvider();
+        var catalog = new ScriptedModelCatalog([ModelTestData.VisionModel()], clock);
+        await catalog.ListAsync(cancellationToken: TestContext.Current.CancellationToken);
+
+        // Act: one tick short of the lifetime, then exactly the lifetime
+        clock.Advance(CachingModelCatalog.DefaultLifetime - TimeSpan.FromTicks(1));
+        await catalog.ListAsync(cancellationToken: TestContext.Current.CancellationToken);
+        var readsBeforeLifetime = catalog.Reads;
+        clock.Advance(TimeSpan.FromTicks(1));
+        await catalog.ListAsync(cancellationToken: TestContext.Current.CancellationToken);
+
+        // Assert: served from the cache just short of the lifetime, read again at it
+        Assert.Equal(1, readsBeforeLifetime);
+        Assert.Equal(2, catalog.Reads);
+    }
+
+    /// <summary>
     ///     Proves callers that arrive while a read is in flight share it rather than starting their own.
     /// </summary>
     [Fact]
     public async Task ModelCatalog_ListAsync_ConcurrentCallers_ShareOneRead()
     {
-        // Arrange: a read that does not finish until released
+        // Arrange: a read that does not finish until released, and a count of the callers that join it
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var allJoined = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var joined = 0;
         var catalog = new ScriptedModelCatalog(async (_, _) =>
         {
             await release.Task;
             return [ModelTestData.VisionModel()];
         });
+        catalog.OnReadJoined = () =>
+        {
+            if (Interlocked.Increment(ref joined) == 19)
+            {
+                allJoined.SetResult();
+            }
+        };
 
-        // Act: twenty callers, then the read completes
+        // Act: twenty callers, one of which reads while the other nineteen join; then the read completes
         var callers = Enumerable.Range(0, 20)
-            .Select(_ => Task.Run(() => catalog.ListAsync(cancellationToken: TestContext.Current.CancellationToken), TestContext.Current.CancellationToken))
+            .Select(_ => Task.Run(
+                () => catalog.ListAsync(cancellationToken: TestContext.Current.CancellationToken),
+                TestContext.Current.CancellationToken))
             .ToArray();
-        await Task.Delay(50, TestContext.Current.CancellationToken);
+        await allJoined.Task.WaitAsync(StepLimit, TestContext.Current.CancellationToken);
+        var readsBeforeRelease = catalog.Reads;
         release.SetResult();
-        var results = await Task.WhenAll(callers);
+        var results = await Task.WhenAll(callers).WaitAsync(StepLimit, TestContext.Current.CancellationToken);
 
         // Assert: one read served everyone
+        Assert.Equal(1, readsBeforeRelease);
         Assert.Equal(1, catalog.Reads);
         Assert.All(results, models => Assert.Single(models));
     }
@@ -136,13 +179,14 @@ public class ModelCatalogTests
 
         // Act: the first caller starts the read, a second joins it, then the first cancels
         var first = catalog.ListAsync(cancellationToken: cancel.Token);
-        await firstStarted.Task;
+        await firstStarted.Task.WaitAsync(StepLimit, TestContext.Current.CancellationToken);
         var second = catalog.ListAsync(cancellationToken: TestContext.Current.CancellationToken);
-        await cancel.CancelAsync();
+        await cancel.CancelAsync().WaitAsync(StepLimit, TestContext.Current.CancellationToken);
 
         // Assert: the first is canceled, the second succeeds on a read of its own
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => first);
-        Assert.Single(await second);
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => first.WaitAsync(StepLimit, TestContext.Current.CancellationToken));
+        Assert.Single(await second.WaitAsync(StepLimit, TestContext.Current.CancellationToken));
         Assert.Equal(2, catalog.Reads);
     }
 
@@ -154,9 +198,11 @@ public class ModelCatalogTests
     public async Task ModelCatalog_ListAsync_ProviderTimeout_ReachesEveryWaiterWithOneRead()
     {
         // Arrange: the first read times out once released, with no caller's token canceled; later
-        // reads succeed at once
+        // reads succeed at once. The callers that join the read are counted.
         var firstStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var allJoined = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var joined = 0;
         var catalog = new ScriptedModelCatalog(async (read, _) =>
         {
             if (read == 1)
@@ -168,21 +214,35 @@ public class ModelCatalogTests
 
             return [ModelTestData.VisionModel()];
         });
+        catalog.OnReadJoined = () =>
+        {
+            if (Interlocked.Increment(ref joined) == 3)
+            {
+                allJoined.SetResult();
+            }
+        };
 
         // Act: one caller starts the read, three join it, then the provider times out
         var owner = catalog.ListAsync(cancellationToken: TestContext.Current.CancellationToken);
-        await firstStarted.Task;
+        await firstStarted.Task.WaitAsync(StepLimit, TestContext.Current.CancellationToken);
         var waiters = Enumerable.Range(0, 3)
-            .Select(_ => catalog.ListAsync(cancellationToken: TestContext.Current.CancellationToken))
+            .Select(_ => Task.Run(
+                () => catalog.ListAsync(cancellationToken: TestContext.Current.CancellationToken),
+                TestContext.Current.CancellationToken))
             .ToArray();
+        await allJoined.Task.WaitAsync(StepLimit, TestContext.Current.CancellationToken);
+        var readsBeforeRelease = catalog.Reads;
         release.SetResult();
 
         // Assert: every caller receives the timeout from the one read
-        var ownerFailure = await Assert.ThrowsAsync<TaskCanceledException>(() => owner);
+        Assert.Equal(1, readsBeforeRelease);
+        var ownerFailure = await Assert.ThrowsAsync<TaskCanceledException>(
+            () => owner.WaitAsync(StepLimit, TestContext.Current.CancellationToken));
         Assert.Equal("provider timed out", ownerFailure.Message);
         foreach (var waiter in waiters)
         {
-            var failure = await Assert.ThrowsAsync<TaskCanceledException>(() => waiter);
+            var failure = await Assert.ThrowsAsync<TaskCanceledException>(
+                () => waiter.WaitAsync(StepLimit, TestContext.Current.CancellationToken));
             Assert.Equal("provider timed out", failure.Message);
         }
 
@@ -190,6 +250,93 @@ public class ModelCatalogTests
 
         // Assert: the failure was not cached; the next query reads again
         Assert.Single(await catalog.ListAsync(cancellationToken: TestContext.Current.CancellationToken));
+        Assert.Equal(2, catalog.Reads);
+    }
+
+    /// <summary>
+    ///     Proves a caller that arrives as a read's failure is being reported joins that read and
+    ///     receives its failure, rather than starting a second read; only a query after it reads again.
+    /// </summary>
+    [Fact]
+    public async Task ModelCatalog_ListAsync_CallerArrivingAsReadFails_ReceivesThatFailure()
+    {
+        // Arrange: the first read times out on its own; later reads succeed. A caller arrives at the
+        // instant the timeout is published.
+        var catalog = new ScriptedModelCatalog((read, _) => read == 1
+            ? Task.FromException<IReadOnlyList<ModelInfo>>(new TaskCanceledException("provider timed out"))
+            : Task.FromResult<IReadOnlyList<ModelInfo>>([ModelTestData.VisionModel()]));
+        Task<IReadOnlyList<ModelInfo>>? arriving = null;
+        catalog.OnReadPublished = () =>
+        {
+            catalog.OnReadPublished = null;
+            arriving = catalog.ListAsync(cancellationToken: TestContext.Current.CancellationToken);
+        };
+
+        // Act
+        var ownerFailure = await Assert.ThrowsAsync<TaskCanceledException>(
+            () => catalog.ListAsync(cancellationToken: TestContext.Current.CancellationToken)
+                .WaitAsync(StepLimit, TestContext.Current.CancellationToken));
+
+        // Assert: the arriving caller received the same failure from the same read
+        Assert.NotNull(arriving);
+        var arrivingFailure = await Assert.ThrowsAsync<TaskCanceledException>(
+            () => arriving.WaitAsync(StepLimit, TestContext.Current.CancellationToken));
+        Assert.Same(ownerFailure, arrivingFailure);
+        Assert.Equal(1, catalog.Reads);
+
+        // Assert: a query after the failure was released reads again
+        Assert.Single(await catalog.ListAsync(cancellationToken: TestContext.Current.CancellationToken));
+        Assert.Equal(2, catalog.Reads);
+    }
+
+    /// <summary>
+    ///     Proves a caller that arrives as the reading caller's cancellation is being reported reads
+    ///     once for itself, and a caller after that shares the new read rather than starting a third.
+    /// </summary>
+    [Fact]
+    public async Task ModelCatalog_ListAsync_CallerArrivingAsReaderCancels_ReadsOnceForItself()
+    {
+        // Arrange: the first read waits for its token; the second is held open until released. A
+        // caller arrives at the instant the first read's cancellation is published.
+        var firstStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseSecond = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var catalog = new ScriptedModelCatalog(async (read, token) =>
+        {
+            if (read == 1)
+            {
+                firstStarted.SetResult();
+                await Task.Delay(Timeout.Infinite, token);
+            }
+            else
+            {
+                await releaseSecond.Task;
+            }
+
+            return [ModelTestData.VisionModel()];
+        });
+        using var cancel = new CancellationTokenSource();
+        Task<IReadOnlyList<ModelInfo>>? arriving = null;
+        catalog.OnReadPublished = () =>
+        {
+            catalog.OnReadPublished = null;
+            arriving = catalog.ListAsync(cancellationToken: TestContext.Current.CancellationToken);
+        };
+
+        // Act: the reader cancels; a caller arrives as the cancellation is published, another after it
+        var first = catalog.ListAsync(cancellationToken: cancel.Token);
+        await firstStarted.Task.WaitAsync(StepLimit, TestContext.Current.CancellationToken);
+        await cancel.CancelAsync().WaitAsync(StepLimit, TestContext.Current.CancellationToken);
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => first.WaitAsync(StepLimit, TestContext.Current.CancellationToken));
+        var later = catalog.ListAsync(cancellationToken: TestContext.Current.CancellationToken);
+        var readsBeforeRelease = catalog.Reads;
+        releaseSecond.SetResult();
+
+        // Assert: the arriving caller read once for itself, and the later caller shared that read
+        Assert.NotNull(arriving);
+        Assert.Single(await arriving.WaitAsync(StepLimit, TestContext.Current.CancellationToken));
+        Assert.Single(await later.WaitAsync(StepLimit, TestContext.Current.CancellationToken));
+        Assert.Equal(2, readsBeforeRelease);
         Assert.Equal(2, catalog.Reads);
     }
 
@@ -212,6 +359,69 @@ public class ModelCatalogTests
         // Assert
         Assert.Equal(2, catalog.Reads);
         Assert.Equal(2, models.Count);
+    }
+
+    /// <summary>
+    ///     Proves a refresh that arrives while a read is in flight joins that read rather than starting
+    ///     a second one.
+    /// </summary>
+    [Fact]
+    public async Task ModelCatalog_RefreshAsync_ReadInFlight_JoinsIt()
+    {
+        // Arrange: a read that does not finish until released, and a signal when a caller joins it
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var joined = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var catalog = new ScriptedModelCatalog(async (_, _) =>
+        {
+            await release.Task;
+            return [ModelTestData.VisionModel()];
+        });
+        catalog.OnReadJoined = () => joined.TrySetResult();
+
+        // Act: a listing starts the read, a refresh arrives and joins it, then the read completes
+        var listing = catalog.ListAsync(cancellationToken: TestContext.Current.CancellationToken);
+        var refresh = Task.Run(
+            () => catalog.RefreshAsync(TestContext.Current.CancellationToken),
+            TestContext.Current.CancellationToken);
+        await joined.Task.WaitAsync(StepLimit, TestContext.Current.CancellationToken);
+        release.SetResult();
+        await refresh.WaitAsync(StepLimit, TestContext.Current.CancellationToken);
+
+        // Assert: one read served both
+        Assert.Single(await listing.WaitAsync(StepLimit, TestContext.Current.CancellationToken));
+        Assert.Equal(1, catalog.Reads);
+    }
+
+    /// <summary>
+    ///     Proves a refresh that arrives as a read's listing is being handed out reads again, rather than
+    ///     joining the read that has just finished.
+    /// </summary>
+    [Fact]
+    public async Task ModelCatalog_RefreshAsync_ArrivingAsReadSucceeds_ReadsAgain()
+    {
+        // Arrange: the second read reports a model the first did not. A refresh arrives at the instant
+        // the first read's listing is published.
+        var catalog = new ScriptedModelCatalog((read, _) => Task.FromResult<IReadOnlyList<ModelInfo>>(read == 1
+            ? [ModelTestData.TextModel()]
+            : [ModelTestData.TextModel(), ModelTestData.VisionModel()]));
+        Task? refresh = null;
+        catalog.OnReadPublished = () =>
+        {
+            catalog.OnReadPublished = null;
+            refresh = catalog.RefreshAsync(TestContext.Current.CancellationToken);
+        };
+
+        // Act
+        var first = await catalog.ListAsync(cancellationToken: TestContext.Current.CancellationToken)
+            .WaitAsync(StepLimit, TestContext.Current.CancellationToken);
+        Assert.NotNull(refresh);
+        await refresh.WaitAsync(StepLimit, TestContext.Current.CancellationToken);
+        var after = await catalog.ListAsync(cancellationToken: TestContext.Current.CancellationToken);
+
+        // Assert: the refresh made a second read, whose listing is the one now cached
+        Assert.Single(first);
+        Assert.Equal(2, catalog.Reads);
+        Assert.Equal(2, after.Count);
     }
 
     /// <summary>

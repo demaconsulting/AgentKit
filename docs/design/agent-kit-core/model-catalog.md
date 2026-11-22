@@ -17,17 +17,20 @@ writes only the part that is its own — how to read the provider and how to des
 **Read lazily, cached briefly.** A picker lists models far more often than a provider's offering
 changes, and a listing is a network call some providers rate-limit. Nothing is read until the first
 listing or lookup; the listing is then kept for `DefaultLifetime`, five minutes, unless another
-lifetime is given. Five minutes is long enough that one interaction never waits on a provider
-twice, and short enough that a model enabled or withdrawn appears or disappears without a restart.
+lifetime is given, and a listing as old as the lifetime is read again on the next query. Five minutes
+is long enough that one interaction never waits on a provider twice, and short enough that a model
+enabled or withdrawn appears or disappears without a restart.
 `RefreshAsync` reads again at once, for the user who has just been granted a model or pulled one.
 
 **One read at a time, shared.** A user interface commonly asks for the list from several places at
 once when it opens. Callers that arrive while a read is in flight wait for it rather than starting
-their own, so the cost the cache exists to save is not multiplied exactly when it matters.
+their own, so the cost the cache exists to save is not multiplied exactly when it matters. A caller
+that arrives as a read's outcome is being reported receives that outcome too; only a caller after it
+starts a new read.
 
 **Failures are not cached.** A provider that is briefly unreachable, or a user not yet signed in,
 must not leave the catalog empty for five minutes after the cause is fixed. A failed read reaches
-every caller waiting on it, and the next query reads again.
+every caller waiting on it, and the next query after it reads again.
 
 **One read serves every filter.** A query is applied to the cached listing when it is read, so
 filtering one list many ways costs one read. The provider's order is preserved, because it is the
@@ -74,10 +77,28 @@ Design* for the rules `SelectAsync` applies.
 - **`_inFlight`** (`Task<Snapshot>?`) — the read in flight, which arriving callers join; null when
   none is. Backed by a `TaskCompletionSource` the reading caller owns, created with asynchronous
   continuations so completing it never runs a waiter's code on the reader's stack.
+- **`OnReadJoined`** (`Action?`, internal) — a test seam invoked on the joining caller's thread,
+  outside the lock, each time a caller joins a read in flight. Null outside tests.
+- **`OnReadPublished`** (`Action?`, internal) — a test seam invoked on the reading caller's thread,
+  outside the lock, at the point where a read's outcome is settled but its waiters may not have seen
+  it: after a failure is published and before the read is released, or after a listing is stored and
+  the read released and before the waiters are released. Null outside tests. Both seams let a test wait for
+  an exact moment instead of a delay; neither is part of the public or protected surface.
 
-Invariants: a snapshot is fresh while `now - ReadAt < lifetime`; at most one read is in flight; a
-cached snapshot never holds a null model; `_inFlight` is cleared before the waiters on it are
-released, so a waiter that reads again starts a new read rather than re-joining a finished one.
+Invariants:
+
+- A snapshot is fresh while `now - ReadAt < lifetime`, so a listing as old as the lifetime is read
+  again.
+- At most one read is in flight, and a cached snapshot never holds a null model.
+- A failed read's outcome is published on the shared task before the read is released, so a failed
+  read stays joinable until then and a caller that meets it receives its failure.
+- A read whose owner canceled it is treated as absent: a caller that meets it before the owner has
+  released it clears it and starts a new read, rather than joining a read that is already over.
+- Release is compare-and-clear: the owner clears `_inFlight` only when it still holds the owner's
+  read, so it never clears a newer read that replaced a canceled one.
+- A successful read is stored and released in one lock section before it is published, so from the
+  release on a listing or lookup is served the stored listing without a read. Only a refresh, or a
+  listing that has expired by then, reads again, because the first read is already over.
 
 `CachingModelCatalog` is safe for concurrent use.
 
@@ -122,8 +143,10 @@ which `IdEquals(modelId, model.Id)` holds, or null.
 **Purpose:** Read the provider again now, within the lifetime.
 
 **Algorithm:** Discard the snapshot under the lock, then obtain the listing as `ListAsync` would. A
-read already in flight is joined rather than duplicated. Discarding first means a refresh that fails
-leaves nothing stale behind, and the next query reads again.
+read already in flight is joined rather than duplicated, so a refresh that arrives as a read fails
+receives that failure. A refresh that arrives once a successful read has been stored reads again,
+since that read has finished. Discarding first means a refresh that fails leaves nothing stale behind,
+and the next query reads again.
 
 #### FetchAsync(CancellationToken cancellationToken)
 
@@ -151,9 +174,12 @@ among every caller that arrives while it is in flight.
 2. When refreshing, discard the snapshot under the lock.
 3. Under the lock, decide one of three outcomes: a fresh snapshot answers at once; with no read in
    flight, this caller creates the completion source and owns the read; otherwise this caller joins
-   the read in flight.
+   the read in flight. A read in flight that is already canceled is first cleared and treated as
+   absent, so this caller owns a new read; a read in flight that has failed but is not yet released is
+   joined, so this caller receives its failure.
 4. An owner performs the read through `ReadAsync` with its own token.
-5. A joiner waits on the shared task with its own token, so canceling stops only its own wait. If
+5. A joiner invokes `OnReadJoined`, then waits on the shared task with its own token, so canceling
+   stops only its own wait. If
    the joined read was canceled — which happens only when its owner's own token was canceled — while
    the joiner's token was not, that cancellation was not the joiner's: it returns to step 3 and reads
    again for itself. A read that failed, a provider timeout included, is faulted and its exception
@@ -163,12 +189,24 @@ among every caller that arrives while it is in flight.
 
 **Purpose:** Perform one read on behalf of every caller waiting on it, and publish the outcome.
 
-**Algorithm:** Call `FetchAsync`. Refuse a null listing and a listing holding a null model. Copy the listing into an
-array, stamp it with the clock, and under the lock store it as the snapshot and clear `_inFlight`; then complete the
-shared task. On any failure, clear `_inFlight` under the lock, complete the shared task as canceled when the owner's own
-token was canceled, and faulted otherwise — a cancellation the provider raised on its own, such as an HTTP client's
-timeout, is a failure of the read and faults it — and rethrow to the owner. A fault is observed at once so a failure no
-other caller waited on is not reported later as an unobserved task exception.
+**Algorithm:** Call `FetchAsync`. Refuse a null listing and a listing holding a null model.
+
+- **On success:** copy the listing into an array, stamp it with the clock, and in one lock section store
+  it as the snapshot and release the read. Then invoke `OnReadPublished` and complete the shared task
+  with the snapshot.
+- **On any failure:** first complete the shared task — as canceled when the owner's own token was
+  canceled, and faulted otherwise. A cancellation the provider raised on its own, such as an HTTP
+  client's timeout, is a failure of the read and faults it. A fault is observed at once so a failure no
+  other caller waited on is not reported later as an unobserved task exception. Then invoke
+  `OnReadPublished`, release the read under the lock, and rethrow to the owner.
+
+Release clears `_inFlight` only when it still holds this read. The seam is invoked outside the lock
+and inside a `try`/`finally` that releases the read or completes the task, so a seam that throws cannot
+leave a finished read in flight. The two paths differ in order on purpose. A failure is published
+before release so a caller arriving in between joins the read and receives its failure instead of
+starting a second read. A success is released before it is published: once it is stored, an arriving
+caller is served it without a read, and a refresh arriving then reads again rather than joining a read
+that has finished.
 
 #### SelectAsync(IModelCatalog, ModelSettings, ModelCapabilities, CancellationToken)
 
@@ -202,9 +240,10 @@ exception listing every problem.
 | The provider does not offer the selected model | `ModelSettingsException` with the not-available problem |
 | The settings are not valid for the model | `ModelSettingsException` from `Bind`, listing every problem |
 
-"To all" means the owner of the read and every caller waiting on it. A provider's own cancellation
-reaches them as `OperationCanceledException` although no caller's token was canceled, so a caller
-tells a timeout from its own cancellation by its token's `IsCancellationRequested`.
+"To all" means the owner of the read and every caller that joins it before it is released. A
+provider's own cancellation reaches them as `OperationCanceledException` although no caller's token
+was canceled, so a caller tells a timeout from its own cancellation by its token's
+`IsCancellationRequested`.
 
 The dividing line: a malformed argument is a defect in the caller and is refused at once; a
 provider that could not be read is a condition of the environment, reported to whoever asked and

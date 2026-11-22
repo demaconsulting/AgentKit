@@ -13,14 +13,18 @@ merely what was returned. The scripted read is handed the one-based number of th
 so a test can fail the first read and succeed the second, or report a model only after a refresh.
 
 **Time is moved by hand.** The catalog's clock is injected as `ManualTimeProvider`, which a test
-advances past the lifetime, so expiry is exercised without waiting and without a timing race.
+advances to or past the lifetime, so expiry is exercised without waiting and without a timing race.
 
-**Concurrency is controlled rather than hoped for.** The single-flight scenario holds the read open
-on a completion source until twenty callers have arrived, then releases it. The cancellation
-scenario holds the first read on its own token, so the owner's cancellation and the waiter's
-continuation happen in a fixed order. The timeout scenario holds the first read on a completion
-source until three waiters have joined, then fails it with a `TaskCanceledException` no caller's
-token raised. None depends on scheduling luck.
+**Concurrency is controlled with two internal seams on `CachingModelCatalog`, not with delays.**
+`OnReadJoined` runs each time a caller joins a read in flight, so a scenario counts joins and holds
+the read open on a completion source until every caller it started has joined. `OnReadPublished` runs
+at the instant a read's outcome has been settled but its waiters may not yet have observed it, so a
+scenario can make a caller arrive exactly then. The single-flight scenario releases its
+read only after nineteen of twenty callers have joined it; the timeout scenario only after three
+waiters have joined. The cancellation scenarios hold the first read on its own token, so the owner's
+cancellation and the waiter's continuation happen in a fixed order. No scenario synchronizes on a
+`Task.Delay`. Every wait on another task is bounded by a generous limit, so a regression that would
+leave a caller waiting forever fails the scenario rather than hanging the run.
 
 **The gate is exercised against the real validation.** `SelectAsync` is called on scripted catalogs
 holding hand-built descriptions from `ModelTestData`, so the refusals it reports come from
@@ -43,16 +47,17 @@ project.
 
 ### Acceptance Criteria
 
-A unit test run passes when all seventeen scenarios below pass without error or exception beyond
+A unit test run passes when all twenty-two scenarios below pass without error or exception beyond
 those explicitly asserted. Any read made before the catalog is asked, any second read within the
-lifetime, any listing served after the lifetime without a new read, any concurrent callers starting
-more than one read, any failure cached, any waiter inheriting another caller's cancellation, any
-provider timeout that starts a second read or fails to reach a waiter, any refresh that does not
-read again, any listing that is re-ordered, includes an unusable model
-unasked, or omits a model satisfying the query, any listing that can be altered or whose alteration
-reaches the cached reading, any lookup that cannot find an unusable model, or
-any selection made for a withdrawn model, a model missing a required capability, or under a
-spelling other than the catalog's each constitute a failure.
+lifetime, any listing served at or after the lifetime without a new read, any concurrent callers
+starting more than one read, any caller arriving as a read completes starting a second read, any
+refresh not joining a read in flight, any refresh arriving after a successful read not reading again,
+any failure cached, any waiter inheriting another caller's cancellation, any provider timeout that
+starts a second read or fails to reach a waiter, any refresh that does not read again, any listing
+that is re-ordered, includes an unusable model unasked, or omits a model satisfying the query, any
+listing that can be altered or whose alteration reaches the cached reading, any lookup that cannot
+find an unusable model, or any selection made for a withdrawn model, a model missing a required
+capability, or under a spelling other than the catalog's each constitute a failure.
 
 ### Test Scenarios
 
@@ -98,6 +103,14 @@ read.
 Boundary condition. With the clock advanced one millisecond past `DefaultLifetime`, the next listing
 reads again; the scenario also pins `DefaultLifetime` at five minutes.
 
+#### AgentKitCore-ModelCatalog-CachesForALifetime: A Listing Is Read Again at Exactly the Lifetime
+
+**Test**: `ModelCatalog_ListAsync_AtLifetime_ReadsAgain`
+
+Boundary condition. With the clock advanced one tick short of `DefaultLifetime`, the next listing is
+served from the cache; advanced one more tick, to exactly the lifetime, the next listing reads again.
+This pins the expiry boundary: a listing as old as the lifetime is no longer served.
+
 #### AgentKitCore-ModelCatalog-CachesForALifetime: A Non-Positive Lifetime Is Refused
 
 **Test**: `ModelCatalog_Construct_NonPositiveLifetime_Throws`
@@ -117,8 +130,29 @@ the cache with no second read.
 
 **Test**: `ModelCatalog_ListAsync_ConcurrentCallers_ShareOneRead`
 
-Twenty callers arrive while one read is held open; when it is released, every caller receives the
-listing and the provider was read once.
+Twenty callers start while one read is held open. The read is released only once nineteen of them
+have joined it through `OnReadJoined`, so every caller is known to share the read rather than be
+served from the cache afterwards. The provider was read once before the release and once in all, and
+every caller receives the listing.
+
+#### AgentKitCore-ModelCatalog-SharesOneRead: A Caller Arriving as a Read Fails Receives That Failure
+
+**Test**: `ModelCatalog_ListAsync_CallerArrivingAsReadFails_ReceivesThatFailure`
+
+Error path at the single-flight boundary. The first read fails with a `TaskCanceledException` no
+caller's token raised. Through `OnReadPublished`, a second caller arrives at the instant the failure
+has been published but before the read is released. That caller receives the same exception instance
+as the reading caller, and the provider was read once. A query after the release reads again and
+succeeds. With the failure released before it was published, the arriving caller would have started
+a second read and succeeded, and this scenario fails.
+
+#### AgentKitCore-ModelCatalog-SharesOneRead: A Refresh Joins a Read in Flight
+
+**Test**: `ModelCatalog_RefreshAsync_ReadInFlight_JoinsIt`
+
+A listing starts a read that is held open, and a refresh starts while it is in flight. Once the
+refresh has joined the read through `OnReadJoined`, the read is released; the listing and the refresh
+both complete and the provider was read once, as the refresh's documented behavior states.
 
 #### AgentKitCore-ModelCatalog-DoesNotCacheFailures: A Failed Read Is Not Cached
 
@@ -139,11 +173,25 @@ listing from a read of its own, so the provider was read twice.
 
 **Test**: `ModelCatalog_ListAsync_ProviderTimeout_ReachesEveryWaiterWithOneRead`
 
-Error path on a provider's own cancellation. A first caller starts a read and three more join it;
-the read then fails with a `TaskCanceledException` — as an HTTP client's timeout does — while no
-caller's token is canceled. The reading caller and all three waiters receive that exception, the
-provider was read once, and the next query reads again and succeeds, so the timeout was a failure
-rather than a cancellation and was not cached.
+Error path on a provider's own cancellation. A first caller starts a read and three more join it,
+each confirmed through `OnReadJoined` before the read continues; the read then fails with a
+`TaskCanceledException` — as an HTTP client's timeout does — while no caller's token is canceled. The
+reading caller and all three waiters receive that exception, the provider was read once, and the
+next query reads again and succeeds, so the timeout was a failure rather than a cancellation and was
+not cached.
+
+#### AgentKitCore-ModelCatalog-DoesNotCacheFailures: A Caller Arriving as the Reader Cancels Reads Once
+
+**Test**: `ModelCatalog_ListAsync_CallerArrivingAsReaderCancels_ReadsOnceForItself`
+
+Error path on cancellation at the single-flight boundary. The first read waits on its owner's token
+and the owner cancels. Through `OnReadPublished`, a second caller arrives at the instant the
+cancellation has been published but before the read is released; it treats the canceled read as
+absent and starts a read of its own, which is held open. A third caller, arriving after the owner's
+call has ended, joins that second read rather than starting a third. When the second read is
+released both callers receive the listing and the provider was read twice. The scenario guards two
+rules together: a canceled read is not re-joined, which would otherwise spin until the owner released
+it, and the owner's release does not clear the newer read.
 
 #### AgentKitCore-ModelCatalog-RefreshesOnRequest: A Refresh Reads Again Within the Lifetime
 
@@ -151,6 +199,15 @@ rather than a cancellation and was not cached.
 
 A refresh made well within the lifetime reads again, and the next listing shows the model the second
 read added.
+
+#### AgentKitCore-ModelCatalog-RefreshesOnRequest: A Refresh Arriving as a Read Succeeds Reads Again
+
+**Test**: `ModelCatalog_RefreshAsync_ArrivingAsReadSucceeds_ReadsAgain`
+
+Through `OnReadPublished`, a refresh arrives at the instant a successful read's listing has been
+stored, before that read's callers are released. The refresh reads again rather than joining the
+read that has just finished, so the provider was read twice and the next listing shows the model the
+second read added.
 
 #### AgentKitCore-ModelCatalog-GatesSessionStart: A Withdrawn Model Is Refused
 

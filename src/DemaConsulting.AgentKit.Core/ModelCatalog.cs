@@ -109,15 +109,16 @@ public interface IModelCatalog
 ///     <para>
 ///     <b>Read lazily, cached briefly.</b> Nothing is read until the first listing or lookup. The
 ///     listing is then kept for <see cref="DefaultLifetime"/> unless another lifetime is given, so a
-///     picker that re-lists on every keystroke costs one provider call; a listing older than the
+///     picker that re-lists on every keystroke costs one provider call; a listing as old as the
 ///     lifetime is read again on the next query. <see cref="RefreshAsync"/> reads again at once.
 ///     </para>
 ///     <para>
 ///     <b>One read at a time, shared.</b> Callers that arrive while a read is in flight wait for it
 ///     rather than starting their own. A read that fails is not cached: every caller waiting on it
-///     receives the failure, and the next query reads again. A caller that cancels stops only its
-///     own wait; when the caller whose read it was cancels, the read stops and the next waiter reads
-///     again for itself.
+///     receives the failure, a caller that arrives as the failure is being reported receives it too,
+///     and only a query after that reads again. A caller that cancels stops only its own wait; when
+///     the caller whose read it was cancels, the read stops and the next waiter reads again for
+///     itself.
 ///     </para>
 ///     <para>
 ///     <b>The provider's order is preserved,</b> and a query is applied to the cached listing when it
@@ -162,6 +163,10 @@ public abstract class CachingModelCatalog : IModelCatalog
     /// <summary>
     ///     The read in flight, which arriving callers wait on, or <see langword="null"/> when none is.
     /// </summary>
+    /// <remarks>
+    ///     A read's outcome is published before it is cleared from here, so a failed read stays
+    ///     joinable until its owner releases it; a canceled read is treated as absent.
+    /// </remarks>
     private Task<Snapshot>? _inFlight;
 
     /// <summary>
@@ -194,6 +199,26 @@ public abstract class CachingModelCatalog : IModelCatalog
 
     /// <inheritdoc/>
     public string ProviderName { get; }
+
+    /// <summary>
+    ///     Gets or sets a test seam invoked on the joining caller's thread, outside the lock, each time
+    ///     a caller joins a read in flight rather than starting one.
+    /// </summary>
+    /// <remarks>
+    ///     <see langword="null"/> outside tests.
+    /// </remarks>
+    internal Action? OnReadJoined { get; set; }
+
+    /// <summary>
+    ///     Gets or sets a test seam invoked on the reading caller's thread, outside the lock, at the one
+    ///     point where a read's outcome is settled but its waiters may not yet have observed it.
+    /// </summary>
+    /// <remarks>
+    ///     That point is after a failure or cancellation has been published on the shared task and
+    ///     before the read is released, or after a listing has been stored and the read released and
+    ///     before the waiters are released. <see langword="null"/> outside tests.
+    /// </remarks>
+    internal Action? OnReadPublished { get; set; }
 
     /// <inheritdoc/>
     /// <remarks>
@@ -321,6 +346,16 @@ public abstract class CachingModelCatalog : IModelCatalog
                     return cached.Models;
                 }
 
+                // A read its owner canceled is over for every other caller: each of them reads again.
+                // A caller that finds one its owner has not yet released treats it as absent rather
+                // than joining it, which would only bring it straight back here until the release.
+                if (_inFlight is { IsCanceled: true })
+                {
+                    _inFlight = null;
+                }
+
+                // A failed read not yet released is joined, so the caller receives that failure; only
+                // a caller arriving after the release starts a new read.
                 if (_inFlight is null)
                 {
                     owned = new TaskCompletionSource<Snapshot>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -334,6 +369,8 @@ public abstract class CachingModelCatalog : IModelCatalog
             {
                 return (await ReadAsync(owned, cancellationToken).ConfigureAwait(false)).Models;
             }
+
+            OnReadJoined?.Invoke();
 
             try
             {
@@ -352,16 +389,27 @@ public abstract class CachingModelCatalog : IModelCatalog
     ///     Performs one read on behalf of every caller waiting on it, and publishes the outcome.
     /// </summary>
     /// <remarks>
-    ///     The in-flight marker is cleared before the waiters are released, so a waiter that reads
-    ///     again after a failure starts a new read rather than re-joining the failed one. The shared
-    ///     task is canceled only when the owner's own token was canceled; any other failure, a
-    ///     provider timeout included, faults it.
+    ///     <para>
+    ///     A failure is published on the shared task before the read is released, so a caller that
+    ///     arrives in between joins the read and receives its failure rather than starting a second
+    ///     read; only a query after the release reads again. The shared task is canceled only when the
+    ///     owner's own token was canceled; any other failure, a provider timeout included, faults it.
+    ///     </para>
+    ///     <para>
+    ///     A listing is stored and the read released in one step, before the waiters are released.
+    ///     There is no gap to close there: from the release on, a caller is served the stored listing
+    ///     without a read, and a refresh arriving then reads again, as it should once this read has
+    ///     finished.
+    ///     </para>
     /// </remarks>
     /// <param name="completion">Completes the task the waiters joined.</param>
     /// <param name="cancellationToken">Cancels the read.</param>
     /// <returns>The listing read.</returns>
-    private async Task<Snapshot> ReadAsync(TaskCompletionSource<Snapshot> completion, CancellationToken cancellationToken)
+    private async Task<Snapshot> ReadAsync(
+        TaskCompletionSource<Snapshot> completion,
+        CancellationToken cancellationToken)
     {
+        Snapshot snapshot;
         try
         {
             var models = await FetchAsync(cancellationToken).ConfigureAwait(false)
@@ -373,26 +421,14 @@ public abstract class CachingModelCatalog : IModelCatalog
                 throw new InvalidOperationException($"The {ProviderName} catalog read returned a null model.");
             }
 
-            var snapshot = new Snapshot(copy, _timeProvider.GetUtcNow());
-            lock (_gate)
-            {
-                _snapshot = snapshot;
-                _inFlight = null;
-            }
-
-            completion.SetResult(snapshot);
-            return snapshot;
+            snapshot = new Snapshot(copy, _timeProvider.GetUtcNow());
         }
         catch (Exception exception)
         {
-            lock (_gate)
-            {
-                _inFlight = null;
-            }
-
-            // Failures are handed to the waiters and not cached; the next query reads again. Only the
-            // owner's own token makes a read canceled: any other cancellation - an HTTP client's timeout,
-            // say - is a failure of the read like any other, and every waiter receives it.
+            // Failures are handed to the waiters and not cached. Publish first, then release: a caller
+            // that arrives before the release joins this read and receives its outcome. Only the
+            // owner's own token makes a read canceled; any other cancellation - an HTTP client's
+            // timeout, say - is a failure of the read like any other, and every waiter receives it.
             if (exception is OperationCanceledException && cancellationToken.IsCancellationRequested)
             {
                 completion.SetCanceled(cancellationToken);
@@ -406,7 +442,59 @@ public abstract class CachingModelCatalog : IModelCatalog
                 _ = completion.Task.Exception;
             }
 
+            try
+            {
+                OnReadPublished?.Invoke();
+            }
+            finally
+            {
+                Release(completion.Task);
+            }
+
             throw;
+        }
+
+        lock (_gate)
+        {
+            _snapshot = snapshot;
+            ReleaseLocked(completion.Task);
+        }
+
+        try
+        {
+            OnReadPublished?.Invoke();
+        }
+        finally
+        {
+            completion.SetResult(snapshot);
+        }
+
+        return snapshot;
+    }
+
+    /// <summary>
+    ///     Releases a read, unless a later read has already replaced it.
+    /// </summary>
+    /// <param name="read">The read to release.</param>
+    private void Release(Task<Snapshot> read)
+    {
+        lock (_gate)
+        {
+            ReleaseLocked(read);
+        }
+    }
+
+    /// <summary>
+    ///     Clears the in-flight read when it is still <paramref name="read"/>. The caller holds the lock.
+    /// </summary>
+    /// <param name="read">The read to release.</param>
+    private void ReleaseLocked(Task<Snapshot> read)
+    {
+        // A canceled read may already have been replaced by a caller that treated it as absent; that
+        // caller's read must stay in flight.
+        if (ReferenceEquals(_inFlight, read))
+        {
+            _inFlight = null;
         }
     }
 

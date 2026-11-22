@@ -31,7 +31,7 @@ sections:
             title: >-
               A caching catalog shall read its provider only when first asked, shall serve later
               queries from that reading for five minutes unless given another positive lifetime, and
-              shall read again once the reading is older than that; a listing it returns shall be
+              shall read again once the reading has reached that age; a listing it returns shall be
               read-only, so a caller cannot alter the cached reading.
             justification: |
               A picker lists models far more often than a provider's offering changes, and a
@@ -42,19 +42,22 @@ sections:
               - ModelCatalog_Construct_ReadsNothingUntilAsked
               - ModelCatalog_ListAsync_WithinLifetime_ReadsOnce
               - ModelCatalog_ListAsync_AfterLifetime_ReadsAgain
+              - ModelCatalog_ListAsync_AtLifetime_ReadsAgain
               - ModelCatalog_Construct_NonPositiveLifetime_Throws
               - ModelCatalog_ListAsync_Result_IsReadOnlyAndDoesNotAlterTheCache
 
           - id: AgentKitCore-ModelCatalog-SharesOneRead
             title: >-
-              Callers that query a catalog while a read is in flight shall share that read rather
-              than each starting one.
+              Callers that query a catalog while a read is in flight shall share that read, and its
+              outcome, rather than each starting one.
             justification: |
               A GUI commonly asks for the list from several places at once when it opens. Without
               sharing, each would read the provider, multiplying the cost the cache exists to save
               exactly when it matters.
             tests:
               - ModelCatalog_ListAsync_ConcurrentCallers_ShareOneRead
+              - ModelCatalog_ListAsync_CallerArrivingAsReadFails_ReceivesThatFailure
+              - ModelCatalog_RefreshAsync_ReadInFlight_JoinsIt
 
           - id: AgentKitCore-ModelCatalog-DoesNotCacheFailures
             title: >-
@@ -70,6 +73,8 @@ sections:
               - ModelCatalog_ListAsync_ReadFails_IsNotCachedAndNextQueryRetries
               - ModelCatalog_ListAsync_ReadingCallerCancels_WaiterReadsForItself
               - ModelCatalog_ListAsync_ProviderTimeout_ReachesEveryWaiterWithOneRead
+              - ModelCatalog_ListAsync_CallerArrivingAsReadFails_ReceivesThatFailure
+              - ModelCatalog_ListAsync_CallerArrivingAsReaderCancels_ReadsOnceForItself
 
           - id: AgentKitCore-ModelCatalog-RefreshesOnRequest
             title: >-
@@ -79,6 +84,7 @@ sections:
               be able to see it without waiting for the cache to expire.
             tests:
               - ModelCatalog_RefreshAsync_WithinLifetime_ReadsAgain
+              - ModelCatalog_RefreshAsync_ArrivingAsReadSucceeds_ReadsAgain
 
           - id: AgentKitCore-ModelCatalog-GatesSessionStart
             title: >-
