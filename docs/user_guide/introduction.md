@@ -2,10 +2,11 @@
 
 ## Purpose
 
-This document is the user guide for AgentKit, a family of .NET libraries providing hardened,
+This document is the user guide for AgentKit, a family of .NET libraries providing guarded,
 provider-neutral agent tools. It exists so that a developer can hand an AI agent a set of
-capabilities that are safe by construction — where the unsafe operation is not refused at call
-time, but cannot be expressed.
+capabilities confined to what the application grants: every tool is guarded by the application's
+path grants and limits, and a call that names a path outside those grants is refused with a reason
+the model can act on.
 
 ## Scope
 
@@ -95,15 +96,15 @@ API the code does not have.
 AgentKit does not provide an agent runtime or a provider abstraction: Microsoft Agent Framework
 supplies those, and AgentKit's tools work with it, with the GitHub Copilot SDK, and with any
 `IChatClient` alike. What AgentKit provides is the part those runtimes leave to the application:
-tools that are safe by construction, and a session that manages its own context window so a
-long-running agent behaves the same way on every provider.
+tools guarded by the application's path grants and limits, and a session that manages its own
+context window so a long-running agent keeps working within it on each supported provider.
 
 AgentKit Core is the contract package, and it carries two things. It defines the safety model that
 every AgentKit tool, and every tool an application writes for itself, is built against. It also
 carries the **session engine** — the part that keeps a long-running agent alive by compacting its
-own context, described under *Sessions* below. Neither is an add-on to the other: an agent that is
-safe by construction and runs out of context after twenty turns is not much use, and the two ship in
-one package for that reason.
+own context, described under *Sessions* below. Neither is an add-on to the other: an agent whose
+tools are guarded but which runs out of context after twenty turns is not much use, and the two ship
+in one package for that reason.
 
 Ready-made guarded tool families ship in
 `DemaConsulting.AgentKit.Tools` — the text file, file, markdown, image, todo, memory and
@@ -1289,8 +1290,8 @@ hook it has.
 A conversation eventually fills the provider's context window. What happens then is the provider's
 decision unless the application takes it — and the provider's decision differs by provider, is
 usually undocumented, and is never something an agent's author can reason about. AgentKit takes that
-decision, in the same package as the tool contract, because an agent that is safe by construction
-and forgets its own work after twenty turns is not much use.
+decision, in the same package as the tool contract, because an agent whose tools are guarded but
+which forgets its own work after twenty turns is not much use.
 
 The session is an AgentKit-owned object. It keeps its own transcript **out of session**, never
 asking the live conversation to summarize itself — doing that spends the context the summary exists

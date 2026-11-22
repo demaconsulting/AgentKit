@@ -13,5 +13,5 @@ Things worth trying with this workspace:
   text printed on the image.
 - Ask it to read ../outside-workspace.txt and watch the request be refused.
 
-Everything the assistant can do here is safe by construction: the unsafe operation is not merely
-discouraged, it cannot be expressed.
+Every tool the assistant has here is confined to the granted folders: a request for a path outside
+them is refused, not merely discouraged.

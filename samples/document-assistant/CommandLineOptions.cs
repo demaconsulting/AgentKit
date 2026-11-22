@@ -344,8 +344,8 @@ public sealed class CommandLineOptions
          document-assistant — chat with an agent granted exactly two locations.
 
          The agent reads text files and (with vision) looks at images in a workspace folder, and
-         writes whatever it produces into a separate session folder. Anything outside those two
-         locations is impossible to reach, not merely discouraged.
+         writes whatever it produces into a separate session folder. A path outside those two
+         locations is refused, not merely discouraged.
 
          The two locations are orthogonal ideas working together. The workspace is the working
          directory — the single anchor a relative path resolves against — and it is also granted,

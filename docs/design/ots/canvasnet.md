@@ -11,9 +11,9 @@ of it.
 
 It was chosen over the established alternatives on the property that matters most here: **the
 library's decoders are safe managed code, and the package ships no native binaries at all.**
-AgentKit's whole thesis is that an unsafe operation should be impossible to express rather than
-refused at call time, and a tool family whose decoder parses hostile input inside native memory
-would undermine that at the foundation. SkiaSharp and Magick.NET both ship native binaries, which
+AgentKit's tools exist to confine what an agent can do to what the application grants, and a tool
+family whose decoder parses hostile input inside native memory would undermine that at the
+foundation. SkiaSharp and Magick.NET both ship native binaries, which
 additionally bind the package to a runtime-identifier matrix AgentKit does not otherwise have.
 ImageSharp's license is not compatible with this library's terms. StbImageSharp is a translation of
 a C library and carries no encoder, so it could read an image but not return a region of one.

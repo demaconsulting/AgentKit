@@ -83,7 +83,7 @@ form to rely on.
 This sample exists to make the AgentKit safety model *observable*. It prints every tool call and its
 result as they happen, so you can watch the guarantees hold rather than take them on faith:
 
-- **Containment by construction.** Every read, write, and listing is confined to the two granted
+- **Containment to the granted locations.** Every read, write, and listing is confined to the two granted
   locations. A path outside them is not merely discouraged — the tool refuses it and returns guidance
   instead. You can point the agent at `../outside-workspace.txt` and watch the refusal.
 - **Asymmetric grants.** Run with `--read-only-workspace` and the user's documents become readable but

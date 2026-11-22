@@ -22,17 +22,13 @@ within the model's context window on each supported provider.
 
 ## Features
 
-- 🛡️ **Policy-Checked Paths**: Every path a tool is given is checked against the application's grants before it is used
-- 🎛️ **Application-Set Controls**: Path grants, tool limits, and host capabilities are set by the application
+- 🛡️ **Application-Set Controls**: Path grants, tool limits, and host capabilities; a path outside the grants is refused
 - 🧰 **Ready-Made Tool Families**: Text file, file, Markdown, image, todo, memory, and agent delegation
 - 🧩 **Custom Tools**: Build your own tools through the same guarded factory and publish them as packs
 - 🔌 **Provider-Neutral**: Plain `AIFunction` tools that keep their limits on any `IChatClient` or on GitHub Copilot
-- 🧠 **Self-Compacting Sessions**: Tiered context compaction keeps a long conversation within the context window
-- 🗄️ **Large Output Retention**: Opt-in; oversized tool output is held in memory for `tool_output_read` and
-  `tool_output_search`
-- 📏 **Provider Context Windows**: Sessions account against the window the provider runs, read from Ollama where needed
-- 🖼️ **Tool Image Delivery**: Tool-returned images are forwarded to the model on providers that would otherwise drop
-  them
+- 🧠 **Self-Compacting Sessions**: Tiered compaction keeps a long conversation within the window the provider runs
+- 🗄️ **Large Output Retention**: Opt-in; oversized tool output is held in memory and paged through by reference
+- 🖼️ **Tool Image Delivery**: Tool-returned images reach the model on providers that would otherwise drop them
 - 🧪 **Testable Offline**: An in-memory provider session exercises the whole session lifecycle without a model
 - 📚 **Agent-Readable API Reference**: Every package ships a gradually-disclosed Markdown API reference
 - 🖥️ **Multi-Platform Support**: Builds and runs on Windows, Linux, and macOS, targeting .NET 8, 9, and 10
