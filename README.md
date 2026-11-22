@@ -44,10 +44,13 @@ dotnet add package DemaConsulting.AgentKit.Tools
 dotnet add package DemaConsulting.AgentKit.Agents.ChatClient   # any IChatClient provider
 ```
 
-For the GitHub Copilot runtime, add `DemaConsulting.AgentKit.Agents.Copilot` instead of the `IChatClient` adapter, and
-reference `Microsoft.Copilot.SDK` 2.0.1 directly from the host application: the SDK provisions its runtime only into a
-project that references it directly, and AgentKit starts and owns that runtime itself. On Ollama, also add
-`DemaConsulting.AgentKit.Agents.Ollama` so a session is told the context window the instance is actually running.
+For the GitHub Copilot runtime, add `DemaConsulting.AgentKit.Agents.Copilot` instead of the `IChatClient` adapter and
+install the [GitHub Copilot CLI][link-copilot-cli] 1.0.113 or later (`winget install GitHub.Copilot`,
+`brew install --cask copilot-cli` or `npm install -g @github/copilot`; `copilot --no-auto-update --version` shows the
+version AgentKit runs). AgentKit starts the installed CLI by default; to ship the SDK's bundled runtime instead, pass
+`runtimeSource: CopilotRuntimeSource.Bundled` and reference `Microsoft.Copilot.SDK` 2.0.1 directly from the host
+application. On Ollama, also add `DemaConsulting.AgentKit.Agents.Ollama` so a session is told the context window the
+instance is actually running.
 
 ## Usage
 
@@ -181,3 +184,4 @@ For security concerns and vulnerability reporting, see the [Security Policy][lin
 [link-code-of-conduct]: https://github.com/demaconsulting/AgentKit/blob/main/CODE_OF_CONDUCT.md
 [link-issues]: https://github.com/demaconsulting/AgentKit/issues
 [link-security-policy]: https://github.com/demaconsulting/AgentKit/blob/main/SECURITY.md
+[link-copilot-cli]: https://github.com/github/copilot-cli

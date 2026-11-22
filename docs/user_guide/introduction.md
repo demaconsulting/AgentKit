@@ -57,13 +57,19 @@ dotnet add package DemaConsulting.AgentKit.Agents.ChatClient   # any IChatClient
 dotnet add package DemaConsulting.AgentKit.Agents.Copilot      # the GitHub Copilot runtime
 ```
 
-An application that hosts the GitHub Copilot runtime also references the Copilot SDK itself, because
-the SDK provisions its runtime only into a project that references it directly. *The GitHub Copilot
-SDK* under *Building an Agent* explains why and what the build downloads:
+An application on the GitHub Copilot runtime needs the GitHub Copilot CLI, version 1.0.113 or later,
+installed on the machine it runs on — AgentKit finds it and runs it as a confined runtime, so the
+application ships no runtime of its own:
 
 ```bash
-dotnet add package Microsoft.Copilot.SDK --version 2.0.1
+winget install GitHub.Copilot              # Windows
+brew install --cask copilot-cli            # macOS
+npm install -g @github/copilot             # any platform with Node.js
+copilot --no-auto-update --version         # the version AgentKit will run
 ```
+
+*Installing the Copilot CLI* under *Building an Agent* covers the version check and the install
+script. To bundle the runtime with the application instead, see *Bundling the Runtime Instead*.
 
 If you target Ollama, add one more. Ollama is an ordinary `IChatClient` provider in every other
 respect, but it is the one that will tell you the context window it will enforce:
@@ -731,27 +737,103 @@ See *Sessions* below.
 its own: `CopilotAgentFactory.Create` returns an `AIAgent` whose every session AgentKit configures,
 and the same package supplies the provider side of the session engine for Copilot.
 
-### Provisioning the Runtime
+### Installing the Copilot CLI
 
-The package deliberately ships no runtime. `Microsoft.Copilot.SDK` downloads its native runtime
-when the project that references it builds — about 100 MB from the Copilot CLI releases on GitHub,
-verified against the release's published checksums — but only for a project that references the
-package **directly**. A host application therefore adds the SDK itself:
+By default AgentKit runs the **GitHub Copilot CLI installed on the machine** as its runtime. The
+package ships no runtime and the host application needs no reference to `Microsoft.Copilot.SDK`, so
+its output stays the size of its own assemblies. Install the CLI with any of its installers:
+
+```bash
+winget install GitHub.Copilot                       # Windows (WinGet)
+brew install --cask copilot-cli                     # macOS (Homebrew)
+npm install -g @github/copilot                      # any platform with Node.js
+curl -fsSL https://gh.io/copilot-install | bash     # macOS and Linux (install script)
+```
+
+**The CLI must be version 1.0.113 or later** (`CopilotCli.MinimumVersion`): the first CLI that speaks
+the protocol of the `Microsoft.Copilot.SDK` this release of AgentKit is built on. AgentKit starts
+the CLI with `--no-auto-update`, which makes it run the version **built into the installed
+executable**, not a newer one that auto-update or `copilot update` downloaded. Check the version
+AgentKit will run with:
+
+```bash
+copilot --no-auto-update --version
+```
+
+`copilot --version` can report a different version. With an installed 1.0.106 executable and 1.0.114 already in the
+CLI's package cache, `copilot --version` reported 1.0.114, while `copilot --no-auto-update --version` reported 1.0.106 —
+the version built into the executable, which is the one AgentKit runs. If the built-in version is too old, upgrade the
+installation itself: `winget upgrade GitHub.Copilot`, `brew upgrade --cask copilot-cli`,
+`npm install -g @github/copilot@latest`, or run the install script again. `CopilotRuntime.StartAsync` checks the version
+before it starts anything and refuses an older CLI with a message that says all of this.
+
+**Which CLI AgentKit runs.** `CopilotCli.FindInstalled()` is what `StartAsync` uses when the options
+name no CLI, and a host can call it to show a user the result:
+
+1. `PATH`, in order — on Windows only `copilot.exe`, because npm's `copilot.cmd` and `copilot.ps1`
+   shims cannot be started without a shell; elsewhere a `copilot` file with an execute bit. Relative
+   `PATH` entries — and on Windows drive-relative ones such as `C:bin` — are skipped.
+2. The installers' own locations: on Windows the WinGet links and `GitHub.Copilot_*` package folders
+   under `%LOCALAPPDATA%\Microsoft\WinGet` and npm's global package under `%APPDATA%\npm`; on macOS
+   Homebrew (`/opt/homebrew/bin`, `/usr/local/bin`), `~/.local/bin` and npm's global package under
+   Homebrew; on Linux `~/.local/bin`, `/usr/local/bin`, Linuxbrew and npm's global package.
+
+The Copilot launcher Visual Studio Code puts on `PATH` (in a `copilot-shim` folder) is passed over and
+reported, because it forwards to another CLI and can prompt to install one. **`COPILOT_CLI_PATH` is
+never consulted**: the shell's environment does not choose the executable a confined runtime runs.
+To run a specific CLI, name it:
+
+```csharp
+var options = new CopilotRuntimeOptions(dataDirectory, cliPath: @"C:\Tools\copilot\copilot.exe");
+```
+
+A path must be fully qualified and must not be a batch file: a `copilot.cmd` or `.bat` would be run by
+Windows through `cmd.exe`, so it is refused — name `copilot.exe`, or for an npm installation its
+`npm-loader.js`, which is run with `node` from `PATH`. A CLI named this way is version-checked like a
+discovered one.
+
+**An npm installation under a custom prefix is not found.** Discovery looks for npm's global package
+only under npm's default prefixes (`%APPDATA%\npm` on Windows), and the `copilot.cmd` npm puts on `PATH`
+is not a candidate. If `npm config get prefix` names another folder, name that prefix's entry point:
+`cliPath: @"D:\npm-global\node_modules\@github\copilot\npm-loader.js"`.
+
+**What else to expect from the installed CLI.** The first start of a CLI version takes several seconds
+— well over half a minute under antivirus scanning — while the CLI unpacks its package into the user's
+cache (`%LOCALAPPDATA%\copilot\pkg` on Windows);
+later starts take a second or two. That cache, and any organization policy in its managed-settings
+folder, is shared with the user's own `copilot`. The CLI's own configuration, MCP servers, plugins and
+sign-in are **not** used: the runtime's home is AgentKit's data directory.
+
+### Bundling the Runtime Instead
+
+A host that cannot rely on an installed CLI runs the runtime `Microsoft.Copilot.SDK` bundles, by
+opting in and referencing the SDK directly:
+
+```csharp
+var options = new CopilotRuntimeOptions(dataDirectory, runtimeSource: CopilotRuntimeSource.Bundled);
+```
 
 ```bash
 dotnet add package Microsoft.Copilot.SDK --version 2.0.1
 ```
 
-Nothing else needs installing: a separate Copilot CLI installation is not used. Plan for the size,
-because the runtime adds about 356 MB to every output directory of the host application. A build
-that cannot reach GitHub sets the SDK's own MSBuild properties:
+The SDK downloads its native runtime when the project that references it builds — about 100 MB from
+the Copilot CLI releases on GitHub, verified against the release's published checksums — but only for
+a project that references the package **directly**; reaching it through AgentKit provisions nothing.
+Plan for the size: the runtime adds about 356 MB to every output directory of the host application,
+in `runtimes/<rid>/native`, and about 270 MB to the project's intermediate folder per target
+framework. It is published for `win-x64`, `win-arm64`, `linux-x64`, `linux-arm64`,
+`linux-musl-x64`, `linux-musl-arm64`, `osx-x64` and `osx-arm64`. Its version is pinned by the SDK's,
+so no version check runs. The confinement is the same as the installed CLI's. A build that cannot
+reach GitHub sets the SDK's own MSBuild properties:
 
 - `CopilotCliReleaseBaseUrl`, or the `COPILOT_CLI_DOWNLOAD_BASE_URL` environment variable, downloads
   from a mirror.
-- `CopilotCliBinaryPath` uses a runtime already downloaded, and skips the download.
+- `CopilotCliBinaryPath` uses a runtime already on disk, and skips the download. Pointed at a
+  standalone Copilot CLI executable (about 190 MB), the SDK copies only that one file.
 - `CopilotCliDownloadTimeout` gives a slow link longer than the default 600 seconds.
 - `CopilotSkipCliDownload` set to `true` skips the download entirely, for a project that never starts
-  a runtime, such as a unit-test project that references the host.
+  a bundled runtime, such as a unit-test project that references the host.
 
 ### Creating the Agent
 
@@ -780,8 +862,9 @@ The runtime is always:
 
 - **In Empty mode**, so the SDK supplies none of its coding-agent defaults and keeps credentials in
   the data directory rather than the system keychain.
-- **A child process** running the runtime `Microsoft.Copilot.SDK` provisioned into the application's
-  output. Its environment is the host's minus every `COPILOT_` and `GITHUB_COPILOT_` variable, apart
+- **A child process** running the installed Copilot CLI, or the runtime `Microsoft.Copilot.SDK`
+  provisioned into the application's output when the host opts into it — the same confinement either
+  way. Its environment is the host's minus every `COPILOT_` and `GITHUB_COPILOT_` variable, apart
   from `COPILOT_GITHUB_TOKEN`, `COPILOT_GH_HOST`, `COPILOT_SYSTEM_PROXY`, `COPILOT_PROXY_KERBEROS`,
   `COPILOT_PROXY_KERBEROS_SPN`, `COPILOT_TELEMETRY_DISABLED` and `COPILOT_GITHUB_TELEMETRY_DISABLED`,
   which carry only credentials, network settings or a switch that turns telemetry off. Everything else
@@ -800,12 +883,17 @@ The runtime is always:
   caches are not kept there: they go to the platform's cache folder (`%LOCALAPPDATA%` on Windows,
   `XDG_CACHE_HOME` or its default elsewhere).
 
-`CopilotRuntimeOptions` takes only the data directory and, optionally, a GitHub token, a log level and
-a logger. With no token the runtime authenticates from the `COPILOT_GITHUB_TOKEN`, `GH_TOKEN` or
-`GITHUB_TOKEN` environment variable, or as the user the GitHub CLI is signed in as (`gh auth login`;
-the runtime runs `gh auth token`, so `gh` must be on `PATH`). A sign-in made only with the Copilot
-CLI is not used: it lives in the system keychain or the Copilot CLI's own home, and the runtime
-AgentKit starts reads neither. Pass `gitHubToken:` to supply a credential directly.
+`CopilotRuntimeOptions` takes only the data directory and, optionally, a GitHub token, a log level, a
+logger, the runtime source and a CLI path. With no token the runtime authenticates from the
+`COPILOT_GITHUB_TOKEN`, `GH_TOKEN` or `GITHUB_TOKEN` environment variable, or as the user the GitHub
+CLI is signed in as (`gh auth login`; the runtime runs `gh auth token`, so `gh` must be on `PATH`).
+**A sign-in made only with the Copilot CLI is not used**, even when the installed CLI is the runtime:
+it lives in the system keychain or the Copilot CLI's own home, and the runtime AgentKit starts reads
+neither. Pass `gitHubToken:` to supply a credential directly, and set `COPILOT_GH_HOST` for a GitHub
+Enterprise Cloud account with data residency. `StartAsync` refuses a runtime that started but is not
+signed in, naming these options. Once started, the runtime reports what runs: `runtime.CliPath` (the
+installed CLI, or `null` for the bundled runtime), `runtime.RuntimeVersion` and
+`runtime.ProtocolVersion`.
 
 Copilot arrives as a complete runtime carrying its own tools — shell, fetch, file editing and more.
 The factory suppresses them by deriving the session allow-list from the same tools you supplied, so
@@ -1013,17 +1101,38 @@ for answer quality across a long conversation, not to save money.
 
 ### Troubleshooting the Copilot Runtime
 
+- **`InvalidOperationException`: "AgentKit could not find an installed GitHub Copilot CLI".** No CLI
+  is on `PATH` or where its installers put it, or the only one found was an editor's launcher. The
+  message lists where AgentKit looked. An npm installation under a custom prefix is not searched; name
+  its `npm-loader.js` with `cliPath:`. Otherwise install the CLI (see *Installing the Copilot CLI*),
+  name one with `cliPath:`, or opt into the bundled runtime.
+- **`InvalidOperationException`: the Copilot CLI "is version … which is too old for AgentKit".** The
+  version built into the installed CLI is older than `CopilotCli.MinimumVersion`. Check it with
+  `copilot --no-auto-update --version` — not `copilot --version`, which can report a newer version
+  from the CLI's package cache that AgentKit does not run — and upgrade the installation itself
+  (`winget upgrade GitHub.Copilot`, `brew upgrade --cask copilot-cli`,
+  `npm install -g @github/copilot@latest`, or the install script again).
+- **`InvalidOperationException` mentioning an "SDK protocol version mismatch".** The runtime speaks a
+  protocol this release does not. When the CLI's protocol is older, upgrade it as above; when it is
+  **newer**, the CLI is ahead of this release of AgentKit: update AgentKit, run a supported CLI
+  through `cliPath:`, or opt into the bundled runtime.
+- **`InvalidOperationException`: "AgentKit could not read the version of the Copilot CLI".** The CLI
+  could not be started, exited with an error, or did not answer within two minutes; the message carries
+  its error output. An npm installation also needs `node` on `PATH`.
+- **`ArgumentException`: the Copilot CLI path "is a batch file".** The `cliPath` names a `copilot.cmd`
+  or `.bat`, which Windows would run through `cmd.exe`. Name `copilot.exe` — such as the one
+  `CopilotCli.FindInstalled()` returns — or, for an npm installation, the package's `npm-loader.js`.
+- **`InvalidOperationException`: the runtime "started but is not signed in".** Supply a token, set
+  `COPILOT_GITHUB_TOKEN`, `GH_TOKEN` or `GITHUB_TOKEN`, or sign in with `gh auth login` and keep `gh`
+  on `PATH`; a Copilot CLI sign-in is not used.
 - **The runtime fails to start.** `CopilotRuntime.StartAsync` raises an `InvalidOperationException`
-  carrying the runtime's own error. Most often the runtime is missing from the application's output:
-  the host project does not reference `Microsoft.Copilot.SDK` directly, `CopilotSkipCliDownload` is
-  set for the host, or the platform is one the runtime does not support — it is published for
-  `win-x64`, `win-arm64`, `linux-x64`, `linux-arm64`, `linux-musl-x64`, `linux-musl-arm64`, `osx-x64`
-  and `osx-arm64`. A Copilot CLI shell's
-  `COPILOT_CLI_PATH` is no longer a cause, because the runtime never receives it. If the runtime
-  starts but cannot authenticate, check that a token is supplied, that `COPILOT_GITHUB_TOKEN`,
-  `GH_TOKEN` or `GITHUB_TOKEN` is
-  set, or that `gh auth status` shows a signed-in user and `gh` is on `PATH`; a Copilot CLI sign-in
-  is not used. Of the host's `COPILOT_` variables, only the documented
+  carrying the runtime's own error. On the installed CLI the message names the CLI and its version.
+  On the bundled runtime the runtime is most often missing from the application's output: the host
+  project does not reference `Microsoft.Copilot.SDK` directly, `CopilotSkipCliDownload` is set for the
+  host, or the platform is one the runtime does not support — it is published for `win-x64`,
+  `win-arm64`, `linux-x64`, `linux-arm64`, `linux-musl-x64`, `linux-musl-arm64`, `osx-x64` and
+  `osx-arm64`. A Copilot CLI shell's `COPILOT_CLI_PATH` is no longer a cause, because the runtime
+  never receives it and discovery ignores it. Of the host's `COPILOT_` variables, only the documented
   pass-through set reaches the runtime.
 - **`InvalidOperationException`: the data directory "is not empty and was not created by AgentKit".**
   The directory holds something AgentKit did not put there — a Copilot CLI home, or the data directory
@@ -1054,6 +1163,24 @@ for answer quality across a long conversation, not to save money.
   one of your tools — a built-in shell or file read, say — and default-deny refused it. That is the
   intended outcome.
 
+### Migrating to the Installed Copilot CLI
+
+This release changes the default runtime from the one the SDK bundles to the Copilot CLI installed on
+the machine. These are breaking changes, accepted while the package is pre-1.0:
+
+- **The default runtime is the installed CLI.** A machine running the application needs the Copilot
+  CLI, version 1.0.113 or later; see *Installing the Copilot CLI*. To keep the bundled runtime, pass
+  `runtimeSource: CopilotRuntimeSource.Bundled` to `CopilotRuntimeOptions` and keep the host's direct
+  `Microsoft.Copilot.SDK` reference. Otherwise that reference can be removed, which removes the
+  runtime from the application's output.
+- **`CopilotRuntimeOptions`'s constructor gained two optional parameters**, `runtimeSource` and
+  `cliPath`. Source that calls it compiles unchanged, but a host built against an earlier release must
+  be recompiled.
+- **`StartAsync` now refuses more.** It refuses an installed CLI that is missing or too old before
+  anything starts, and a runtime that started but is not signed in; each refusal says what to do. On
+  the installed CLI it also takes longer: it runs the CLI once to read its version, and the first
+  start of a CLI version unpacks it.
+
 ### Migrating from the Earlier Adapter
 
 Earlier releases of this package wrapped the Agent Framework's `Microsoft.Agents.AI.GitHub.Copilot`
@@ -1061,7 +1188,9 @@ adapter over `GitHub.Copilot.SDK` 1.0.x. Moving to the current release:
 
 - Replace `using GitHub.Copilot;` with `using Microsoft.Copilot;`, and `using Microsoft.Copilot.Rpc;`
   where you reference permission decisions.
-- Add a direct `Microsoft.Copilot.SDK` package reference to the host project.
+- Install the Copilot CLI (see *Installing the Copilot CLI*), or, to bundle the runtime, add a direct
+  `Microsoft.Copilot.SDK` package reference to the host project and opt into
+  `CopilotRuntimeSource.Bundled`.
 - Replace the client you constructed with `await CopilotRuntime.StartAsync(new
   CopilotRuntimeOptions(dataDirectory))`, passing a GitHub token through `gitHubToken:` if you set one
   on the client, and pass the runtime wherever you passed the client: `CopilotAgentFactory.Create`,
