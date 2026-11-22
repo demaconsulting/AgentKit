@@ -448,3 +448,49 @@ sections:
         tests:
           - AgentKitAgentsCopilot_Runtime_ClientOptionsAreConfined
           - AgentKitAgentsCopilot_Runtime_ForeignDataDirectory_IsRefused
+
+      - id: AgentKitAgentsCopilot-ModelCatalog-ListsTheServicesModels
+        title: >-
+          The library shall describe the models the Copilot service offers the signed-in user —
+          what each can do, whether it is enabled, the efforts and context tiers it accepts, its
+          largest window, its billing and the notices the service attaches — as a model catalog an
+          application filters and validates against.
+        justification: |
+          An application with a model picker on Copilot needs the service's own list for the
+          signed-in user, which only the runtime AgentKit owns can read. The service's description
+          needs interpretation before it is useful — tiers arrive as billing, tool calling is never
+          reported, the automatic choice is listed beside real models — and that interpretation is
+          Copilot-specific, so it ships with this package.
+        children:
+          - AgentKitAgentsCopilot-CopilotModelCatalog-ReadsTheServiceThroughTheRuntime
+          - AgentKitAgentsCopilot-CopilotModelCatalog-TreatsUnreportedToolCallingAsSupported
+          - AgentKitAgentsCopilot-CopilotModelCatalog-ReportsVisionOnlyWhenTheServiceDoes
+          - AgentKitAgentsCopilot-CopilotModelCatalog-DerivesTiersFromBilling
+          - AgentKitAgentsCopilot-CopilotModelCatalog-KeepsTheServicesEfforts
+          - AgentKitAgentsCopilot-CopilotModelCatalog-UsabilityFollowsPolicy
+          - AgentKitAgentsCopilot-CopilotModelCatalog-SurfacesTheServicesNotices
+          - AgentKitAgentsCopilot-CopilotModelCatalog-OmitsTheAutomaticChoice
+          - AgentKit-OTS-MicrosoftCopilotSDK-ModelListing
+        tests:
+          - AgentKitAgentsCopilot_ModelSelection_AgentRunsOnTheSelectedModelAndSettings
+
+      - id: AgentKitAgentsCopilot-ModelSelection-AppliedToEverySession
+        title: >-
+          The library shall run every Copilot session an agent, a compacting session or a
+          summarizer creates on the model, reasoning effort and context tier the user chose, locked
+          for the life of the session, and shall treat a chosen window as a ceiling on what the
+          session accounts against.
+        justification: |
+          The user's choice is made once, before the session starts, and must hold on every
+          session the conversation runs on — created, resumed, rotated or consolidating. Copilot
+          applies effort and tier per session, so the choice is applied where each session is
+          configured, and nothing is sent for what the user did not choose.
+        children:
+          - AgentKitAgentsCopilot-CopilotAgentFactory-AppliesASelection
+          - AgentKitAgentsCopilot-CopilotAgentFactory-RefusesAnAmbiguousSelection
+          - AgentKitAgentsCopilot-CopilotProviderSessionFactory-AppliesASelection
+          - AgentKitAgentsCopilot-CopilotProviderSessionFactory-RefusesAnAmbiguousSelection
+          - AgentKitAgentsCopilot-CopilotSummarizer-AppliesASelection
+          - AgentKit-OTS-MicrosoftCopilotSDK-InferenceOptions
+        tests:
+          - AgentKitAgentsCopilot_ModelSelection_AgentRunsOnTheSelectedModelAndSettings

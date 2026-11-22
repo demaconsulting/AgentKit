@@ -17,4 +17,7 @@ package AgentKitAgentsCopilot_CopilotSummarizer {
     // The summarizer takes the runtime AgentKit owns, never a host's client, and opens its sessions on
     // that runtime's client; it never disposes the runtime.
     dependency CopilotSummarizer to CopilotRuntime;
+
+    // Each consolidation runs on a validated model selection when the host supplies one.
+    dependency CopilotSummarizer to AgentKitCore::ModelSettings;
 }

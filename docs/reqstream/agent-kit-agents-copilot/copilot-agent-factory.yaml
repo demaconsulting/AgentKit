@@ -282,3 +282,30 @@ sections:
               so streaming there would add events and nothing else.
             tests:
               - CopilotAgentFactory_BuildSessionConfig_AgentPath_EnablesStreaming
+
+          - id: AgentKitAgentsCopilot-CopilotAgentFactory-AppliesASelection
+            title: >-
+              The factory shall configure every session an agent creates or resumes, and every engine
+              session, with a validated model selection's model and, only when chosen, its reasoning
+              effort and context tier, leaving the runtime's own defaults in place for what was not
+              chosen.
+            justification: |
+              The user's choice is locked when the session starts and must hold for the life of the
+              conversation, including when a later run resumes it, so the same settings reach every
+              configuration path. An effort or tier the user did not choose is the runtime's to
+              decide, so nothing is sent for it.
+            tests:
+              - CopilotAgentFactory_BuildSessionConfig_Selection_SetsModelEffortAndTier
+              - CopilotAgentFactory_BuildSessionConfig_SelectionWithoutChoices_LeavesInferenceUntouched
+              - CopilotAgentFactory_ResumeAndEnginePaths_CarryTheSameSelection
+
+          - id: AgentKitAgentsCopilot-CopilotAgentFactory-RefusesAnAmbiguousSelection
+            title: >-
+              The factory shall refuse a model named both by name and by selection, and a selection
+              of a model another provider offers.
+            justification: |
+              Two model choices would leave which one runs to a precedence rule nobody reads, and a
+              selection validated against another provider's offering proves nothing about
+              Copilot's.
+            tests:
+              - CopilotAgentFactory_Create_ConflictingOrForeignSelection_Throws

@@ -612,6 +612,91 @@ public class CopilotAgentFactoryTests
     }
 
     /// <summary>
+    ///     Proves a selection names the model and sets the chosen effort and tier on the session's
+    ///     inference options, by the identifiers the catalog published.
+    /// </summary>
+    [Fact]
+    public void CopilotAgentFactory_BuildSessionConfig_Selection_SetsModelEffortAndTier()
+    {
+        // Arrange: a selection whose choices differ in case from the catalog's identifiers
+        var selection = CopilotModelCatalogTests.Selection(effort: "HIGH", tier: "Long_Context");
+
+        // Act
+        var config = CopilotAgentFactory.BuildSessionConfig([MakeTool("doc_read")], null, null, selection: selection);
+
+        // Assert
+        Assert.Equal("claude-haiku-5.5", config.Model);
+        Assert.Equal("high", config.Inference?.ReasoningEffort);
+        Assert.Equal(new ContextTier("long_context"), config.Inference?.ContextTier);
+    }
+
+    /// <summary>
+    ///     Proves a selection that chose no effort or tier leaves the inference options untouched, so
+    ///     the runtime's own defaults apply.
+    /// </summary>
+    [Fact]
+    public void CopilotAgentFactory_BuildSessionConfig_SelectionWithoutChoices_LeavesInferenceUntouched()
+    {
+        // Arrange
+        var selection = CopilotModelCatalogTests.Selection();
+
+        // Act
+        var config = CopilotAgentFactory.BuildSessionConfig([MakeTool("doc_read")], null, null, selection: selection);
+
+        // Assert: the model is named, and neither inference option is set
+        Assert.Equal("claude-haiku-5.5", config.Model);
+        Assert.Null(config.Inference?.ReasoningEffort);
+        Assert.Null(config.Inference?.ContextTier);
+    }
+
+    /// <summary>
+    ///     Proves a resumed session and an engine session are configured with the same selection as a
+    ///     created one, so the settings hold for the life of the conversation.
+    /// </summary>
+    [Fact]
+    public void CopilotAgentFactory_ResumeAndEnginePaths_CarryTheSameSelection()
+    {
+        // Arrange
+        var selection = CopilotModelCatalogTests.Selection(effort: "low", tier: "default");
+
+        // Act
+        var resume = CopilotAgentFactory.BuildResumeSessionConfig([MakeTool("doc_read")], null, null, selection: selection);
+        var engine = CopilotAgentFactory.BuildEngineSessionConfig([], null, model: null, selection: selection);
+
+        // Assert
+        Assert.All(
+            new SessionOptionsBase[] { resume, engine },
+            config =>
+            {
+                Assert.Equal("claude-haiku-5.5", config.Model);
+                Assert.Equal("low", config.Inference?.ReasoningEffort);
+                Assert.Equal(ContextTier.Default, config.Inference?.ContextTier);
+            });
+    }
+
+    /// <summary>
+    ///     Proves a model named twice, or a selection of another provider's model, is refused.
+    /// </summary>
+    [Fact]
+    public void CopilotAgentFactory_Create_ConflictingOrForeignSelection_Throws()
+    {
+        // Arrange
+        var runtime = RuntimeThatCannotStart();
+        var selection = CopilotModelCatalogTests.Selection();
+        var foreign = new Core.ModelSettings("qwen3")
+            .Bind(new Core.ModelInfo { Provider = "ollama", Id = "qwen3", DisplayName = "qwen3" });
+        var tools = new List<AIFunction> { MakeTool("doc_read") };
+
+        // Act / Assert
+        var both = Assert.Throws<ArgumentException>(
+            () => CopilotAgentFactory.Create(runtime, tools, model: "gpt-6", selection: selection));
+        var other = Assert.Throws<ArgumentException>(
+            () => CopilotAgentFactory.Create(runtime, tools, selection: foreign));
+        Assert.Contains("not both", both.Message, StringComparison.Ordinal);
+        Assert.Contains("provider 'ollama'", other.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     ///     Proves an agent never starts its runtime again once the host has disposed it. The SDK
     ///     restarts a disposed client on demand, so a run that reached the client would bring a
     ///     runtime the host had stopped back to life. A run without a conversation, the first run of a

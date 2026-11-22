@@ -17,4 +17,8 @@ package AgentKitAgentsCopilot_CopilotProviderSessionFactory {
     // The factory takes the runtime AgentKit owns, never a host's client, and opens its sessions on
     // that runtime's client; it never disposes the runtime.
     dependency CopilotProviderSessionFactory to CopilotRuntime;
+
+    // Every session is configured from a validated model selection when the host supplies one, and
+    // its window becomes the ceiling the session accounts against.
+    dependency CopilotProviderSessionFactory to AgentKitCore::ModelSettings;
 }

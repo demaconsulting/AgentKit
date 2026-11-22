@@ -71,6 +71,17 @@ runtime NuGet dependency of the AgentKitAgentsCopilot package only, deliberately
   options replace the session's installed plugins (`plugins.installed`). AgentKit uses them to keep discovered servers
   from starting, to disable before any turn every server a session lists, and to clear installed plugins on every
   session
+- **The model listing** — the server-level, uncached model query `CopilotClient.Rpc.Models.ListAsync`,
+  returning `Rpc.ModelList.Models`, read by `CopilotModelCatalog`. Of each `Rpc.Model` AgentKit reads
+  the identifier, name and vendor; `Capabilities.Supports` (`Vision`, `ToolCalls`, `ReasoningEffort`,
+  `Thinking`) and `Capabilities.Limits` (`MaxContextWindowTokens`, `MaxOutputTokens`,
+  `MaxPromptTokens` and the vision limits); `Billing` (`Multiplier`, `TokenPrices.MaxPromptTokens` and
+  `TokenPrices.LongContext`); `Policy` (`State` and `Terms`); `SupportedReasoningEfforts`,
+  `DefaultReasoningEffort` and `SupportedContextTiers`; the information and warning messages and
+  `WarningText.DataRetention`; and the picker category and price category
+- **The per-session inference options** — `SessionInferenceOptions`, with its `ReasoningEffort` and
+  `ContextTier`, on the shared session-options base, so a created and a resumed session carry the
+  same chosen effort and tier
 
 ### Integration Pattern
 
@@ -81,6 +92,15 @@ runs — through one confinement block, and `CopilotTurnChannel` hands them to t
 resume call. The host owns the runtime's lifetime. Each session handle AgentKit opens is AgentKit's and
 is released after use; sessions the engine and the summarizer open are also deleted, while an agent's
 are kept until the host deletes them.
+
+**The catalog reads the model listing through the runtime.** `CopilotModelCatalog` reads
+`runtime.Client` at every fetch rather than keeping it, so a runtime the host disposed is refused
+rather than restarted. The uncached query is used, so a refresh sees a model the user was just
+granted. A test seam takes the read as a delegate, because the SDK's `ServerModelsApi` is sealed with
+no public constructor. The catalog imports the SDK's RPC namespace as the alias `Rpc` rather than
+wholesale, because it declares model types whose names collide with Core's, such as
+`ModelCapabilities`. The inference options are set only when the user chose an effort or a tier, so
+the runtime's own default applies otherwise.
 
 **AgentKit builds and owns the client.** `CopilotRuntime` constructs the only `CopilotClient` the
 package runs on, and the host cannot supply one. Its options are fixed except for the token, the log

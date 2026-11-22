@@ -168,9 +168,13 @@ the opposite: it reports the tokens it currently holds, the limit it will hold t
 of the total the conversation accounts for, all in one event and all counted with the same
 tokenizer.
 
-So this system takes **no** window from the application. Asking for a figure the provider already
-knows would create a second source of truth for one fact, which is exactly what the engine's
-single-reading design retired. The conversation's share is passed through rather than inferred,
+So this system takes **no** window from the application as the figure to account against. Asking
+for a figure the provider already knows would create a second source of truth for one fact, which is
+exactly what the engine's single-reading design retired. The application may state a **ceiling**
+only — directly, or as the window of a model selection — and a ceiling only ever lowers the
+runtime's figure. A live session reports the tier's prompt budget, which is smaller than the tier's
+total window the catalog describes; see *CopilotModelCatalog Unit Design*, "Context Tiers and the
+Reported Limit". The conversation's share is passed through rather than inferred,
 which keeps every threshold comparison downstream in Copilot's own tokens. Nothing is estimated, and
 a turn the runtime answered without reporting its usage is refused rather than guessed around.
 
@@ -469,16 +473,17 @@ nothing else at run time.
 
 ## Architecture
 
-The system holds nine units: the runtime and the installed CLI it runs by default, the agent and its
-factory that a host composing a Copilot agent uses, and the five that carry a Core session over the
-runtime.
+The system holds ten units: the runtime and the installed CLI it runs by default, the agent and its
+factory that a host composing a Copilot agent uses, the five that carry a Core session over the
+runtime, and the model catalog.
 
 - **CopilotAgentFactory (Unit)** — the static factory that validates its arguments, refuses a tool
   named like a built-in, derives the allow-list from the supplied tools, withholds the runtime's
   injection channels, pins the permission mode, installs a default-deny permission handler, and
   builds the agent without taking ownership of the runtime. It is also the **single** place a Copilot
   session's options are built, for an agent's created and resumed sessions and for both
-  session-engine paths.
+  session-engine paths. It applies a model selection on every one of those paths: the model, and the
+  reasoning effort and context tier only when chosen.
 - **CopilotAgent (Unit)** — AgentKit's own `AIAgent` over confined Copilot sessions, and the public
   `CopilotAgentSession` that names one conversation: creates a runtime session on a conversation's first run and resumes
   it on every later one, streams the runtime's events as agent updates, sends inline data as in-memory attachments,
@@ -511,6 +516,9 @@ runtime.
   reading, the current turn's entries, and whether the runtime rewrote history.
 - **CopilotSummarizer (Unit)** — an `ISummarizer` on a short-lived, tool-free Copilot session, using
   Core's consolidation prompt and releasing its session on every path.
+- **CopilotModelCatalog (Unit)** — Core's `IModelCatalog` over the service's model listing for the
+  signed-in user, read through the runtime AgentKit started: capabilities, policy, efforts, tiers
+  derived from billing, notices, and the `auto` entry omitted.
 - **CopilotTurnChannel (Unit)** — the internal seam over the sealed SDK session types, and the
   production implementation that opens every session through one confining protocol — every
   discovered MCP server disabled before creation, installed plugins cleared and every MCP server
@@ -524,12 +532,12 @@ reads occupancy through the observer and deletes each rotated session.
 
 ## External Interfaces
 
-The system's public API is nine types. `CopilotRuntime`, `CopilotRuntimeOptions` and
+The system's public API is ten types. `CopilotRuntime`, `CopilotRuntimeOptions` and
 `CopilotRuntimeSource` start the runtime, and `CopilotCli` with `CopilotCliSearchResult` reports which
-installed CLI it would run and the minimum version; the factory, the provider-session factory and the
-summarizer take that runtime, which the host started and will dispose; and `CopilotAgentSession` is
-what the agent hands back for a conversation. Everything else in the package is internal, including
-the runtime's client.
+installed CLI it would run and the minimum version; the factory, the provider-session factory, the
+summarizer and `CopilotModelCatalog` take that runtime, which the host started and will dispose; and
+`CopilotAgentSession` is what the agent hands back for a conversation. Everything else in the package
+is internal, including the runtime's client.
 
 | Interface | Direction | Format | Constraints |
 | --- | --- | --- | --- |
@@ -543,11 +551,17 @@ the runtime's client.
 | Runtime process | Outbound | Copilot SDK, stdio | Empty mode; Copilot variables withheld |
 | CLI version probe | Outbound | `--no-auto-update --version` | No shell; withheld environment; bounded time |
 | Session event stream | Inbound | Copilot SDK events | Registered before session creation |
+| `CopilotModelCatalog` | Outbound | Core `IModelCatalog` | Started runtime; read per fetch; 5-minute cache |
+| Model listing | Outbound | Copilot SDK `Rpc.Models.ListAsync` | Uncached query on the started client |
 
 `Create` takes the runtime, the tools, and optionally the instructions, a permission handler, the
 agent's name, the model and the working directory. `CopilotAgentSession` serializes as a JSON object
 carrying `sessionId` and `stateBag`, and its runtime session is kept until the host deletes it.
 `CopilotRuntime` never changes the host's process environment; it decides only the runtime process's.
+
+`Create`, the provider-session factory and the summarizer each also take an optional `selection`, a
+`ModelSelection` validated against the catalog. A selection names the model in place of the model
+name, and passing both is refused, as is a selection of another provider's model.
 
 The application supplies no context window: occupancy and limit come from the runtime's own event
 stream, as recorded in *Occupancy Comes From the Runtime*.
@@ -701,9 +715,10 @@ src/DemaConsulting.AgentKit.Agents.Copilot/
 ├── CopilotAgent.cs                   — AgentKit's AIAgent over confined Copilot sessions
 ├── CopilotAgentFactory.cs            — builds a Copilot agent, and every session's options
 ├── CopilotAgentSession.cs            — one agent conversation: its runtime session and state bag
-├── CopilotProviderSession.cs         — an AgentKit session over one Copilot session
 ├── CopilotCli.cs                     — finds the installed Copilot CLI and checks its version
 ├── CopilotCliSearchResult.cs         — what discovery found, searched and passed over
+├── CopilotModelCatalog.cs            — describes the service's models for the signed-in user
+├── CopilotProviderSession.cs         — an AgentKit session over one Copilot session
 ├── CopilotProviderSessionFactory.cs  — creates one seeded Copilot session per rotation
 ├── CopilotRuntime.cs                 — the runtime AgentKit starts, confines and owns
 ├── CopilotRuntimeOptions.cs          — the neutral options a host may give the runtime
@@ -722,12 +737,15 @@ src/DemaConsulting.AgentKit.Agents.Copilot/
 - **AgentKitCore** — supplies the family-prefix tool convention and the `AIFunction` currency the
   supplied tools are built from, and the session contracts the system implements —
   `IProviderSession`, `IProviderSessionFactory`, `ISummarizer`, `ProviderSessionSeed`,
-  `ProviderTurn`, `TranscriptEntry`, `ContextUsage` and `ConsolidationPrompt`; see *AgentKitCore
+  `ProviderTurn`, `TranscriptEntry`, `ContextUsage` and `ConsolidationPrompt`, and the
+  model-selection types the catalog produces and the factories accept — `ModelInfo`,
+  `CachingModelCatalog` and `ModelSelection`; see *AgentKitCore
   System Design*.
 - **Microsoft.Copilot.SDK** — supplies `CopilotClient`, `CopilotSession`, the create and resume
   session options and their shared base, the message options and blob attachments, the permission
   RPC, the published set of isolated built-in tool names, the MCP discovery and configuration RPC
-  and the session-options patch, and the session event stream; see
+  and the session-options patch, the session event stream, the model listing, and the per-session
+  inference options (`SessionInferenceOptions`); see
   *Microsoft.Copilot.SDK Design*. Its native runtime is provisioned only by a host application that
   opts into the bundled runtime, as recorded above; by default the installed Copilot CLI runs instead.
 - **Microsoft.Agents.AI.Abstractions** — supplies the `AIAgent` base type, `AgentSession` with its
@@ -810,7 +828,8 @@ for is ended rather than reused. Both are argued above.
 - **Fresh options per session**: no session options object is reused or cloned, because the SDK
   mutates the options it is handed and its clone is shallow
 - **No window from the application**: occupancy and limit come from the runtime, which is what makes
-  the session engine's accounting the runtime's own
+  the session engine's accounting the runtime's own; an application may only state a ceiling, which
+  only ever lowers the runtime's figure
 - **No change to the host's process environment**: the system decides the runtime process's
   environment through the SDK's replacement environment, and never sets or clears a variable of the
   host process

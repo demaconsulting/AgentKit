@@ -89,3 +89,13 @@ sections:
               - CopilotSummarizer_Consolidate_NullRequest_Throws
               - CopilotSummarizer_Consolidate_Canceled_OpensNothing
               - CopilotSummarizer_Constructor_NullRuntime_Throws
+
+          - id: AgentKitAgentsCopilot-CopilotSummarizer-AppliesASelection
+            title: >-
+              The summarizer shall run each consolidation on a validated model selection's model and,
+              only when chosen, its effort and tier, and shall refuse a model named both ways.
+            justification: |
+              A summarizer often runs on a cheaper model than the conversation, and that model is
+              chosen and validated the same way.
+            tests:
+              - CopilotSummarizer_Consolidate_Selection_RunsOnTheSelectedModel

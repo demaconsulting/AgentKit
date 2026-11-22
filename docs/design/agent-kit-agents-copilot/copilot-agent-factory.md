@@ -144,7 +144,7 @@ type initialization rather than copied. Invariant: a conservative union across p
 
 ### Key Methods
 
-#### Create(CopilotRuntime runtime, IList&lt;AIFunction&gt; tools, instructions, onPermissionRequest, name, model, workingDirectory)
+#### Create(CopilotRuntime runtime, IList&lt;AIFunction&gt; tools, instructions, onPermissionRequest, name, model, workingDirectory, selection)
 
 The single public entry point for an agent. It takes the runtime AgentKit owns; no overload takes a
 client the host built, because none of the runtime's guarantees could hold on one.
@@ -152,7 +152,8 @@ client the host built, because none of the runtime's guarantees could hold on on
 **Algorithm:**
 
 1. Reject a null `runtime`; check it is not disposed (`CopilotRuntime.ThrowIfDisposed`), which throws
-   `ObjectDisposedException` when it has been.
+   `ObjectDisposedException` when it has been. Refuse an ambiguous or foreign selection through
+   `ValidateSelection`.
 2. Hand the arguments to `CreateAgent` with the production channels over that runtime: an opener that
    creates a session and **keeps** it on release, a resumer that resumes a recorded session and keeps
    it too, and an opener for a run made without a conversation that **deletes** the session on
@@ -166,8 +167,13 @@ client the host built, because none of the runtime's guarantees could hold on on
 
 **Throws:** `ArgumentNullException` when `runtime` or `tools` is null, or a tool is null;
 `ObjectDisposedException` when `runtime` has been disposed;
-`ArgumentException` when `tools` is empty, two tools share a name, or a tool carries a reserved
-built-in name.
+`ArgumentException` when `tools` is empty, two tools share a name, a tool carries a reserved
+built-in name, or `selection` is ambiguous or names another provider's model.
+
+**The selection** is a `ModelSelection` the host validated against a `CopilotModelCatalog`. It names
+the model in place of `model`, and its reasoning effort and context tier, each only when chosen, are
+set on every session the agent creates or resumes. It is the last optional parameter for the same
+compatibility reason as `model` and `workingDirectory` below.
 
 **Parameter ordering.** `model` and `workingDirectory` are trailing optional parameters rather than
 sitting beside `instructions`, which is where they would read most naturally. The two goals conflict:
@@ -182,7 +188,7 @@ which would forfeit the confinement. It is not validated here: the runtime resol
 session is created. It grants nothing: what the agent may read or write is decided by the tools' own
 path policy.
 
-#### CreateAgent(tools, instructions, onPermissionRequest, name, model, workingDirectory, opener, resumer, ephemeralOpener)
+#### CreateAgent(tools, instructions, onPermissionRequest, name, model, workingDirectory, opener, resumer, ephemeralOpener, selection)
 
 Internal seam behind `Create`: production passes channels over the runtime, a test passes a
 scripted runtime, and everything else is shared.
@@ -202,7 +208,7 @@ The agent calls a builder on every run, so each run receives a **fresh** options
 mutates the options it is handed when it applies its mode defaults, and its clone is shallow, so an
 options object is never reused or cloned.
 
-#### BuildSessionConfig(tools, instructions, onPermissionRequest, model, workingDirectory)
+#### BuildSessionConfig(tools, instructions, onPermissionRequest, model, workingDirectory, selection)
 
 Internal seam producing the `CreateSessionOptions` for an agent's first run. It exists as a named,
 internal method so a test can assert the safety-critical property — that the allow-list is derived
@@ -218,7 +224,7 @@ the runtime's own threshold. See *Session Options Are Built on One Path* below.
 **Throws:** `ArgumentNullException` when `tools` is null or contains a null entry;
 `ArgumentException` when `tools` is empty, two tools share a name, or a tool carries a reserved name.
 
-#### BuildResumeSessionConfig(tools, instructions, onPermissionRequest, model, workingDirectory)
+#### BuildResumeSessionConfig(tools, instructions, onPermissionRequest, model, workingDirectory, selection)
 
 Internal seam producing the `ResumeSessionOptions` an agent resumes a recorded session with.
 
@@ -233,7 +239,7 @@ tool, and permission requests no handler answers.
 
 **Throws:** as `BuildSessionConfig`.
 
-#### BuildEngineSessionConfig(IList&lt;AIFunction&gt; tools, string? instructions, string? model, string? workingDirectory)
+#### BuildEngineSessionConfig(IList&lt;AIFunction&gt; tools, string? instructions, string? model, string? workingDirectory, ModelSelection? selection)
 
 Internal seam producing the `CreateSessionOptions` for a session whose context AgentKit's own session
 engine manages — a compacting conversation, or a consolidation. It applies exactly the same
@@ -254,7 +260,7 @@ confinement this factory can express rather than the weakest.
 **Throws:** `ArgumentNullException` when `tools` is null or contains a null entry;
 `ArgumentException` when two tools share a name or a tool carries a reserved built-in name.
 
-#### CreateSessionConfig(tools, instructions, onPermissionRequest, model, workingDirectory)
+#### CreateSessionConfig(tools, instructions, onPermissionRequest, model, workingDirectory, selection)
 
 Private helper: the single place a `CreateSessionOptions` is constructed in this package. Both
 creating builders reach it, which is what keeps the confinement, the model choice, the working
@@ -287,7 +293,7 @@ without asking the handler, and in its assisted mode a client may approve them i
 bypass default-deny without anything here changing. Pinning the manual mode keeps the handler the only
 authority, whatever mode ambient configuration would choose.
 
-#### ApplySessionSettings(SessionOptionsBase config, string? instructions, string? model, string? workingDirectory)
+#### ApplySessionSettings(SessionOptionsBase config, string? instructions, string? model, string? workingDirectory, ModelSelection? selection)
 
 Private helper applying the host's own preferences — kept apart from `ApplyConfinement` because they
 are preferences rather than safety guarantees. Each is assigned only when non-blank: the model; the
@@ -298,6 +304,27 @@ a member untouched
 is what preserves the runtime's default for every caller that says nothing, so each parameter is
 purely additive. The model name is not validated: only the runtime knows which models the signed-in
 user may use.
+
+**A selection.** When one is supplied, its `Model.Id` names the model in place of `model`. Its
+reasoning effort, when chosen, is set as `config.Inference.ReasoningEffort`, and its context tier,
+when chosen, as `config.Inference.ContextTier`, creating `config.Inference` only when one of them is
+set. Each is sent with the catalog's own spelling of the identifier (`CanonicalEffort` and
+`CanonicalTier` match the chosen value against the model's list, ignoring case). An effort or tier
+not chosen leaves `Inference` untouched, so the runtime's own default applies. The selection's window
+is not sent: on Copilot it is a ceiling the provider-session factory applies, not a runtime option.
+
+#### ValidateSelection(string? model, ModelSelection? selection)
+
+Internal helper shared by every public entry point that accepts a selection — this factory's
+`Create`, the provider-session factory's constructors and the summarizer's — so each refuses the same
+mistakes with the same words. With no selection it does nothing. Otherwise it throws
+`ArgumentException`, with parameter `selection`:
+
+- "Pass either a model name or a model selection, not both." when `model` is also non-blank, because
+  a model named twice would leave which one backs the session to a precedence rule nobody reads;
+- "The selection names a model from provider '{provider}', not 'copilot'." when the selection's
+  `Model.Provider` is not `CopilotModelCatalog.ProviderId`, because a selection validated against
+  another provider's offering proves nothing about Copilot's.
 
 #### CreateDefaultPermissionHandler(IList&lt;AIFunction&gt; tools)
 
@@ -380,6 +407,10 @@ engine path, but only the threshold is honored by the runtime; the flag states t
 depends on it. The measurement establishing that is recorded in *AgentKitAgentsCopilot System
 Verification Design*.
 
+**A model selection rides the same single path.** `ApplySessionSettings` applies the selection on
+every builder, so a created session, a resumed one and an engine session all receive the same model,
+effort and tier. The choice is locked when the session starts and holds when a later run resumes it.
+
 ### Ownership and Disposal Contract
 
 **The host owns the runtime; the factory owns nothing disposable.** The host starts the
@@ -443,16 +474,25 @@ incentive to bypass it.
 | A tool named like a runtime built-in | `ArgumentException` naming the tool propagates |
 | A request the default handler does not approve | Rejected with a message naming the tool or kind |
 | An MCP server stays enabled on a run's session | `InvalidOperationException` from the turn channel |
+| Both a model name and a selection | `ArgumentException` naming `selection` propagates |
+| A selection of another provider's model | `ArgumentException` naming `selection` propagates |
 
 ### Dependencies
 
 - **CopilotAgent** — the agent `CreateAgent` constructs; see *CopilotAgent Unit Design*.
+- **AgentKitCore** — supplies `ModelSelection`, the validated model choice the builders apply; see
+  *ModelSettings Unit Design*. It is imported as a single type alias rather than as Core's namespace,
+  because the SDK's `Microsoft.Copilot.Rpc` namespace, which this file also imports, declares
+  same-named model types such as `ModelCapabilities`.
+- **CopilotModelCatalog** — supplies `ProviderId`, which `ValidateSelection` checks; see
+  *CopilotModelCatalog Unit Design*.
 - **CopilotRuntime** — the runtime `Create` takes, whose client the channels read at every open,
   resume and release; see *CopilotRuntime Unit Design*.
 - **CopilotTurnChannel** — supplies the keeping opener, the resumer and the deleting opener (for a run
   made without a conversation) that `Create` hands the agent; see *CopilotTurnChannel Unit Design*.
 - **Microsoft.Copilot.SDK** — supplies `CopilotClient`, `CreateSessionOptions`, `ResumeSessionOptions`
-  and `SessionOptionsBase` with their option groups, the permission RPC types, and the published set of
+  and `SessionOptionsBase` with their option groups, including `SessionInferenceOptions` and
+  `ContextTier`, the permission RPC types, and the published set of
   isolated built-in tool names; see *Microsoft.Copilot.SDK Design*.
 - **Microsoft.Agents.AI.Abstractions** — supplies the `AIAgent` type `Create` returns; see
   *Microsoft.Agents.AI.Abstractions Design*.

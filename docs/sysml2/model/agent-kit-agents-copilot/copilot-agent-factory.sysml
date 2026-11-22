@@ -27,4 +27,8 @@ package AgentKitAgentsCopilot_CopilotAgentFactory {
     // Create takes the runtime AgentKit owns, never a host's client, and reads its client for the
     // channel openers; it never disposes the runtime.
     dependency CopilotAgentFactory to CopilotRuntime;
+
+    // Every session an agent creates or resumes is configured from a validated model selection when
+    // the host supplies one.
+    dependency CopilotAgentFactory to AgentKitCore::ModelSettings;
 }

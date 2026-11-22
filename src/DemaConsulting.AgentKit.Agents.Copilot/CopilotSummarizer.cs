@@ -61,6 +61,12 @@ public sealed class CopilotSummarizer : ISummarizer
     private readonly string? _model;
 
     /// <summary>
+    ///     The validated model selection performing each consolidation, or <see langword="null"/>
+    ///     when the host named a model, or none, instead.
+    /// </summary>
+    private readonly ModelSelection? _selection;
+
+    /// <summary>
     ///     Initializes a new instance of the <see cref="CopilotSummarizer"/> class.
     /// </summary>
     /// <param name="runtime">
@@ -75,15 +81,28 @@ public sealed class CopilotSummarizer : ISummarizer
     ///     smaller and cheaper model is usually the right choice, because consolidation is
     ///     summarization rather than reasoning.
     /// </param>
+    /// <param name="selection">
+    ///     A model chosen from a <see cref="CopilotModelCatalog"/>, validated, or
+    ///     <see langword="null"/>. It names the model each consolidation runs on, and its reasoning
+    ///     effort and context tier — each only when chosen — are set on each consolidation session. A
+    ///     summarizer may well run on a cheaper model than the conversation, under the same rules.
+    ///     Pass this or <paramref name="model"/>, not both.
+    /// </param>
     /// <exception cref="ArgumentNullException"><paramref name="runtime"/> is <see langword="null"/>.</exception>
     /// <exception cref="ObjectDisposedException"><paramref name="runtime"/> has been disposed.</exception>
-    public CopilotSummarizer(CopilotRuntime runtime, string? model = null)
+    /// <exception cref="ArgumentException">
+    ///     Both <paramref name="model"/> and <paramref name="selection"/> were passed, or the selection
+    ///     names another provider's model.
+    /// </exception>
+    public CopilotSummarizer(CopilotRuntime runtime, string? model = null, ModelSelection? selection = null)
     {
         ArgumentNullException.ThrowIfNull(runtime);
         runtime.ThrowIfDisposed();
+        CopilotAgentFactory.ValidateSelection(model, selection);
 
         _opener = CopilotSessionChannel.Open(runtime);
         _model = model;
+        _selection = selection;
     }
 
     /// <summary>
@@ -97,13 +116,17 @@ public sealed class CopilotSummarizer : ISummarizer
     /// </remarks>
     /// <param name="opener">Opens one short-lived runtime session per consolidation.</param>
     /// <param name="model">The model to name, or <see langword="null"/> for the runtime's default.</param>
+    /// <param name="selection">A validated model selection, or <see langword="null"/>; see the public constructor.</param>
     /// <exception cref="ArgumentNullException"><paramref name="opener"/> is <see langword="null"/>.</exception>
-    internal CopilotSummarizer(CopilotChannelOpener opener, string? model)
+    /// <exception cref="ArgumentException">The model is named twice.</exception>
+    internal CopilotSummarizer(CopilotChannelOpener opener, string? model, ModelSelection? selection = null)
     {
         ArgumentNullException.ThrowIfNull(opener);
+        CopilotAgentFactory.ValidateSelection(model, selection);
 
         _opener = opener;
         _model = model;
+        _selection = selection;
     }
 
     /// <inheritdoc/>
@@ -132,7 +155,8 @@ public sealed class CopilotSummarizer : ISummarizer
         var config = CopilotAgentFactory.BuildEngineSessionConfig(
             [],
             instructions: null,
-            _model);
+            _model,
+            selection: _selection);
 
         var channel = await _opener(config, cancellationToken).ConfigureAwait(false)
             ?? throw new InvalidOperationException("The Copilot channel opener returned null.");

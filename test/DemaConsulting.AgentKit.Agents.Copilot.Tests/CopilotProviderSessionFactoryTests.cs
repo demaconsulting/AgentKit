@@ -310,6 +310,57 @@ public class CopilotProviderSessionFactoryTests
     }
 
     /// <summary>
+    ///     Proves a selection configures every session with its model, effort and tier, and its window
+    ///     becomes the ceiling the session accounts against.
+    /// </summary>
+    [Fact]
+    public async Task CopilotProviderSessionFactory_CreateAsync_Selection_ConfiguresTheSessionAndCapsTheWindow()
+    {
+        // Arrange: the runtime reports a 9,000-token limit; the user chose a 4,000-token ceiling
+        var runtime = new FakeCopilotRuntime(_ =>
+        [
+            new ScriptedTurn(
+                [CopilotEvents.Usage(777, 9000), CopilotEvents.Assistant("ok")],
+                CopilotEvents.Assistant("ok")),
+        ]);
+        var selection = CopilotModelCatalogTests.Selection(effort: "medium", tier: "default", window: 4000);
+        var factory = new CopilotProviderSessionFactory(runtime.Opener, model: null, selection: selection);
+
+        // Act
+        await using var session = await factory.CreateAsync(
+            new ProviderSessionSeed(null, [], []),
+            TestContext.Current.CancellationToken);
+        await session.SendAsync("first turn", TestContext.Current.CancellationToken);
+
+        // Assert: the session was created on the selection, and accounts against the lower ceiling
+        var config = Assert.Single(runtime.Configs);
+        Assert.Equal("claude-haiku-5.5", config.Model);
+        Assert.Equal("medium", config.Inference?.ReasoningEffort);
+        Assert.Equal(ContextTier.Default, config.Inference?.ContextTier);
+        Assert.Equal(4000, session.CurrentUsage.WindowTokens);
+    }
+
+    /// <summary>
+    ///     Proves a model named twice, or a ceiling stated twice, is refused where the provider is
+    ///     configured.
+    /// </summary>
+    [Fact]
+    public void CopilotProviderSessionFactory_Constructor_ConflictingSelection_Throws()
+    {
+        // Arrange
+        var runtime = new FakeCopilotRuntime();
+        var plain = CopilotModelCatalogTests.Selection();
+        var windowed = CopilotModelCatalogTests.Selection(window: 4000);
+
+        // Act / Assert
+        Assert.Throws<ArgumentException>(
+            () => new CopilotProviderSessionFactory(runtime.Opener, "gpt-6", selection: plain));
+        var twice = Assert.Throws<ArgumentException>(
+            () => new CopilotProviderSessionFactory(runtime.Opener, model: null, maxWindowTokens: 5000, selection: windowed));
+        Assert.Contains("not both", twice.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     ///     Proves a missing seed is refused before any session is opened.
     /// </summary>
     [Fact]

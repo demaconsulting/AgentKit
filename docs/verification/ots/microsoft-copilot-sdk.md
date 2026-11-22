@@ -25,7 +25,12 @@ This document provides the verification evidence for the `Microsoft.Copilot.SDK`
   effective MCP configuration with each server's enablement, and a session-options patch replacing
   the session's installed plugins;
 - an Empty-mode client that spawns the runtime it provisions as a child process with a supplied
-  replacement environment and a supplied data directory, and stops it when disposed.
+  replacement environment and a supplied data directory, and stops it when disposed;
+- the model listing: an uncached query on a started client returning, for each model the service
+  offers the signed-in user, its capabilities, limits, billing, reasoning efforts, policy and
+  messages;
+- per-session inference options carrying a reasoning effort and a context tier on the options a
+  session is created and resumed with.
 
 ### Verification Approach
 
@@ -44,6 +49,12 @@ lifecycle scenarios show AgentKit driving the lifecycle correctly rather than th
 it; the options, the permission types and the event types are all constructable, so nothing about
 their shapes is simulated. These tests run in the merge gate on every platform, offline, with no
 credential.
+
+The model listing is verified the same way. The SDK's model description types are constructable, so
+the tests hand-build them as the service sends them and read every member the catalog depends on back
+through the catalog's mapping. The query itself is a sealed type, so the tests drive it only on a
+client that was never started, which shows the SDK refuses rather than answers there. The inference
+options are constructable too, and are read back from the options the factory builds.
 
 **The opt-in live Copilot suite is supplementary evidence that the SDK and its runtime behave as
 AgentKit relies on.** It drives the real SDK against the real Copilot runtime and a real model:
@@ -286,6 +297,58 @@ the client is disposed once.
 
 **Requirement coverage**: `AgentKit-OTS-MicrosoftCopilotSDK-EmptyModeSpawnedRuntime`.
 
+#### CopilotModelCatalog_Map_BillingTiers_AreDerivedLabeledAndCapped
+
+**Scenario**: An SDK `Rpc.Model` is hand-built as the service describes `claude-haiku-5.5` — its
+limits, its billing token prices with a long-context price, and its efforts — and mapped by the
+catalog.
+
+**Expected**: The limits, `Billing.TokenPrices.MaxPromptTokens` and `TokenPrices.LongContext` are
+read, giving a `default` tier of 228,000 tokens and a `long_context` tier capped at 1,000,000, a
+largest window of 1,000,000 and an output limit of 128,000.
+
+**Requirement coverage**: `AgentKit-OTS-MicrosoftCopilotSDK-ModelListing`.
+
+#### CopilotModelCatalog_Map_Policy_DecidesUsability
+
+**Scenario**: The same model is mapped with a disabled policy, with an unconfigured policy carrying
+terms, and with an enabled one.
+
+**Expected**: `Policy.State` and `Policy.Terms` are read: the disabled model is unusable with
+"Disabled by your organization's Copilot policy.", the unconfigured one with "Not enabled for your
+account; enable it in GitHub Copilot settings." and a notice carrying the terms, and the enabled one
+is usable.
+
+**Requirement coverage**: `AgentKit-OTS-MicrosoftCopilotSDK-ModelListing`.
+
+#### CopilotModelCatalog_ListAsync_ClientNotConnected_FailsWithTheSignInMessage
+
+**Scenario**: The catalog lists models through the uncached query on a runtime whose client was
+never started.
+
+**Expected**: The SDK refuses with an `InvalidOperationException` rather than answering, and the
+catalog surfaces it as its sign-in message with the SDK's failure as the inner exception.
+
+**Requirement coverage**: `AgentKit-OTS-MicrosoftCopilotSDK-ModelListing`.
+
+#### CopilotAgentFactory_BuildSessionConfig_Selection_SetsModelEffortAndTier
+
+**Scenario**: Create options are built from a selection choosing an effort and the long-context tier.
+
+**Expected**: The options' `Inference` carries the effort as `ReasoningEffort` and the tier as
+`ContextTier`, which requires both members to be present on the create options and settable.
+
+**Requirement coverage**: `AgentKit-OTS-MicrosoftCopilotSDK-InferenceOptions`.
+
+#### CopilotAgentFactory_ResumeAndEnginePaths_CarryTheSameSelection
+
+**Scenario**: Resume options and engine create options are built from one selection.
+
+**Expected**: Both carry the same `Inference.ReasoningEffort` and `Inference.ContextTier`, which
+requires the inference options on the shared session-options base.
+
+**Requirement coverage**: `AgentKit-OTS-MicrosoftCopilotSDK-InferenceOptions`.
+
 ### Requirements Coverage
 
 The lifecycle entries are qualified, and the qualification is part of the evidence rather than a
@@ -342,6 +405,13 @@ the older protocol is refused (recorded in *AgentKitAgentsCopilot System Verific
   AgentKitAgentsCopilot_Runtime_ClientOptionsAreConfined,
   CopilotRuntime_DisposeAsync_IsIdempotentAndClientIsThenUnavailable,
   CopilotRuntime_BuildClientOptions_InstalledCli_SpawnsTheResolvedCliOverStdio
+- **`AgentKit-OTS-MicrosoftCopilotSDK-ModelListing`** _(the query is driven only on a client not started)_:
+  CopilotModelCatalog_Map_BillingTiers_AreDerivedLabeledAndCapped,
+  CopilotModelCatalog_Map_Policy_DecidesUsability,
+  CopilotModelCatalog_ListAsync_ClientNotConnected_FailsWithTheSignInMessage
+- **`AgentKit-OTS-MicrosoftCopilotSDK-InferenceOptions`**:
+  CopilotAgentFactory_BuildSessionConfig_Selection_SetsModelEffortAndTier,
+  CopilotAgentFactory_ResumeAndEnginePaths_CarryTheSameSelection
 
 The live suite's supplementary evidence for the same functionality, by scenario:
 
@@ -372,3 +442,6 @@ The live suite's supplementary evidence for the same functionality, by scenario:
 - **Empty-mode spawned runtime**: `AgentKitAgentsCopilotLive_Runtime_AmbientCopilotEnvironment_DoesNotReachTheRuntime`,
   `AgentKitAgentsCopilotLive_Runtime_ReportsASupportedRuntime`, and the fixture every scenario runs
   on, on the installed CLI and on the provisioned runtime
+- **Model listing**: `AgentKitAgentsCopilotLive_Catalog_ListsFiltersAndRefreshes`,
+  `AgentKitAgentsCopilotLive_Selection_UnofferedEffort_IsRefusedBeforeAnySession`
+- **Inference options**: `AgentKitAgentsCopilotLive_Selection_SessionRunsOnTheChosenEffortAndTier`

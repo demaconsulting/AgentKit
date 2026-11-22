@@ -383,6 +383,18 @@ Starts the runtime on a non-empty directory AgentKit did not create, one holding
 directory and saying it was not created by AgentKit — before any runtime process exists, so the
 directory's configuration is never read.
 
+### Model Selection: The Agent Runs on the Selected Model and Settings
+
+**Test**: `AgentKitAgentsCopilot_ModelSelection_AgentRunsOnTheSelectedModelAndSettings`
+
+Verifies `AgentKitAgentsCopilot-ModelCatalog-ListsTheServicesModels` and
+`AgentKitAgentsCopilot-ModelSelection-AppliedToEverySession`. A `CopilotModelCatalog` over a scripted
+listing holding the automatic choice, a vision model and a text-only model lists, under
+`Vision | ToolCalls`, only the vision model. `SelectAsync` selects it with the effort `high` and the
+tier `long_context`, and an agent built with that selection runs one turn on a scripted runtime. The
+selection's host capabilities are `Vision`, and the session's options name the model, the effort
+`high` and the long-context tier.
+
 ## Acceptance Criteria
 
 A system-level test run passes when every scenario above passes without error or exception beyond those explicitly
@@ -400,6 +412,8 @@ a different confinement, any session that diverts a large tool result, any faile
 runtime's error or the remedy, any reader of a retaining composition missing from a session's published tools, its
 custom-qualified allow-list or the requests its default handler approves, or any configured retaining tool that does not
 deliver its preview and the page it names constitutes a failure.
+So does a model listed without a capability the application required, the automatic choice listed, or a
+session configured without the chosen model, effort or tier.
 
 ## Supplementary Live Verification
 
@@ -509,9 +523,9 @@ leaves the TRX in `artifacts/live/` too, and the log beside it when
 
 ### Live Scenarios
 
-Every test name carries the prefix `AgentKitAgentsCopilotLive_`, omitted in the table. Twenty-six tests
-cover sixteen scenarios; the agent scenario, L10, is three tests, the ambient-server scenario, L12, is
-four, and the MCP-source scenario, L14, is six.
+Every test name carries the prefix `AgentKitAgentsCopilotLive_`, omitted in the table. Twenty-nine tests
+cover nineteen scenarios; the agent scenario, L10, is three tests, the ambient-server scenario, L12, is
+four, and the MCP-source scenario, L14, is six. L16 to L18 are in `CopilotModelCatalogLiveTests`.
 
 | # | Test | Recorded result |
 | --- | --- | --- |
@@ -541,6 +555,9 @@ four, and the MCP-source scenario, L14, is six.
 | L14e | `OwnedRuntime_WorkspaceMcpServer_IsNeverExecuted` | Pass (no marker) |
 | L14f | `OwnedRuntime_WorkspaceMcpServerWithConfigDiscovery_IsExecuted` | Pass (marker written) |
 | L15 | `OwnedRuntime_AmbientChannels_AreAbsent` | Pass |
+| L16 | `Catalog_ListsFiltersAndRefreshes` | Pass (24 entries; `auto` skipped) |
+| L17 | `Selection_SessionRunsOnTheChosenEffortAndTier` | Pass (limit 100,000 default; 872,000 long context) |
+| L18 | `Selection_UnofferedEffort_IsRefusedBeforeAnySession` | Pass |
 
 What each asserts. Assertions are made on the runtime's events and metadata wherever possible; the
 few that rest on the model's prose are marked.
@@ -631,6 +648,15 @@ few that rest on the model's prose are marked.
   smaller than a control session's whose system message keeps the environment-context section. Hooks
   have no listing; they are covered by repository hooks being off, no installed plugin and a fresh
   data directory.
+- **L16**: the catalog lists the service's models through the runtime's uncached query, the same
+  count as the client's cached listing, with the automatic choice skipped; the vision filter matches
+  the service's own vision flags; and a refresh reads again.
+- **L17**: a session created on the selected model in each context tier, with a chosen effort,
+  answers, and the runtime reports a usage limit for it. The limit and the catalog's tier window are
+  both logged; the limit is the tier's prompt budget, not the tier's total window. See
+  *CopilotModelCatalog Unit Design*, "Context Tiers and the Reported Limit".
+- **L18**: an effort the model does not offer is refused by selection, with the reason listing the
+  efforts it does offer, before any session exists.
 
 ### Live Acceptance Criteria
 
@@ -651,7 +677,9 @@ L13, that an agent definition or built-in sub-agent reaches a confined session; 
 server of that source starts on the runtime AgentKit owns, or, for L14a, that some server of any source started — a
 renamed built-in server, or a managed-catalog or account server for the run's account; of L14b, L14d or L14f, that the
 probe no longer runs without the protection, so the paired scenario proves nothing; of L15, that an ambient channel
-reaches a session. Any such failure is investigated before a release.
+reaches a session; of L16, that the catalog cannot list the service's models for the signed-in user, or lists the
+automatic choice; of L17, that a chosen effort or tier is not accepted by the runtime, or that no limit is reported
+for it; of L18, that an unoffered effort reaches a session. Any such failure is investigated before a release.
 
 ### Recorded Run
 
@@ -794,6 +822,17 @@ Afterwards the scratch folders, including those of the re-recorded refusals, wer
 machine's `copilot --version` and `copilot --no-auto-update --version` still reported 1.0.114 and its
 package cache held the same versions as before the runs. Later runs of the CI job record their results
 in the `live-copilot-suite-<variant>` artifacts of each workflow run.
+
+When the model catalog was added, its three tests, L16 to L18, were run on 2026-11-21 on the same
+machine, with the model `claude-haiku-5.5` and SDK 2.0.1; only those three were run that day, and all
+three passed. The uncached query and the client's cached listing both returned 24 entries, including
+the automatic choice, which the catalog skipped. The catalog described `claude-haiku-5.5` with tier
+windows of 228,000 (`default`) and 1,000,000 (`long_context`). Sessions created at the effort `low`
+reported a usage limit of 100,000 in `default` and 872,000 in `long_context`: the prompt budget the
+runtime enforces, which is smaller than the tier's total window. This is the observation recorded
+under "Context Tiers and the Reported Limit" in *CopilotModelCatalog Unit Design*. The effort
+`not-an-effort` was refused with "Model 'claude-haiku-5.5' does not support reasoning effort
+'not-an-effort'. Supported: low, medium, high, xhigh, max."
 
 **Platform coverage.** Every recorded live run of the owned runtime ran on Windows; the spawned
 runtime has not yet run live on Linux, and discovery's macOS and Linux locations are verified only by
