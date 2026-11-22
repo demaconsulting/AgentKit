@@ -268,6 +268,44 @@ public class ChatClientProviderSessionFactoryTests
     }
 
     /// <summary>
+    ///     Proves a session's turns carry the selected model and effort to the provider.
+    /// </summary>
+    [Fact]
+    public async Task ChatClientProviderSessionFactory_CreateAsync_WithSelection_TurnsCarryTheSelection()
+    {
+        // Arrange
+        var client = RecordingChatClient.Answering("answer", inputTokens: 300);
+        var selection = new ModelSettings("vision-large") { ReasoningEffort = "low" }
+            .Bind(ChatClientAgentFactoryTests.SelectableModel());
+        var factory = new ChatClientProviderSessionFactory(client, Window, selection);
+
+        // Act
+        await using var session = await factory.CreateAsync(EmptySeed(), TestContext.Current.CancellationToken);
+        await session.SendAsync("hello", TestContext.Current.CancellationToken);
+
+        // Assert: the selection rode on the turn, and the stated window is still what is accounted
+        var options = Assert.Single(client.Requests).Options;
+        Assert.Equal("vision-large", options?.ModelId);
+        Assert.Equal(ReasoningEffort.Low, options?.Reasoning?.Effort);
+        Assert.Equal(Window, session.CurrentUsage.WindowTokens);
+    }
+
+    /// <summary>
+    ///     Proves a selection a chat client cannot apply is refused where the provider is configured.
+    /// </summary>
+    [Fact]
+    public void ChatClientProviderSessionFactory_Constructor_SelectionWithATier_Throws()
+    {
+        // Arrange
+        var selection = new ModelSettings("vision-large") { ContextTier = "default" }
+            .Bind(ChatClientAgentFactoryTests.SelectableModel());
+
+        // Act / Assert
+        Assert.Throws<ArgumentException>(
+            () => new ChatClientProviderSessionFactory(RecordingChatClient.Answering("x", 1), Window, selection));
+    }
+
+    /// <summary>
     ///     Proves a window that is not positive is refused, because every session this factory makes
     ///     would report an occupancy against it.
     /// </summary>

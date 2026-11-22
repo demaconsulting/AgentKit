@@ -28,26 +28,37 @@ The class is static and holds no state.
 
 ### Key Methods
 
-#### Create(IChatClient client, IList&lt;AIFunction&gt; tools, string? instructions, string? name)
+#### Create(IChatClient client, IList&lt;AIFunction&gt; tools, string? instructions, string? name, ModelSelection? selection)
 
 The single public entry point. Validates its arguments, wraps `client` in the image-promoting
-decorator, and constructs a `ChatClientAgent` over the wrapped client carrying `instructions`,
-`name`, and the supplied tools.
+decorator — over Core's `ModelSettingsChatClient` when a selection is supplied — and constructs a
+`ChatClientAgent` over the wrapped client carrying `instructions`, `name`, and the supplied tools.
 
 **Algorithm:**
 
 1. Reject a null `client`.
 2. Validate `tools` (see `ValidateTools`).
-3. Wrap `client` through `WrapWithImagePromotion`.
-4. Construct and return a `ChatClientAgent` over the wrapped client, passing the instructions, the
+3. When `selection` is supplied, wrap `client` in `new ModelSettingsChatClient(client, selection)`,
+   directly over the provider's client and beneath image promotion, so every request the agent's loop
+   sends — including those after a tool ran — carries the model, the effort and the output limit.
+4. Wrap the result through `WrapWithImagePromotion`.
+5. Construct and return a `ChatClientAgent` over the wrapped client, passing the instructions, the
    name, and the tools cast to the framework's tool type.
+
+**Refusal of a selection:** `ModelSettingsChatClient` refuses a selection that carries a context
+tier, with "Context tier '{tier}' cannot be applied through an IChatClient, which has no context
+tiers.", and one whose effort has no provider-neutral equivalent, with "Effort '{effort}' has no
+provider-neutral equivalent and cannot be applied through an IChatClient." Both are
+`ArgumentException`s raised from `Create`, so a setting the client cannot apply is never dropped
+silently.
 
 **Ownership:** the caller retains ownership of the client it supplied. The factory wraps that
 client but constructs nothing else the caller must dispose; the returned agent's lifetime, and the
 client beneath it, remain the host's to manage.
 
 **Throws:** `ArgumentNullException` when `client` or `tools` is null, or a tool is null;
-`ArgumentException` when `tools` is empty or two tools share a name.
+`ArgumentException` when `tools` is empty, two tools share a name, or `selection` carries a setting
+an `IChatClient` cannot apply.
 
 #### UseImagePromotion(this ChatClientBuilder builder)
 
@@ -73,6 +84,25 @@ SDK, which delivers tool-result images natively.
 
 **Throws:** `ArgumentNullException` for a null `builder`; `InvalidOperationException` from `Build()`
 for a decorator placed above function invocation.
+
+#### UseModelSettings(this ChatClientBuilder builder, ModelSelection selection)
+
+Public extension installing Core's `ModelSettingsChatClient` in a host-built pipeline, so a validated
+model selection rides on every request.
+
+**Algorithm:**
+
+1. Reject a null `builder` and a null `selection`.
+2. Register `inner => new ModelSettingsChatClient(inner, selection)` with `builder.Use`.
+
+**Placement:** not critical, because a value already set on a request wins over the selection
+wherever the decorator sits. Placing it last, nearest the provider, keeps every request the pipeline
+makes under the selection: `.UseFunctionInvocation().UseImagePromotion().UseModelSettings(selection)`.
+A host that references only Core installs the same decorator with
+`builder.Use(inner => new ModelSettingsChatClient(inner, selection))`.
+
+**Throws:** `ArgumentNullException` for a null `builder` or `selection`; `ArgumentException` from
+`Build()` for a selection carrying a context tier or an effort with no provider-neutral equivalent.
 
 #### WrapWithImagePromotion(IChatClient client)
 
@@ -118,6 +148,9 @@ duplicate the framework it adapts.
 | Two tools sharing a name | `ArgumentException` propagates |
 | Null `builder` to `UseImagePromotion` | `ArgumentNullException` propagates |
 | Decorator placed above function invocation | `InvalidOperationException` when the pipeline is built |
+| Selection with a tier, or an effort with no neutral equivalent | `ArgumentException` from `Create` |
+| Null `builder` or `selection` to `UseModelSettings` | `ArgumentNullException` propagates |
+| Selection given to `UseModelSettings` that cannot be applied | `ArgumentException` when the pipeline is built |
 
 Every rejected condition is a defect in the composing application, surfaced where the host wrote it
 rather than at the first conversation.
@@ -125,7 +158,8 @@ rather than at the first conversation.
 ### Dependencies
 
 - **AgentKitCore** — supplies `ImagePromotingChatClient`; see *ImagePromotingChatClient Unit
-  Design*.
+  Design*; and `ModelSelection` and `ModelSettingsChatClient`; see *ModelSettings Unit Design* and
+  *ModelSettingsChatClient Unit Design*.
 - **Microsoft.Agents.AI** — supplies `AIAgent` and `ChatClientAgent`, and brings
   `Microsoft.Extensions.AI`'s `ChatClientBuilder` and `FunctionInvokingChatClient`; see
   *Microsoft.Agents.AI Design*.
@@ -134,6 +168,7 @@ rather than at the first conversation.
 ### Callers
 
 `ChatClientAgentFactory.Create` is a public API entry point. An application calls it once to obtain
-an agent for a provider reached through an `IChatClient`. `UseImagePromotion` is a public API entry
-point a host calls while building its own pipeline. Within this system `ChatClientProviderSessionFactory`
+an agent for a provider reached through an `IChatClient`. `UseImagePromotion` and `UseModelSettings`
+are public API entry points a host calls while building its own pipeline. Within this system
+`ChatClientProviderSessionFactory`
 calls `WrapWithImagePromotion`; nothing else calls the factory.

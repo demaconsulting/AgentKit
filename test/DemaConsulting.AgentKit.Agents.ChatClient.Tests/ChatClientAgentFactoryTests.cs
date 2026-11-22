@@ -145,6 +145,94 @@ public class ChatClientAgentFactoryTests
     }
 
     /// <summary>
+    ///     Proves an agent built with a model selection sends the selected model and effort on its
+    ///     requests.
+    /// </summary>
+    [Fact]
+    public async Task ChatClientAgentFactory_Create_WithSelection_RequestsCarryTheSelection()
+    {
+        // Arrange: a client that records what it was asked, and a validated selection
+        var client = RecordingChatClient.Answering("answer", inputTokens: 10);
+        var selection = new ModelSettings("vision-large") { ReasoningEffort = "low", MaxOutputTokens = 500 }
+            .Bind(SelectableModel());
+        var agent = ChatClientAgentFactory.Create(client, [MakeTool("tool_one")], selection: selection);
+
+        // Act
+        await agent.RunAsync("hello", cancellationToken: TestContext.Current.CancellationToken);
+
+        // Assert
+        var options = Assert.Single(client.Requests).Options;
+        Assert.NotNull(options);
+        Assert.Equal("vision-large", options.ModelId);
+        Assert.Equal(ReasoningEffort.Low, options.Reasoning?.Effort);
+        Assert.Equal(500, options.MaxOutputTokens);
+    }
+
+    /// <summary>
+    ///     Proves a selection an <see cref="IChatClient"/> cannot apply is refused when the agent is
+    ///     built rather than dropped.
+    /// </summary>
+    [Fact]
+    public void ChatClientAgentFactory_Create_SelectionWithATier_Throws()
+    {
+        // Arrange
+        var selection = new ModelSettings("vision-large") { ContextTier = "default" }.Bind(SelectableModel());
+
+        // Act / Assert
+        Assert.Throws<ArgumentException>(
+            () => ChatClientAgentFactory.Create(new ScriptedChatClient(), [MakeTool("tool_one")], selection: selection));
+    }
+
+    /// <summary>
+    ///     Proves the builder extension installs the selection in a host-built pipeline.
+    /// </summary>
+    [Fact]
+    public async Task ChatClientAgentFactory_UseModelSettings_HostPipeline_RequestsCarryTheSelection()
+    {
+        // Arrange
+        var client = RecordingChatClient.Answering("answer", inputTokens: 10);
+        var selection = new ModelSettings("vision-large") { ReasoningEffort = "low" }.Bind(SelectableModel());
+        using var pipeline = client.AsBuilder().UseModelSettings(selection).Build();
+
+        // Act
+        await pipeline.GetResponseAsync("hello", cancellationToken: TestContext.Current.CancellationToken);
+
+        // Assert
+        var options = Assert.Single(client.Requests).Options;
+        Assert.Equal("vision-large", options?.ModelId);
+        Assert.Equal(ReasoningEffort.Low, options?.Reasoning?.Effort);
+    }
+
+    /// <summary>
+    ///     Proves a missing builder or selection is a programming error.
+    /// </summary>
+    [Fact]
+    public void ChatClientAgentFactory_UseModelSettings_NullArguments_Throw()
+    {
+        // Arrange
+        var selection = new ModelSettings("vision-large").Bind(SelectableModel());
+
+        // Act / Assert
+        Assert.Throws<ArgumentNullException>(() => ChatClientAgentFactory.UseModelSettings(null!, selection));
+        Assert.Throws<ArgumentNullException>(() => new ScriptedChatClient().AsBuilder().UseModelSettings(null!));
+    }
+
+    /// <summary>
+    ///     Builds a model an application might describe for an <see cref="IChatClient"/> provider.
+    /// </summary>
+    /// <returns>The model.</returns>
+    internal static ModelInfo SelectableModel() => new()
+    {
+        Provider = "test",
+        Id = "vision-large",
+        DisplayName = "Vision Large",
+        Capabilities = ModelCapabilities.ToolCalls | ModelCapabilities.Vision,
+        Adjustments = ModelAdjustments.ReasoningEffort | ModelAdjustments.ContextTier | ModelAdjustments.MaxOutputTokens,
+        ReasoningEfforts = [new ModelReasoningEffort("low", "Low", ReasoningEffort.Low)],
+        ContextTiers = [new ModelContextTier("default", "Standard", null)],
+    };
+
+    /// <summary>
     ///     Builds a no-op tool carrying the given name.
     /// </summary>
     /// <param name="name">The tool name.</param>

@@ -87,3 +87,18 @@ sections:
               above the recorder, so the occupancy read includes any message it promoted.
             tests:
               - ChatClientProviderSessionFactory_CreateAsync_ToolReturningAnImage_PromotesItOntoAUserMessage
+
+          - id: AgentKitAgentsChatClient-ChatClientProviderSessionFactory-AppliesASelection
+            title: >-
+              The factory shall apply a validated model selection, when one is supplied, to every
+              request each session it creates sends, while the session still accounts against the
+              window the application stated, and shall refuse a selection an IChatClient cannot
+              apply where the provider is configured.
+            justification: |
+              A compacting session is the long-running conversation an application most wants on
+              the user's chosen model and effort, across every rotation. The window stays the
+              application's to state, because the figure a session accounts against is the
+              provider's to report rather than the model's largest.
+            tests:
+              - ChatClientProviderSessionFactory_CreateAsync_WithSelection_TurnsCarryTheSelection
+              - ChatClientProviderSessionFactory_Constructor_SelectionWithATier_Throws

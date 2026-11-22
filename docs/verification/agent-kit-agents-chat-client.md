@@ -169,9 +169,19 @@ Asserts the follow-up requests carried the bounded preview and then the exact pa
 results, and that the turn's transcript records exactly those two results — never the oversized
 output — so retention behaves through this adapter's function-invocation loop as it does anywhere.
 
+### Model Selection: Every Request of a Turn Carries the Selection
+
+**Test**: `AgentKitAgentsChatClient_ModelSelection_EveryRequestOfATurnCarriesTheSelection`
+
+Verifies `AgentKitAgentsChatClient-ModelSelection-AppliedToEveryRequest`. A vision model is bound with
+a low effort and handed to `ChatClientAgentFactory.Create` over a recording client that calls a tool
+before it answers. The turn makes two requests, and both carry the selected model identifier and
+`ReasoningEffort.Low` — including the one sent after the tool ran. The selection's host capabilities
+are `Vision`, so the host's declaration follows the model.
+
 ## Acceptance Criteria
 
-A system-level test run passes when all twelve scenarios above pass without error or exception beyond
+A system-level test run passes when all thirteen scenarios above pass without error or exception beyond
 those explicitly asserted. Any agent that fails to build, any wrong name, any agent built without the
 image-promoting decorator in its client chain, any tool-returned image that fails to reach the
 provider on a user message, any content instance copied rather than carried, any session occupancy
@@ -180,7 +190,8 @@ rotate when the provider reports a filling window, any consolidation sent throug
 client, any replacement session that fails to carry the consolidated record, any retained output's preview or page
 altered on its way to the provider or the transcript, any image bytes in an OllamaSharp tool message, any
 contributed tool not offered or run, any reference shared between conversations or lost across a session
-reload, or any stored history the reducer hook leaves unreduced constitutes a failure.
+reload, any stored history the reducer hook leaves unreduced, or any request of a turn that reaches
+the provider without the model selection constitutes a failure.
 
 ## Supplementary Live Verification
 
@@ -218,6 +229,10 @@ with the hermetic tests above and in the unit chapters.
   `big.log` whose `ERROR` lines exceed a 1,500-character result limit, and a generated 316 KB PNG
   showing the number 7319; a file outside the sandbox carries a secret no confined tool may return.
   The tests run sequentially in one collection.
+- **Model catalog**: the same project holds `OllamaModelCatalogLiveTests`, four tests prefixed
+  `AgentKitAgentsOllamaLive_` that exercise AgentKitAgentsOllama's catalog and selection on the same
+  fixture, server and variables. Their scenarios and recorded run are in *OllamaModelCatalog Unit
+  Verification Design*.
 
 ### Running the Live Suite
 
@@ -231,7 +246,9 @@ dotnet test --project test/DemaConsulting.AgentKit.Agents.ChatClient.LiveTests -
 
 ### Live Scenarios
 
-Every test name carries the prefix `AgentKitAgentsChatClientLive_`, omitted in the table.
+Every test name in the table carries the prefix `AgentKitAgentsChatClientLive_`, omitted there. The
+catalog tests in the same project carry `AgentKitAgentsOllamaLive_` and are listed in *OllamaModelCatalog
+Unit Verification Design*.
 
 | # | Test | What it asserts |
 | --- | --- | --- |

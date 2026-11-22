@@ -38,6 +38,10 @@ ignored.
 | `PersistRetainedOutputs` | `bool` | Persist retained text (default) or only the counter. |
 | `StateKey` | `string` | State bag key; default `AgentKit.ToolPackContextProvider`. |
 
+Where the model was chosen from a catalog, a host sets `HostCapabilities` from the selection —
+`HostCapabilities = selection.HostCapabilities` — so the image family is offered only to a model that
+accepts images; see *ModelSettings Unit Design*.
+
 `ToolPackContextProvider`:
 
 | Member | Type | Description |

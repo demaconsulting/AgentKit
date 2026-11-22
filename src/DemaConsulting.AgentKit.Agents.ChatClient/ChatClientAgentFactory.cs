@@ -48,13 +48,22 @@ public static class ChatClientAgentFactory
     /// </param>
     /// <param name="instructions">The system instructions for the agent, if any.</param>
     /// <param name="name">The name of the agent, if any.</param>
+    /// <param name="selection">
+    ///     The validated model selection to apply to every request the agent sends, or
+    ///     <see langword="null"/> to send requests as the client is configured. When supplied, the
+    ///     client is wrapped in a <see cref="ModelSettingsChatClient"/> beneath the image-promoting
+    ///     decorator, so the model, the reasoning effort and the output limit ride on every request.
+    ///     A selection carrying a context tier, or an effort with no provider-neutral equivalent, is
+    ///     refused, because an <see cref="IChatClient"/> cannot apply either.
+    /// </param>
     /// <returns>An agent that talks to the supplied client through the image-promoting decorator.</returns>
     /// <exception cref="ArgumentNullException">
     ///     <paramref name="client"/> or <paramref name="tools"/> is <see langword="null"/>, or a
     ///     tool in <paramref name="tools"/> is <see langword="null"/>.
     /// </exception>
     /// <exception cref="ArgumentException">
-    ///     <paramref name="tools"/> is empty, or two tools carry the same name.
+    ///     <paramref name="tools"/> is empty, or two tools carry the same name, or
+    ///     <paramref name="selection"/> carries a setting an <see cref="IChatClient"/> cannot apply.
     /// </exception>
     /// <example>
     ///     <para>
@@ -94,17 +103,46 @@ public static class ChatClientAgentFactory
     ///             name: "document-assistant");
     ///     }
     ///     </code>
+    ///     <para>
+    ///     Running the agent on a model the user chose from a catalog. The selection is validated
+    ///     before it gets here, its model's vision capability decides whether the image family is
+    ///     offered, and its settings ride on every request.
+    ///     </para>
+    ///     <code>
+    ///     public AIAgent CreateAgent(
+    ///         IChatClient client,
+    ///         ModelSelection selection,
+    ///         PathPolicy policy,
+    ///         IToolPack textFiles,
+    ///         IToolPack images)
+    ///     {
+    ///         IList&lt;AIFunction&gt; tools =
+    ///         [
+    ///             .. new ToolPackBuilder(policy)
+    ///                 .WithHostCapabilities(selection.HostCapabilities)
+    ///                 .Add(textFiles)
+    ///                 .Add(images)
+    ///                 .Build()
+    ///         ];
+    ///
+    ///         return ChatClientAgentFactory.Create(client, tools, selection: selection);
+    ///     }
+    ///     </code>
     /// </example>
     public static AIAgent Create(
         IChatClient client,
         IList<AIFunction> tools,
         string? instructions = null,
-        string? name = null)
+        string? name = null,
+        ModelSelection? selection = null)
     {
         ArgumentNullException.ThrowIfNull(client);
         ValidateTools(tools);
 
-        var promotingClient = WrapWithImagePromotion(client);
+        // The selection sits directly over the provider's client, beneath image promotion, so every
+        // request the agent's loop sends - including the ones after a tool ran - carries it.
+        var configured = selection is null ? client : new ModelSettingsChatClient(client, selection);
+        var promotingClient = WrapWithImagePromotion(configured);
 
         return new ChatClientAgent(
             promotingClient,
@@ -193,6 +231,51 @@ public static class ChatClientAgentFactory
 
             return WrapWithImagePromotion(inner);
         });
+    }
+
+    /// <summary>
+    ///     Installs AgentKit Core's <see cref="ModelSettingsChatClient"/> in a chat client pipeline a
+    ///     host builds itself, so a validated model selection rides on every request.
+    /// </summary>
+    /// <remarks>
+    ///     <para>
+    ///     <see cref="Create"/> installs the decorator itself when handed a selection; this extension
+    ///     is for a pipeline the host assembles. Its position is not critical — a value already set on
+    ///     a request wins over the selection wherever the decorator sits — but placing it last, nearest
+    ///     the provider, keeps every request the pipeline makes under the selection.
+    ///     </para>
+    ///     <para>
+    ///     A host that takes no dependency on this package installs the same decorator with
+    ///     <c>builder.Use(inner =&gt; new ModelSettingsChatClient(inner, selection))</c>.
+    ///     </para>
+    /// </remarks>
+    /// <param name="builder">The pipeline being built. Must not be <see langword="null"/>.</param>
+    /// <param name="selection">The validated selection to apply. Must not be <see langword="null"/>.</param>
+    /// <returns>The same builder, for chaining.</returns>
+    /// <exception cref="ArgumentNullException">
+    ///     <paramref name="builder"/> or <paramref name="selection"/> is <see langword="null"/>.
+    /// </exception>
+    /// <exception cref="ArgumentException">
+    ///     Thrown when the pipeline is built if <paramref name="selection"/> carries a context tier or
+    ///     an effort with no provider-neutral equivalent, which an <see cref="IChatClient"/> cannot
+    ///     apply.
+    /// </exception>
+    /// <example>
+    ///     <code>
+    ///     public IChatClient CreatePipeline(IChatClient client, ModelSelection selection) =>
+    ///         client.AsBuilder()
+    ///             .UseFunctionInvocation()
+    ///             .UseImagePromotion()
+    ///             .UseModelSettings(selection)
+    ///             .Build();
+    ///     </code>
+    /// </example>
+    public static ChatClientBuilder UseModelSettings(this ChatClientBuilder builder, ModelSelection selection)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+        ArgumentNullException.ThrowIfNull(selection);
+
+        return builder.Use(inner => new ModelSettingsChatClient(inner, selection));
     }
 
     /// <summary>

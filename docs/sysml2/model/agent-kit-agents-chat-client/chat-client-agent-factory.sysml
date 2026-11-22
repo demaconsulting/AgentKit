@@ -12,4 +12,7 @@ package AgentKitAgentsChatClient_ChatClientAgentFactory {
             requirementFiles = ("docs/reqstream/agent-kit-agents-chat-client/chat-client-agent-factory.yaml");
         }
     }
+
+    // A supplied model selection is applied to every request through Core's settings decorator.
+    dependency ChatClientAgentFactory to AgentKitCore::ModelSettingsChatClient;
 }

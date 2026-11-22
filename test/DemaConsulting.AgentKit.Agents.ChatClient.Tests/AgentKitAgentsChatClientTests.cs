@@ -434,6 +434,38 @@ public class AgentKitAgentsChatClientTests
             .Result;
 
     /// <summary>
+    ///     Proves a model chosen from a catalog drives the agent end to end: its vision capability
+    ///     decides whether the image family is offered, and its settings ride on every request of a
+    ///     tool-using turn, including the one sent after the tool ran.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task AgentKitAgentsChatClient_ModelSelection_EveryRequestOfATurnCarriesTheSelection()
+    {
+        // Arrange: a vision model selected with an effort, tools gated on its capabilities, and a
+        // provider that calls a tool before answering
+        var selection = new ModelSettings("vision-large") { ReasoningEffort = "low" }
+            .Bind(ChatClientAgentFactoryTests.SelectableModel(), ModelCapabilities.Vision);
+        var client = new RecordingChatClient()
+            .Queue(ToolPackContextProviderTests.Call("call-1", "tool_one"))
+            .Queue("done", 1);
+        var agent = ChatClientAgentFactory.Create(client, [MakeTool("tool_one")], selection: selection);
+
+        // Act
+        var response = await agent.RunAsync("use the tool", cancellationToken: TestContext.Current.CancellationToken);
+
+        // Assert: both requests carried the selection, and the host declared vision from the model
+        Assert.Equal("done", response.Text);
+        Assert.Equal(2, client.Requests.Count);
+        Assert.All(client.Requests, request =>
+        {
+            Assert.Equal("vision-large", request.Options?.ModelId);
+            Assert.Equal(ReasoningEffort.Low, request.Options?.Reasoning?.Effort);
+        });
+        Assert.Equal(HostCapabilities.Vision, selection.HostCapabilities);
+    }
+
+    /// <summary>
     ///     Builds a no-op tool carrying the given name, for exercising the factory.
     /// </summary>
     /// <param name="name">The tool name.</param>

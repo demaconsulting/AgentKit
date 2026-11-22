@@ -89,3 +89,28 @@ sections:
               turns a silent defect into one the host sees immediately.
             tests:
               - ChatClientAgentFactory_UseImagePromotion_AboveFunctionInvocation_Throws
+
+          - id: AgentKitAgentsChatClient-ChatClientAgentFactory-AppliesASelection
+            title: >-
+              The factory shall apply a validated model selection, when one is supplied, to every
+              request the agent sends, and shall refuse a selection an IChatClient cannot apply.
+            justification: |
+              An application that let its user choose a model and an effort expects every turn of
+              the agent to run on that choice, including the requests the agent's loop sends after a
+              tool ran. Applying it inside the factory, beneath image promotion, is what makes that
+              true without the host assembling a pipeline; a context tier or an effort with no
+              provider-neutral equivalent would be dropped silently, so it is refused instead.
+            tests:
+              - ChatClientAgentFactory_Create_WithSelection_RequestsCarryTheSelection
+              - ChatClientAgentFactory_Create_SelectionWithATier_Throws
+
+          - id: AgentKitAgentsChatClient-ChatClientAgentFactory-UseModelSettings
+            title: >-
+              The package shall let a host install a validated model selection in a chat client
+              pipeline it builds itself.
+            justification: |
+              A host that owns its agent loop still needs the user's choice applied to every request,
+              and should not have to write the decorator placement itself.
+            tests:
+              - ChatClientAgentFactory_UseModelSettings_HostPipeline_RequestsCarryTheSelection
+              - ChatClientAgentFactory_UseModelSettings_NullArguments_Throw

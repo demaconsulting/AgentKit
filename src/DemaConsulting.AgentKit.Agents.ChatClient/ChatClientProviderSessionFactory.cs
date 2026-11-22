@@ -31,9 +31,14 @@ namespace DemaConsulting.AgentKit.Agents.ChatClient;
 public sealed class ChatClientProviderSessionFactory : IProviderSessionFactory
 {
     /// <summary>
-    ///     The client the application talks to its provider with, which every pipeline this factory
-    ///     builds is wrapped around and which none of them disposes.
+    ///     The client the application talks to its provider with — wrapped in the selection's
+    ///     settings decorator when one was supplied — which every pipeline this factory builds is
+    ///     wrapped around and which none of them disposes.
     /// </summary>
+    /// <remarks>
+    ///     The settings decorator is never disposed either: disposing it would dispose the
+    ///     application's client, which outlives the conversation, and it holds nothing of its own.
+    /// </remarks>
     private readonly IChatClient _client;
 
     /// <summary>
@@ -70,14 +75,28 @@ public sealed class ChatClientProviderSessionFactory : IProviderSessionFactory
     /// <param name="windowTokens">
     ///     The provider's context window in tokens. Must be positive.
     /// </param>
+    /// <param name="selection">
+    ///     The validated model selection to apply to every request each session sends, or
+    ///     <see langword="null"/> to send requests as the client is configured. When supplied, a
+    ///     <see cref="ModelSettingsChatClient"/> is placed directly over the supplied client, beneath
+    ///     the recorder. The window is still stated here rather than taken from the selection, because
+    ///     the figure a session accounts against is the provider's to report and the application's
+    ///     to state.
+    /// </param>
     /// <exception cref="ArgumentNullException"><paramref name="client"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="windowTokens"/> is not positive.</exception>
-    public ChatClientProviderSessionFactory(IChatClient client, int windowTokens)
+    /// <exception cref="ArgumentException">
+    ///     <paramref name="selection"/> carries a context tier or an effort with no provider-neutral
+    ///     equivalent, which an <see cref="IChatClient"/> cannot apply.
+    /// </exception>
+    public ChatClientProviderSessionFactory(IChatClient client, int windowTokens, ModelSelection? selection = null)
     {
         ArgumentNullException.ThrowIfNull(client);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(windowTokens);
 
-        _client = client;
+        // Wrapped once here rather than per session: the decorator holds no per-conversation state,
+        // and building it now refuses a selection the client cannot apply where the host composed it.
+        _client = selection is null ? client : new ModelSettingsChatClient(client, selection);
         WindowTokens = windowTokens;
     }
 
