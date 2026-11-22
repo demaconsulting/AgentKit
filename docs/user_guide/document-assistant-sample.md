@@ -55,9 +55,12 @@ behaviors this guide describes:
 - **Asymmetric grants.** With `--read-only-workspace` the documents are readable but unmodifiable
   while the session folder stays writable, and the refusal of a workspace write enumerates the
   writable location so the agent can recover.
-- **Capability gating.** The image tools appear only when the host declares the `Vision` capability.
+- **Capability gating.** The image tools appear only when the host declares the `Vision` capability,
+  and the sample takes that declaration from the **selected model's** vision.
   Running the sample with `--no-vision` removes `image_read`, `image_crop` and `image_auto_crop`
   from the tools the model is offered — they are never presented, not merely refused.
+- **Model choice.** The sample lists only the models that can see, and validates the chosen effort,
+  tier and window against the provider's catalog before the session starts.
 - **Both grants in one call.** With a destination, `image_crop` reads the image under the workspace
   grant and writes the region under the session folder's write grant. Under `--read-only-workspace`
   a destination in the workspace is refused while the same call into the session folder succeeds —
@@ -104,9 +107,44 @@ Only the `--provider` value changes what the sample does; the tools, the session
 are identical for both. Omitting `--prompt` starts an interactive chat that retains conversation state
 across turns and ends on `exit`, `quit`, Ctrl-C, or end-of-input.
 
+## Choosing the Model
+
+The sample is a vision application, so it lists and accepts only models that can see. `--list-models`
+prints the models the provider offers that can run the sample, grouped by the provider's category,
+with the efforts and tiers each accepts. It needs no `--workspace`:
+
+```bash
+dotnet run --project samples/document-assistant -- \
+  --provider ollama --host http://your-ollama-host:11434 --list-models
+```
+
+Three flags choose how the model runs, and each is checked against the provider's catalog before the
+session starts:
+
+- `--reasoning-effort <id>` — an effort from the model's list.
+- `--context-tier <id>` — a context tier from the model's list. Copilot only.
+- `--context-window <n>` — on Ollama, the exact `num_ctx` the server is asked for, at most the length
+  the model was trained for; on Copilot, a ceiling on the window the session accounts against.
+
+```bash
+dotnet run --project samples/document-assistant -- \
+  --workspace samples/document-assistant/workspace \
+  --provider ollama --host http://your-ollama-host:11434 --model gemma4:e4b \
+  --reasoning-effort none --context-window 8192 \
+  --prompt "Describe diagram.png"
+```
+
+A model that cannot see, an effort the model does not offer, or a window larger than the model was
+trained for is refused with every reason at once, before any conversation starts. With vision on, the
+Ollama `--model` — including the default, `qwen3.5:9b` — must be a model the server reports as
+vision-capable, or the run is refused. On Copilot with no `--model`, the runtime chooses the model and
+nothing describes its choice, so the sample declares vision itself; the effort, tier and window flags
+need `--model` there.
+
 ## Demonstrating Capability Gating
 
-The `--no-vision` flag omits both the image pack and the `Vision` host capability. Ask the agent to
+The `--no-vision` flag omits both the image pack and the `Vision` host capability, and the sample then
+stops requiring a vision model. Ask the agent to
 list its tools with and without the flag to see the difference:
 
 ```bash

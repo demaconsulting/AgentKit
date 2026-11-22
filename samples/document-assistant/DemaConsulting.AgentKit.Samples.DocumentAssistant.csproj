@@ -30,12 +30,13 @@
   </PropertyGroup>
 
   <!-- Project References: the sample composes the shipped Core + Tools packages and both agent
-       adapters. -->
+       adapters, and the Ollama package for its model catalog and context sizing. -->
   <ItemGroup>
     <ProjectReference Include="..\..\src\DemaConsulting.AgentKit.Core\DemaConsulting.AgentKit.Core.csproj" />
     <ProjectReference Include="..\..\src\DemaConsulting.AgentKit.Tools\DemaConsulting.AgentKit.Tools.csproj" />
     <ProjectReference Include="..\..\src\DemaConsulting.AgentKit.Agents.ChatClient\DemaConsulting.AgentKit.Agents.ChatClient.csproj" />
     <ProjectReference Include="..\..\src\DemaConsulting.AgentKit.Agents.Copilot\DemaConsulting.AgentKit.Agents.Copilot.csproj" />
+    <ProjectReference Include="..\..\src\DemaConsulting.AgentKit.Agents.Ollama\DemaConsulting.AgentKit.Agents.Ollama.csproj" />
   </ItemGroup>
 
   <!-- Copilot Runtime: this sample runs the Copilot CLI installed on the machine (at least

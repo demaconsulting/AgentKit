@@ -23,6 +23,14 @@ try
         return exitSuccess;
     }
 
+    // Listing models is the other terminal action: the picker an application would show, filtered
+    // to the models that can run this sample. It needs a provider but no workspace.
+    if (options.ListModels)
+    {
+        await AgentComposition.ListModelsAsync(options, Console.Out, CancellationToken.None);
+        return exitSuccess;
+    }
+
     // Resolve the workspace to an absolute path so the anchor is unambiguous and a relative path a
     // model supplies resolves against a real, fixed location. The workspace must already exist: it
     // holds the user's documents, so a missing one is a mistake rather than something to create.
@@ -59,7 +67,10 @@ try
         + "relative paths anchor here)\n" +
         $"Session:   {sessionRoot} (read-write, address it by absolute path)\n" +
         $"Provider:  {options.Provider}\n" +
-        $"Model:     {options.Model ?? "(provider default)"}\n" +
+        $"Model:     {options.Model ?? "(provider default)"}"
+        + $"{(options.ReasoningEffort is { } effort ? $", effort {effort}" : "")}"
+        + $"{(options.ContextTier is { } tier ? $", tier {tier}" : "")}"
+        + $"{(options.ContextWindow is { } window ? $", window {window:N0}" : "")}\n" +
         $"Vision:    {(options.VisionEnabled ? "enabled" : "disabled")}");
 
     // Build the agent (the one provider-specific step) and always release its runtime resources.

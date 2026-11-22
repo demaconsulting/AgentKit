@@ -1,5 +1,6 @@
 using DemaConsulting.AgentKit.Agents.ChatClient;
 using DemaConsulting.AgentKit.Agents.Copilot;
+using DemaConsulting.AgentKit.Agents.Ollama;
 using DemaConsulting.AgentKit.Core;
 using DemaConsulting.AgentKit.Tools.File;
 using DemaConsulting.AgentKit.Tools.Image;
@@ -192,13 +193,16 @@ public static class AgentComposition
     /// <param name="workspaceReadOnly">
     ///     Whether the workspace grant is read-only rather than read-write. Affects permission only.
     /// </param>
-    /// <param name="visionEnabled">Whether to offer the image tool and declare the vision capability.</param>
+    /// <param name="hostCapabilities">
+    ///     The host capabilities to declare. Derived from the selected model where the model was
+    ///     chosen from a catalog; <see cref="HostCapabilities.Vision"/> offers the image tools.
+    /// </param>
     /// <returns>The tool list to hand to a provider factory.</returns>
     public static IList<AIFunction> BuildTools(
         string workspaceRoot,
         string sessionRoot,
         bool workspaceReadOnly,
-        bool visionEnabled)
+        HostCapabilities hostCapabilities)
     {
         // One policy governs the whole tool set. The workspace is the working directory relative
         // paths anchor to; the grants below are what actually permit anything. Granting the anchor
@@ -215,16 +219,104 @@ public static class AgentComposition
             .Add(new FilePack())
             .Add(new MarkdownPack());
 
-        // Vision is a host/user capability, not a provider trait: declaring it adds the image pack
-        // for either provider, and withholding it removes image_read from either provider.
-        if (visionEnabled)
+        // Vision is declared by the host - derived from the selected model where there is one - and
+        // declaring it adds the image pack for either provider, while withholding it removes
+        // image_read from either provider.
+        if (hostCapabilities.HasFlag(HostCapabilities.Vision))
         {
             builder = builder
-                .WithHostCapabilities(HostCapabilities.Vision)
+                .WithHostCapabilities(hostCapabilities)
                 .Add(new ImagePack());
         }
 
         return [.. builder.Build()];
+    }
+
+    /// <summary>
+    ///     The capabilities a model must report to run this sample.
+    /// </summary>
+    /// <remarks>
+    ///     Every AgentKit agent calls tools; with vision on, the sample is a vision application and
+    ///     offers only models that can see what <c>image_read</c> returns. The same requirement filters
+    ///     the listing and is enforced again when the session starts.
+    /// </remarks>
+    /// <param name="options">The validated options.</param>
+    /// <returns>The required capabilities.</returns>
+    public static ModelCapabilities RequiredCapabilities(CommandLineOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+
+        return options.VisionEnabled
+            ? ModelCapabilities.Vision | ModelCapabilities.ToolCalls
+            : ModelCapabilities.ToolCalls;
+    }
+
+    /// <summary>
+    ///     Builds the model settings the command line names, as an application would load them from
+    ///     its own settings store.
+    /// </summary>
+    /// <param name="options">The validated options.</param>
+    /// <param name="modelId">The model the settings are for.</param>
+    /// <returns>The settings.</returns>
+    public static ModelSettings SettingsFor(CommandLineOptions options, string modelId)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+
+        return new ModelSettings(modelId)
+        {
+            ReasoningEffort = options.ReasoningEffort,
+            ContextTier = options.ContextTier,
+            ContextWindowTokens = options.ContextWindow,
+        };
+    }
+
+    /// <summary>
+    ///     Writes the models that can run this sample, grouped by the provider's category, as a model
+    ///     picker would show them.
+    /// </summary>
+    /// <param name="catalog">The provider's catalog.</param>
+    /// <param name="options">The validated options, which decide the requirement.</param>
+    /// <param name="output">Where to write the listing.</param>
+    /// <param name="cancellationToken">Cancels the catalog read.</param>
+    /// <returns>A task that completes when the listing is written.</returns>
+    public static async Task WriteModelListAsync(
+        IModelCatalog catalog,
+        CommandLineOptions options,
+        TextWriter output,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(catalog);
+        ArgumentNullException.ThrowIfNull(output);
+
+        var models = await catalog.ListAsync(
+            new ModelQuery { Require = RequiredCapabilities(options) },
+            cancellationToken);
+
+        // Grouped by the provider's category, in the provider's order within each group.
+        foreach (var group in models.GroupBy(model => model.Category ?? "other"))
+        {
+            await output.WriteLineAsync($"{group.Key}:");
+            foreach (var model in group)
+            {
+                var price = model.BillingMultiplier is { } multiplier ? $" x{multiplier:0.##}" : string.Empty;
+                var window = model.ContextWindowTokens is { } tokens ? $" up to {tokens:N0} tokens" : string.Empty;
+                await output.WriteLineAsync($"  {model.Id} ({model.DisplayName}){price}{window}");
+                if (model.ReasoningEfforts.Count > 0)
+                {
+                    await output.WriteLineAsync($"    efforts: {string.Join(", ", model.ReasoningEfforts.Select(effort => effort.Id))}");
+                }
+
+                if (model.ContextTiers.Count > 0)
+                {
+                    await output.WriteLineAsync($"    tiers:   {string.Join(", ", model.ContextTiers.Select(tier => tier.WindowTokens is { } size ? $"{tier.Id} ({size:N0})" : tier.Id))}");
+                }
+
+                foreach (var notice in model.Notices)
+                {
+                    await output.WriteLineAsync($"    {notice.Kind}: {notice.Message}");
+                }
+            }
+        }
     }
 
     /// <summary>
@@ -256,30 +348,95 @@ public static class AgentComposition
     {
         ArgumentNullException.ThrowIfNull(options);
 
-        var tools = BuildTools(
-            workspaceRoot,
-            sessionRoot,
-            options.WorkspaceReadOnly,
-            options.VisionEnabled);
-
-        // The instructions name this run's two locations, so they are built alongside the tools
-        // from the same three facts the policy was built from.
+        // The instructions name this run's two locations, so they are built from the same three
+        // facts the policy is built from.
         var instructions = BuildInstructions(workspaceRoot, sessionRoot, options.WorkspaceReadOnly);
 
         // The one and only place the sample branches on provider. Everything the caller does with
-        // the returned AgentSetup is identical for both.
+        // the returned AgentSetup is identical for both. Each branch selects its model through the
+        // provider's catalog, which is where the host capabilities - and so the tools - come from.
         return options.Provider switch
         {
             AgentProvider.Copilot => await CreateCopilotAgentAsync(
+                options,
                 workspaceRoot,
-                tools,
+                sessionRoot,
                 instructions,
-                options.Model,
                 cancellationToken),
-            AgentProvider.Ollama => CreateOllamaAgent(options, tools, instructions),
+            AgentProvider.Ollama => await CreateOllamaAgentAsync(
+                options,
+                workspaceRoot,
+                sessionRoot,
+                instructions,
+                cancellationToken),
             _ => throw new CommandLineException($"Unsupported provider '{options.Provider}'."),
         };
     }
+
+    /// <summary>
+    ///     Lists the models that can run this sample on the chosen provider.
+    /// </summary>
+    /// <param name="options">The validated options.</param>
+    /// <param name="output">Where to write the listing.</param>
+    /// <param name="cancellationToken">Cancels the read.</param>
+    /// <returns>A task that completes when the listing is written.</returns>
+    public static async Task ListModelsAsync(CommandLineOptions options, TextWriter output, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+
+        if (options.Provider == AgentProvider.Copilot)
+        {
+            await using var runtime = await StartCopilotRuntimeAsync(cancellationToken);
+            await WriteModelListAsync(new CopilotModelCatalog(runtime), options, output, cancellationToken);
+            return;
+        }
+
+        using var http = new HttpClient { BaseAddress = new Uri(options.Host), Timeout = TimeSpan.FromMinutes(2) };
+        using var ollama = new OllamaApiClient(http);
+        await WriteModelListAsync(new OllamaModelCatalog(ollama), options, output, cancellationToken);
+    }
+
+    /// <summary>
+    ///     Validates the command line's model choice against a catalog, failing with every problem
+    ///     as a usage error.
+    /// </summary>
+    /// <param name="catalog">The provider's catalog.</param>
+    /// <param name="options">The validated options.</param>
+    /// <param name="modelId">The model to select.</param>
+    /// <param name="cancellationToken">Cancels the catalog read.</param>
+    /// <returns>The validated selection.</returns>
+    /// <exception cref="CommandLineException">The model is unavailable or the settings are invalid for it.</exception>
+    private static async Task<ModelSelection> SelectAsync(
+        IModelCatalog catalog,
+        CommandLineOptions options,
+        string modelId,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await catalog.SelectAsync(SettingsFor(options, modelId), RequiredCapabilities(options), cancellationToken);
+        }
+        catch (ModelSettingsException invalid)
+        {
+            throw new CommandLineException(
+                string.Join(Environment.NewLine, invalid.Problems)
+                + Environment.NewLine + "Run with --list-models to see the models and settings available.");
+        }
+    }
+
+    /// <summary>
+    ///     Starts the Copilot runtime this sample owns: the installed Copilot CLI, AgentKit's default.
+    /// </summary>
+    /// <param name="cancellationToken">Cancels a slow start.</param>
+    /// <returns>The started runtime, which the caller disposes.</returns>
+    private static Task<CopilotRuntime> StartCopilotRuntimeAsync(CancellationToken cancellationToken) =>
+        CopilotRuntime.StartAsync(
+            new CopilotRuntimeOptions(Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "AgentKit",
+                "document-assistant",
+                "copilot-runtime")),
+            cancellationToken);
 
     /// <summary>
     ///     Builds an agent on the GitHub Copilot runtime, which the host owns and disposes.
@@ -295,20 +452,17 @@ public static class AgentComposition
     ///     configured but denies every tool call.
     ///     </para>
     /// </remarks>
+    /// <param name="options">The validated options carrying the model choice.</param>
     /// <param name="workspaceRoot">The workspace set as each session's working directory.</param>
-    /// <param name="tools">The composed tool set; also the source of the suppression allow-list.</param>
+    /// <param name="sessionRoot">The session folder, granted read-write.</param>
     /// <param name="instructions">The system instructions built for this run.</param>
-    /// <param name="model">
-    ///     The Copilot model named by <c>--model</c>, or <see langword="null"/> to let the Copilot
-    ///     runtime choose its own default.
-    /// </param>
     /// <param name="cancellationToken">Cancels a slow start.</param>
     /// <returns>The Copilot agent and the runtime as its cleanup handle.</returns>
     private static async Task<AgentSetup> CreateCopilotAgentAsync(
+        CommandLineOptions options,
         string workspaceRoot,
-        IList<AIFunction> tools,
+        string sessionRoot,
         string instructions,
-        string? model,
         CancellationToken cancellationToken)
     {
         // AgentKit starts the runtime itself - the Copilot CLI installed on the machine, found and
@@ -319,23 +473,38 @@ public static class AgentComposition
         // disposes it; the factory takes no ownership. A per-user application-data folder keeps that
         // state out of the workspace. A start that fails or is canceled has already released the
         // runtime.
-        var runtime = await CopilotRuntime.StartAsync(
-            new CopilotRuntimeOptions(Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "AgentKit",
-                "document-assistant",
-                "copilot-runtime")),
-            cancellationToken);
+        var runtime = await StartCopilotRuntimeAsync(cancellationToken);
 
         try
         {
+            // A named model is selected through the catalog, which validates the effort, tier and
+            // window and tells the host whether the model can see. With no model named the runtime
+            // chooses, nothing describes its choice, and the host declares vision explicitly - the
+            // override a catalog never takes away.
+            ModelSelection? selection = null;
+            if (options.Model is { } model)
+            {
+                selection = await SelectAsync(new CopilotModelCatalog(runtime), options, model, cancellationToken);
+            }
+            else if (options.ReasoningEffort is not null || options.ContextTier is not null || options.ContextWindow is not null)
+            {
+                throw new CommandLineException("--reasoning-effort, --context-tier and --context-window need --model on copilot.");
+            }
+
+            var host = selection?.HostCapabilities ?? HostCapabilities.Vision;
+            var tools = BuildTools(
+                workspaceRoot,
+                sessionRoot,
+                options.WorkspaceReadOnly,
+                options.VisionEnabled ? host : HostCapabilities.None);
+
             var agent = CopilotAgentFactory.Create(
                 runtime,
                 tools,
                 instructions,
                 name: AgentName,
-                model: model,
-                workingDirectory: workspaceRoot);
+                workingDirectory: workspaceRoot,
+                selection: selection);
             return new AgentSetup(agent, runtime);
         }
         catch
@@ -356,13 +525,17 @@ public static class AgentComposition
     ///     so a tool-returned image reaches the model rather than being dropped at the wire.
     /// </remarks>
     /// <param name="options">The options carrying the Ollama host and model.</param>
-    /// <param name="tools">The composed tool set.</param>
+    /// <param name="workspaceRoot">The workspace: the anchor, and a granted location.</param>
+    /// <param name="sessionRoot">The session folder, granted read-write.</param>
     /// <param name="instructions">The system instructions built for this run.</param>
+    /// <param name="cancellationToken">Cancels the catalog read.</param>
     /// <returns>The Ollama agent and a cleanup handle disposing the HTTP and API clients.</returns>
-    private static AgentSetup CreateOllamaAgent(
+    private static async Task<AgentSetup> CreateOllamaAgentAsync(
         CommandLineOptions options,
-        IList<AIFunction> tools,
-        string instructions)
+        string workspaceRoot,
+        string sessionRoot,
+        string instructions,
+        CancellationToken cancellationToken)
     {
         var http = new HttpClient
         {
@@ -374,9 +547,6 @@ public static class AgentComposition
         // sample's own default here rather than being pre-filled on the options — see the remarks
         // on CommandLineOptions.Model for why that distinction matters to the Copilot branch.
         var ollama = new OllamaApiClient(http, options.Model ?? CommandLineOptions.DefaultOllamaModel);
-        IChatClient chatClient = ollama;
-
-        var agent = ChatClientAgentFactory.Create(chatClient, tools, instructions, name: AgentName);
 
         // The OllamaApiClient does not own the HttpClient it was handed, so dispose both; disposal
         // order (client then transport) is the safe one.
@@ -386,6 +556,35 @@ public static class AgentComposition
             http.Dispose();
             return ValueTask.CompletedTask;
         });
+
+        // The model is selected through the server's catalog: a model that cannot see is refused
+        // while vision is on, and an effort or a window above the trained length is refused here
+        // rather than by the server mid-conversation. The tools follow the selected model.
+        ModelSelection selection;
+        try
+        {
+            selection = await SelectAsync(new OllamaModelCatalog(ollama), options, ollama.SelectedModel, cancellationToken);
+        }
+        catch
+        {
+            // Do not leak the transport when the choice is refused.
+            await cleanup.DisposeAsync();
+            throw;
+        }
+
+        var tools = BuildTools(
+            workspaceRoot,
+            sessionRoot,
+            options.WorkspaceReadOnly,
+            options.VisionEnabled ? selection.HostCapabilities : HostCapabilities.None);
+
+        // A stated window is asked of the server on every request; with none stated the server keeps
+        // its own, rather than the sample guessing one.
+        IChatClient chatClient = options.ContextWindow is { } window
+            ? new OllamaContextSizingChatClient(ollama, window)
+            : ollama;
+
+        var agent = ChatClientAgentFactory.Create(chatClient, tools, instructions, name: AgentName, selection: selection);
 
         return new AgentSetup(agent, cleanup);
     }
