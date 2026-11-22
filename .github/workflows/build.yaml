@@ -10,11 +10,13 @@ on:
         required: true
 
 # The Copilot SDK downloads its native runtime (about 100 MB compressed, about 356 MB per output
-# directory) at build time into every project that references it directly - the samples among
-# them. Nothing in this workflow starts the runtime: every test is hermetic and drives a scripted
-# turn channel. MSBuild reads environment variables as properties and the SDK's targets test this
-# one, so setting it here keeps the merge gate from contacting GitHub releases and copying the
-# runtime into every build matrix output. live_samples.yaml builds without it.
+# directory) at build time into every project that references it directly. AgentKit runs the
+# installed Copilot CLI by default, so the samples no longer reference the SDK, but the opt-in live
+# suite still does, for its bundled-runtime variant. Nothing in this workflow starts a runtime:
+# every test is hermetic and drives a scripted turn channel. MSBuild reads environment variables as
+# properties and the SDK's targets test this one, so setting it here keeps the merge gate from
+# contacting GitHub releases and copying the runtime into any build output. live_samples.yaml
+# builds without it only for the live suite's bundled variant.
 env:
   CopilotSkipCliDownload: 'true'
 

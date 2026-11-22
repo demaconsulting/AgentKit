@@ -178,11 +178,14 @@ public static class AgentComposition
         string instructions,
         CancellationToken cancellationToken)
     {
-        // AgentKit starts the runtime itself - Empty mode, the shell's COPILOT_/GITHUB_COPILOT_
-        // variables withheld apart from an allow-listed credential, network and telemetry-off set,
-        // a data directory AgentKit owns - and the host disposes it; the factory takes no
-        // ownership. A per-user application-data folder keeps that state out of the workspace. A
-        // start that fails or is canceled has already released the runtime.
+        // AgentKit starts the runtime itself - the Copilot CLI installed on the machine, found and
+        // version-checked by AgentKit (pass runtimeSource: CopilotRuntimeSource.Bundled, with a direct
+        // Microsoft.Copilot.SDK reference, to run the SDK's bundled runtime instead), in Empty mode,
+        // the shell's COPILOT_/GITHUB_COPILOT_ variables withheld apart from an allow-listed
+        // credential, network and telemetry-off set, a data directory AgentKit owns - and the host
+        // disposes it; the factory takes no ownership. A per-user application-data folder keeps that
+        // state out of the workspace. A start that fails or is canceled has already released the
+        // runtime.
         var runtime = await CopilotRuntime.StartAsync(
             new CopilotRuntimeOptions(Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),

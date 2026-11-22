@@ -67,14 +67,18 @@ shows how it *proceeds*.
 
 ## Running it
 
-From the repository root, with nothing installed beyond the .NET SDK. On the default
+From the repository root, with the .NET SDK and the GitHub Copilot CLI installed. On the default
 `--provider copilot`:
 
+- Install the GitHub Copilot CLI, version 1.0.113 or later (`winget install GitHub.Copilot`,
+  `brew install --cask copilot-cli`, `npm install -g @github/copilot` or the install script). AgentKit
+  finds it and runs the version built into the installed executable, so check it with
+  `copilot --no-auto-update --version`. Nothing is downloaded at build time and the sample ships no
+  runtime; to run the SDK's bundled runtime instead, see *Bundling the Runtime Instead* in the user
+  guide.
 - Sign in as a GitHub user with Copilot access with the GitHub CLI (`gh auth login`, with `gh` on `PATH`), or
-  set a token in `GH_TOKEN`. Installing the Copilot CLI is **not** required.
-- Expect the first build to download the Copilot runtime: the sample references
-  `Microsoft.Copilot.SDK` directly, so that build fetches it (about 100 MB, adding about 356 MB to the
-  sample's output) and later builds reuse it.
+  set a token in `GH_TOKEN`. Signing in to the Copilot CLI itself is **not** enough: AgentKit does not
+  use the CLI's sign-in.
 - Any shell will do, a Copilot CLI shell included: AgentKit starts the runtime with the shell's
   `COPILOT_`/`GITHUB_COPILOT_` variables withheld apart from an allow-listed credential, network and
   telemetry-off set. The runtime keeps its state in `AgentKit/research-assistant/copilot-runtime`

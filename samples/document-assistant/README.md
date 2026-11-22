@@ -136,7 +136,7 @@ From the repository root. The workspace folder shipped with the sample already c
 and an image. The session folder is created for you.
 
 Against GitHub Copilot (no host flag needed, and `--model` is optional; see [Requirements](#requirements)
-for signing in and the one-time runtime download):
+for the Copilot CLI and signing in):
 
 ```pwsh
 dotnet run --project samples/document-assistant -- `
@@ -281,14 +281,22 @@ in exactly the same way.
 
 - The .NET SDK matching the repository's `global.json`.
 - For `--provider copilot`:
+  - The GitHub Copilot CLI, version 1.0.113 or later, installed by `winget install GitHub.Copilot`,
+    `brew install --cask copilot-cli`, `npm install -g @github/copilot` or the install script.
+    AgentKit finds it on `PATH` or where those installers put it, and runs the version built into the
+    installed executable, so check it with `copilot --no-auto-update --version` (`copilot --version`
+    can report a newer version that `copilot update` downloaded, which AgentKit does not run; only
+    upgrading the installation changes it). Nothing is downloaded at build time and the sample ships no
+    runtime.
   - A GitHub user with Copilot access signed in with the GitHub CLI (`gh auth login`, with `gh` on `PATH`), or
-    a token in `GH_TOKEN`. Installing the Copilot CLI is **not** required.
-  - Network access on the first build: the sample references `Microsoft.Copilot.SDK` directly, so
-    that build downloads the Copilot runtime (about 100 MB, adding about 356 MB to the sample's
-    output) and later builds reuse it.
+    a token in `GH_TOKEN`. Signing in to the Copilot CLI itself is **not** enough: AgentKit keeps the
+    runtime's credentials in its own data directory and does not use the CLI's sign-in.
   - Nothing about the shell: AgentKit starts the runtime with the shell's `COPILOT_`/`GITHUB_COPILOT_`
     variables withheld apart from an allow-listed credential, network and telemetry-off set, so the sample
     runs from a Copilot CLI shell too. The runtime keeps its state in
     `AgentKit/document-assistant/copilot-runtime` under the user's local application data.
+  - To run without an installed CLI, see *Bundling the Runtime Instead* in the user guide: pass
+    `runtimeSource: CopilotRuntimeSource.Bundled` in `AgentComposition.cs` and reference
+    `Microsoft.Copilot.SDK` in the sample's project, which then downloads the runtime at build time.
 - For `--provider ollama`: a reachable Ollama server hosting a model with tool-calling (and vision, if
   you want the image demo).

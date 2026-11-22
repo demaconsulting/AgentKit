@@ -12,7 +12,8 @@ namespace DemaConsulting.AgentKit.Samples.CustomTools;
 public enum AgentProvider
 {
     /// <summary>
-    ///     The GitHub Copilot SDK runtime, used through the logged-in Copilot CLI. Ignores
+    ///     The installed GitHub Copilot CLI, run by AgentKit as a confined runtime and signed in
+    ///     through the GitHub CLI or a token. Ignores
     ///     <see cref="CommandLineOptions.Host"/> and <see cref="CommandLineOptions.Model"/>.
     /// </summary>
     Copilot,

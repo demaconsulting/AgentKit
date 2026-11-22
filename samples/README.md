@@ -16,6 +16,28 @@ All three share the same provider-selection design — a tool set composed once,
 factory-selection switch choosing the runtime — so a reader who has seen one recognizes the shape
 of the others immediately.
 
+## Before You Run One
+
+Every sample needs the .NET SDK matching the repository's `global.json`. On the default
+`--provider copilot` it also needs:
+
+- **The GitHub Copilot CLI, version 1.0.113 or later**, installed by `winget install GitHub.Copilot`,
+  `brew install --cask copilot-cli`, `npm install -g @github/copilot` or the install script. AgentKit
+  finds it on `PATH` or where those installers put it, and runs the version built into the installed
+  executable, so check it with `copilot --no-auto-update --version` (`copilot --version` can report a
+  newer version that `copilot update` downloaded, which AgentKit does not run; only upgrading the
+  installation changes it). Nothing is downloaded at build time and no sample ships a runtime.
+- **A GitHub sign-in** as a user with Copilot access, through the GitHub CLI (`gh auth login`, with
+  `gh` on `PATH`) or a token in `GH_TOKEN`. Signing in to the Copilot CLI itself is **not** enough:
+  AgentKit keeps the runtime's credentials in its own data directory and does not use the CLI's
+  sign-in.
+
+To run without an installed CLI, opt into the runtime the SDK bundles: see *Bundling the Runtime
+Instead* in the user guide. `--provider ollama` needs no Copilot CLI at all, only a reachable Ollama
+server. Each sample's README lists its own requirements:
+[document-assistant](document-assistant/README.md), [research-assistant](research-assistant/README.md)
+and [custom-tools](custom-tools/README.md).
+
 ## [document-assistant](document-assistant/)
 
 **The consumption path.** A console chat application that grants an agent exactly two locations — a

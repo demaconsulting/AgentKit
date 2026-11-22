@@ -22,9 +22,15 @@
 # whether an agent's conversation streams and resumes. The suite is outside AgentKit.slnx and is
 # gated on AGENTKIT_COPILOT_LIVE_MODEL, so nothing else ever runs it.
 #
-# Both jobs build projects that reference Microsoft.Copilot.SDK directly, whose build targets
-# download the native Copilot runtime. The extracted runtime is cached per platform and project
-# set, and the SDK skips the download when it finds a complete cached copy.
+# AgentKit runs the Copilot CLI installed on the machine by default, so both jobs install the
+# standalone Copilot CLI release, verified against its checksums, and put it on PATH. The samples,
+# and the installed-CLI variants of the live suite, are built with CopilotSkipCliDownload set, which
+# proves they need no bundled runtime. The live suite runs as a matrix of three variants: the
+# minimum CLI version AgentKit supports (COPILOT_CLI_VERSION below), the latest CLI release - the
+# early warning for a CLI that has moved to a protocol this release of AgentKit does not speak - and
+# the runtime Microsoft.Copilot.SDK bundles, the opt-in for hosts without a CLI. Only the bundled
+# variant downloads the SDK's runtime; its extracted copy is cached, and the SDK skips the download
+# when it finds a complete cached copy.
 
 name: Live Model Samples
 
@@ -40,6 +46,11 @@ on:
 
 permissions:
   contents: read
+
+env:
+  # The minimum Copilot CLI version AgentKit supports (CopilotCli.MinimumVersion): the first CLI that
+  # speaks the protocol of the referenced Microsoft.Copilot.SDK. Revisit together with that constant.
+  COPILOT_CLI_VERSION: '1.0.113'
 
 jobs:
   live-samples:
@@ -78,18 +89,38 @@ jobs:
         with:
           dotnet-version: 10.x
 
-      - name: Cache the Copilot runtime
+      # Installs the standalone Copilot CLI release - the binary the install script and the
+      # package managers install - verified against the release's published checksums, and puts it
+      # on PATH, where AgentKit's discovery finds it exactly as on a user's machine. CLI_VERSION
+      # empty means the latest release. The SDK starts the CLI with --no-auto-update, so the version
+      # printed here is the version that runs.
+      - name: Install the Copilot CLI
         if: steps.credentials.outputs.available == 'true'
-        uses: actions/cache@v6
-        with:
-          path: samples/*/obj/Release/net10.0/copilot-cli
-          key: copilot-cli-samples-${{ runner.os }}-${{ hashFiles('samples/**/*.csproj') }}
+        shell: bash
+        env:
+          # Downloading a public release needs only the workflow's own token.
+          GH_TOKEN: ${{ github.token }}
+          CLI_VERSION: ${{ env.COPILOT_CLI_VERSION }}
+        run: |
+          set -euo pipefail
+          dir="${RUNNER_TEMP}/copilot-cli"
+          mkdir -p "${dir}/download"
+          tag=()
+          if [ -n "${CLI_VERSION}" ]; then tag=("v${CLI_VERSION}"); fi
+          gh release download "${tag[@]}" --repo github/copilot-cli \
+            --pattern 'copilot-linux-x64.tar.gz' --pattern 'SHA256SUMS.txt' --dir "${dir}/download"
+          (cd "${dir}/download" && sha256sum --check --ignore-missing SHA256SUMS.txt)
+          tar -xzf "${dir}/download/copilot-linux-x64.tar.gz" -C "${dir}"
+          chmod +x "${dir}/copilot"
+          echo "${dir}" >> "${GITHUB_PATH}"
+          "${dir}/copilot" --no-auto-update --version
 
       - name: Build samples
         if: steps.credentials.outputs.available == 'true'
         run: >
           dotnet build
           --configuration Release
+          --property:CopilotSkipCliDownload=true
           samples/research-assistant/DemaConsulting.AgentKit.Samples.ResearchAssistant.csproj
           samples/document-assistant/DemaConsulting.AgentKit.Samples.DocumentAssistant.csproj
 
@@ -204,8 +235,14 @@ jobs:
           if-no-files-found: warn
 
   live-copilot-suite:
-    name: Live Copilot Suite
+    name: Live Copilot Suite (${{ matrix.runtime }})
     runs-on: ubuntu-latest
+
+    strategy:
+      # Each variant is evidence on its own; one failing must not hide the others' results.
+      fail-fast: false
+      matrix:
+        runtime: [installed-minimum, installed-latest, bundled]
 
     env:
       # The same dedicated Copilot credential the samples job uses; the runtime reads it from the
@@ -236,28 +273,68 @@ jobs:
         with:
           dotnet-version: 10.x
 
-      - name: Cache the Copilot runtime
-        if: steps.credentials.outputs.available == 'true'
+      # Installs the standalone Copilot CLI release - the binary the install script and the
+      # package managers install - verified against the release's published checksums, and puts it
+      # on PATH, where AgentKit's discovery finds it exactly as on a user's machine. CLI_VERSION
+      # empty means the latest release. The SDK starts the CLI with --no-auto-update, so the version
+      # printed here is the version that runs.
+      - name: Install the Copilot CLI
+        if: steps.credentials.outputs.available == 'true' && matrix.runtime != 'bundled'
+        shell: bash
+        env:
+          # Downloading a public release needs only the workflow's own token.
+          GH_TOKEN: ${{ github.token }}
+          CLI_VERSION: ${{ matrix.runtime == 'installed-minimum' && env.COPILOT_CLI_VERSION || '' }}
+        run: |
+          set -euo pipefail
+          dir="${RUNNER_TEMP}/copilot-cli"
+          mkdir -p "${dir}/download"
+          tag=()
+          if [ -n "${CLI_VERSION}" ]; then tag=("v${CLI_VERSION}"); fi
+          gh release download "${tag[@]}" --repo github/copilot-cli \
+            --pattern 'copilot-linux-x64.tar.gz' --pattern 'SHA256SUMS.txt' --dir "${dir}/download"
+          (cd "${dir}/download" && sha256sum --check --ignore-missing SHA256SUMS.txt)
+          tar -xzf "${dir}/download/copilot-linux-x64.tar.gz" -C "${dir}"
+          chmod +x "${dir}/copilot"
+          echo "${dir}" >> "${GITHUB_PATH}"
+          "${dir}/copilot" --no-auto-update --version
+
+      - name: Cache the bundled Copilot runtime
+        if: steps.credentials.outputs.available == 'true' && matrix.runtime == 'bundled'
         uses: actions/cache@v6
         with:
           path: test/DemaConsulting.AgentKit.Agents.Copilot.LiveTests/obj/Release/net10.0/copilot-cli
           key: copilot-cli-live-${{ runner.os }}-${{ hashFiles('test/DemaConsulting.AgentKit.Agents.Copilot.LiveTests/*.csproj') }}
 
+      # The installed variants build without the bundled runtime, proving they need none; the
+      # bundled variant builds with it.
+      - name: Build the live Copilot suite
+        if: steps.credentials.outputs.available == 'true'
+        run: >
+          dotnet build
+          test/DemaConsulting.AgentKit.Agents.Copilot.LiveTests
+          --configuration Release
+          ${{ matrix.runtime != 'bundled' && '--property:CopilotSkipCliDownload=true' || '' }}
+
       # === LIVE SUITE ===
       # Runs sequentially in one collection. AGENTKIT_COPILOT_LIVE_MODEL both opts the run in and
       # names the model; a cheap one is the default because the scenarios assert on the runtime's
-      # events and metadata, not on the quality of the model's prose.
+      # events and metadata, not on the quality of the model's prose. AGENTKIT_COPILOT_LIVE_RUNTIME
+      # selects the runtime source; the installed variants name no CLI path, so discovery finds the
+      # CLI installed above on PATH, as it would on a user's machine.
 
       - name: Run the live Copilot suite
         if: steps.credentials.outputs.available == 'true'
         timeout-minutes: 30
         env:
           AGENTKIT_COPILOT_LIVE_MODEL: ${{ inputs.model || 'claude-haiku-5.5' }}
+          AGENTKIT_COPILOT_LIVE_RUNTIME: ${{ matrix.runtime == 'bundled' && 'bundled' || 'installed' }}
           AGENTKIT_COPILOT_LIVE_LOG_DIRECTORY: ${{ github.workspace }}/artifacts/live
         run: >
           dotnet test
           --project test/DemaConsulting.AgentKit.Agents.Copilot.LiveTests
           --configuration Release
+          --no-build
           --report-trx
           --results-directory artifacts/live
 
@@ -268,6 +345,6 @@ jobs:
         if: always() && steps.credentials.outputs.available == 'true'
         uses: actions/upload-artifact@v7
         with:
-          name: live-copilot-suite
+          name: live-copilot-suite-${{ matrix.runtime }}
           path: artifacts/live/
           if-no-files-found: warn
