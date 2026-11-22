@@ -81,7 +81,7 @@ form to rely on.
 ## What it demonstrates
 
 This sample exists to make the AgentKit safety model *observable*. It prints every tool call and its
-result as they happen, so you can watch the guarantees hold rather than take them on faith:
+result as they happen, so you can watch each behavior below rather than take it on faith:
 
 - **Containment to the granted locations.** Every read, write, and listing is confined to the two granted
   locations. A path outside them is not merely discouraged — the tool refuses it and returns guidance
