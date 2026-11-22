@@ -2,6 +2,7 @@ using System.Text.Json;
 using DemaConsulting.AgentKit.Core;
 using DemaConsulting.AgentKit.Tools.File;
 using DemaConsulting.AgentKit.Tools.TextFile;
+using DemaConsulting.AgentKit.Tools.Visual.Diagram;
 using DemaConsulting.AgentKit.Tools.Visual.Image;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
@@ -16,8 +17,10 @@ namespace DemaConsulting.AgentKit.Agents.ChatClient.LiveTests;
 ///     Supplementary verification evidence: each scenario shows one of the AITool-first building
 ///     blocks holding against a real model — the context provider injecting tools per conversation
 ///     and restoring retention across a session reload, the guard bounding a foreign tool, image
-///     promotion delivering an image with a small tool message, and the chat reducer consolidating a
-///     history the agent owns. Wherever possible the assertion is on what was sent on the wire rather
+///     promotion delivering an image with a small tool message, the chat reducer consolidating a
+///     history the agent owns, a model drawing, seeing and fixing a diagram, and a model viewing an
+///     SVG figure and a PDF page while a figure reaching outside the sandbox is refused. Wherever
+///     possible the assertion is on what was sent on the wire rather
 ///     than on the model's prose, which varies between runs.
 ///     </para>
 ///     <para>
@@ -283,6 +286,109 @@ public sealed class OllamaLiveTests
         Assert.True(summarizer.Count >= 1, "The reducer never consolidated.");
         Assert.Contains(history.GetMessages(session), message => message.Text.StartsWith(AgentKitChatReducer.RecordHeader, StringComparison.Ordinal));
         Assert.Contains("4417-BRAVO", answer, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    ///     L5: a model reads the diagram help, draws a Mermaid source carrying an injected error, reads
+    ///     the shaped failure, fixes the source, sees the picture and names what it drew.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task AgentKitAgentsChatClientLive_DiagramRender_HelpDrawSeeAndFix()
+    {
+        // Arrange: the diagram family in image preview, in a host-built agent with image promotion,
+        // and the pack's instructions placed by the application
+        _live.RequireOptIn();
+        var pack = DiagramPack.For(HostCapabilities.Vision);
+        var tools = new ToolPackBuilder(new PathPolicy(_live.Sandbox, [PathRule.ReadWrite(_live.Sandbox)]))
+            .WithHostCapabilities(HostCapabilities.Vision)
+            .Add(pack)
+            .Build();
+        var (ollama, wire) = _live.CreateClient();
+        using var client = ollama;
+        var agent = new ChatClientAgent(
+            ((IChatClient)client).AsBuilder().UseImagePromotion().Build(),
+            instructions: "You are a concise assistant. " + pack.Instructions,
+            tools: [.. tools]);
+
+        // Act: one turn asking for the whole loop
+        var answer = await TurnAsync(
+            agent,
+            null,
+            "L5-diagram",
+            "First call diagram_help with topic 'mermaid/flowchart'. Then call diagram_render with format "
+            + "'mermaid' and exactly this source:\n\nflowchart LR\n  Draft --> Review\n  Review -> Publish\n\n"
+            + "The source contains an error. Read what the tool returns, fix the source, and call diagram_render "
+            + "again until it returns a picture. Then look at the picture and list the node labels you see.");
+
+        // Assert: on the wire, where a tool message carries the result inside its JSON - the help was served, the error was shaped with its topic, a picture was
+        // promoted to the model - and the model names the node the fix made drawable
+        var messages = ToolMessagesSince(wire, 0);
+        Assert.Contains(messages, message => message.Contains("# Flowcharts", StringComparison.Ordinal));
+        var failure = messages.FirstOrDefault(message => message.Contains("Render failed (mermaid-error", StringComparison.Ordinal));
+        Assert.NotNull(failure);
+        Assert.Contains("Help: diagram_help topic 'mermaid/diagnostics'.", failure, StringComparison.Ordinal);
+        Assert.Contains(wire.Requests[^1], message => message.Role == "user" && message.Images > 0);
+        Assert.Contains("Publish", answer, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    ///     L6: a model views an SVG figure embedding the sandbox's image and reads its number, views a
+    ///     PDF page and names its colors, and a figure embedding a picture outside the sandbox is
+    ///     refused without that picture or a host path reaching the model.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task AgentKitAgentsChatClientLive_ImageView_FigureAndPdfDrawnOutsideReferenceRefused()
+    {
+        // Arrange: image_view over the read-only sandbox, in a host-built agent with image promotion
+        _live.RequireOptIn();
+        var tools = new ToolPackBuilder(new PathPolicy(_live.Sandbox, [PathRule.ReadOnly(_live.Sandbox)]))
+            .WithHostCapabilities(HostCapabilities.Vision)
+            .Add(new ImagePack())
+            .Build()
+            .Where(tool => tool.Name == ImageViewTool.ToolName)
+            .ToList();
+        var (ollama, wire) = _live.CreateClient();
+        using var client = ollama;
+        AIAgent agent = new ChatClientAgent(
+            ((IChatClient)client).AsBuilder().UseImagePromotion().Build(),
+            instructions: "You are a concise assistant.",
+            tools: [.. tools]);
+        var session = await agent.CreateSessionAsync(TestContext.Current.CancellationToken);
+
+        // Act and assert, turn by turn: the figure
+        var before = wire.Requests.Count;
+        var figure = await TurnAsync(
+            agent,
+            session,
+            "L6-figure",
+            "Call image_view with path 'composite.svg'. Look at the picture: what number is shown in it? Reply "
+            + "with just the number, or say NO IMAGE if you cannot see an image.");
+        Assert.Contains(ToolMessagesSince(wire, before), message => message.Contains("Rendered svg", StringComparison.Ordinal));
+        Assert.Contains(OllamaLiveFixture.ImageNumber, figure, StringComparison.Ordinal);
+
+        // The PDF page
+        var page = await TurnAsync(
+            agent,
+            session,
+            "L6-pdf",
+            "Call image_view with path 'report.pdf'. Name the two colors you see and which side of the page each "
+            + "is on.");
+        Assert.Contains("blue", page, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("yellow", page, StringComparison.OrdinalIgnoreCase);
+
+        // The figure reaching outside the sandbox
+        before = wire.Requests.Count;
+        var refused = await TurnAsync(
+            agent,
+            session,
+            "L6-escape",
+            "Call image_view with path 'escape.svg' and tell me exactly what the tool returned.");
+        var reports = ToolMessagesSince(wire, before);
+        Assert.Contains(reports, report => report.Contains("Render failed (file-access-denied", StringComparison.Ordinal));
+        Assert.All(reports, report => Assert.DoesNotContain(_live.Root, report, StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(OllamaLiveFixture.OutsideImageNumber, refused, StringComparison.Ordinal);
     }
 
     /// <summary>

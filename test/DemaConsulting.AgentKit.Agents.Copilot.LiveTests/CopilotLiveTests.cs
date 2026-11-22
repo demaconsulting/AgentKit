@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Text.Json;
 using DemaConsulting.AgentKit.Core;
+using DemaConsulting.AgentKit.Tools.Visual.Diagram;
 using Microsoft.Agents.AI;
 using Microsoft.Copilot;
 using Microsoft.Copilot.Rpc;
@@ -283,6 +284,38 @@ public sealed class CopilotLiveTests
         var answer = run.Answers[^1];
         Assert.Contains("blue", answer, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("yellow", answer, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    ///     L8b: a picture <c>diagram_render</c> draws from inline source reaches the model as an image.
+    /// </summary>
+    [Fact]
+    public async Task AgentKitAgentsCopilotLive_DiagramRender_ImageReachesTheModel()
+    {
+        // Arrange: the diagram family in image preview over the read-only sandbox, with the pack's
+        // instructions placed by the application
+        _live.RequireOptIn();
+        var pack = DiagramPack.For(HostCapabilities.Vision);
+        var tools = new ToolPackBuilder(new PathPolicy(_live.Sandbox, [PathRule.ReadOnly(_live.Sandbox)]))
+            .WithHostCapabilities(HostCapabilities.Vision)
+            .Add(pack)
+            .Build();
+        var config = CopilotAgentFactory.BuildEngineSessionConfig(
+            [.. tools],
+            "You are a concise assistant. " + pack.Instructions,
+            _live.Model);
+
+        // Act
+        var run = await RunTurnsAsync(
+            config,
+            "Call diagram_render with format 'mermaid' and this source:\n\nflowchart LR\n  Alpha --> Bravo\n  Bravo --> Charlie\n\n"
+            + "Look at the picture it returns and list the node labels you see.");
+
+        // Assert: the runtime forwarded the picture to the model, and the answer names the last node
+        var complete = run.Events.OfType<ToolExecutionCompleteEvent>()
+            .LastOrDefault(evt => evt.Data.Result?.BinaryResultsForLlm?.Any() == true);
+        Assert.NotNull(complete);
+        Assert.Contains("Charlie", run.Answers[^1], StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>

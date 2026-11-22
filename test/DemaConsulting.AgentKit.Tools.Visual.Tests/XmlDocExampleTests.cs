@@ -24,6 +24,7 @@ public class XmlDocExampleTests
             "DemaConsulting.AgentKit.Tools.Visual.xml",
             "DemaConsulting.AgentKit.Core",
             "DemaConsulting.AgentKit.Tools.Visual",
+            "DemaConsulting.AgentKit.Tools.Visual.Diagram",
             "DemaConsulting.AgentKit.Tools.Visual.Image",
             "Microsoft.Extensions.AI");
     }

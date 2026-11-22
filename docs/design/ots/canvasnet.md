@@ -91,6 +91,12 @@ The Viewer features used by the Rendering subsystem:
   type
 - `PngCodec.Save` and `Surface.Analyze` — encoding the drawn picture and naming its dominant colors
 
+The Viewer feature used by the Diagram subsystem:
+
+- `HelpCatalog.Default`, `Filter`, `Find`, `Roots`, `Cards` and `RenderText`, with each card's
+  `Examples` — the library's own drawing help, filtered by tag to the offered languages and to the
+  cards written for a model, served by `diagram_help` a topic at a time
+
 No type from the library appears in any public AgentKit signature.
 
 **The header report also carries a channel count and an alpha flag, and this family deliberately
@@ -107,9 +113,10 @@ neither field is read anywhere in this package.
 application that attaches the image family needs it present at run time and must receive it
 transitively. The core arrives through it at the same version. The core is reached from four places
 in the Image subsystem — the shared header-probe helper, the shared admission helper that triages
-and decodes, and the two tools that cut a region — and the Viewer only from the Rendering subsystem:
-`VisualAccess`, `VisualRenderer` and `RenderErrorShaper`. The view tool itself reaches the library
-only for its list of drawable extensions.
+and decodes, and the two tools that cut a region — and the Viewer from the Rendering subsystem —
+`VisualAccess`, `VisualRenderer` and `RenderErrorShaper` — and, for its help catalog only, from the
+Diagram subsystem's `DiagramHelpTool`, `DiagramRenderTool` and `DiagramPack`. The view tool itself
+reaches the library only for its list of drawable extensions.
 
 There is no initialization and no configuration object. The pixel buffer type is disposable, and
 every buffer the family creates is governed by a `using`: a decoded image is released as soon as

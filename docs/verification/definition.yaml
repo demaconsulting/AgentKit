@@ -82,6 +82,11 @@ input-files:
   - docs/verification/agent-kit-tools/agent/agent-profile.md
   - docs/verification/agent-kit-tools/agent/agent-pack.md
   - docs/verification/agent-kit-tools-visual.md
+  - docs/verification/agent-kit-tools-visual/diagram.md
+  - docs/verification/agent-kit-tools-visual/diagram/diagram-help-tool.md
+  - docs/verification/agent-kit-tools-visual/diagram/diagram-pack.md
+  - docs/verification/agent-kit-tools-visual/diagram/diagram-pack-options.md
+  - docs/verification/agent-kit-tools-visual/diagram/diagram-render-tool.md
   - docs/verification/agent-kit-tools-visual/image.md
   - docs/verification/agent-kit-tools-visual/image/image-auto-crop-tool.md
   - docs/verification/agent-kit-tools-visual/image/image-crop-tool.md

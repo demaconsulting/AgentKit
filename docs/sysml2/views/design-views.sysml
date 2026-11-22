@@ -22,6 +22,7 @@ package AgentKitDesignViews {
     private import AgentKitTools_MemorySubsystem::*;
     private import AgentKitTools_AgentSubsystem::*;
     private import AgentKitToolsVisual_ImageSubsystem::*;
+    private import AgentKitToolsVisual_DiagramSubsystem::*;
     private import AgentKitToolsVisual_RenderingSubsystem::*;
 
     view SoftwareStructureView : InterconnectionView {
@@ -91,6 +92,12 @@ package AgentKitDesignViews {
     view ImageView {
         expose Image;
         expose Image::*;
+        render asInterconnectionDiagram;
+    }
+
+    view DiagramView {
+        expose Diagram;
+        expose Diagram::*;
         render asInterconnectionDiagram;
     }
 

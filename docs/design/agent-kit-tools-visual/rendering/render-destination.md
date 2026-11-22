@@ -67,5 +67,5 @@ the temporary file is removed. Every other failure is a refusal or `false`.
 
 #### Callers
 
-The diagram family's render tool saves its pictures through this unit. No tool of the image family
-calls it today; the region tools keep `ImageDestination`, whose rule is never to replace.
+`DiagramRenderTool` saves its pictures through this unit, resolving the destination before it draws. No tool of the
+image family calls it today; the region tools keep `ImageDestination`, whose rule is never to replace.

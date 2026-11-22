@@ -1,0 +1,64 @@
+---
+# Software Unit Requirements for DiagramPackOptions
+#
+# These requirements describe the design-level behavior of the DiagramPackOptions unit.
+
+sections:
+  - title: AgentKitToolsVisual Requirements
+    sections:
+      - title: Diagram Requirements
+        sections:
+          - title: DiagramPackOptions Requirements
+            requirements:
+              - id: AgentKitToolsVisual-Diagram-PackOptions-Defaults
+                title: >-
+                  The diagram pack options shall default to every known language — mermaid,
+                  plantuml, svg, vega-lite and openscad, in that order — and to the default rendering
+                  bounds.
+                justification: |
+                  A host that sets nothing gets the whole family under the same bounds the image
+                  family uses by default.
+                tests:
+                  - DiagramPackOptions_Default_OffersEveryLanguageWithTheDefaultBounds
+
+              - id: AgentKitToolsVisual-Diagram-PackOptions-CanonicalNames
+                title: >-
+                  The diagram pack options shall match a language name case-insensitively, ignoring
+                  surrounding white space, and store it in its canonical lower-case form.
+                justification: |
+                  A host writing "Mermaid" means mermaid; storing the canonical form means every tool
+                  and every message names the language one way.
+                tests:
+                  - DiagramPackOptions_Formats_MixedCase_IsStoredCanonically
+
+              - id: AgentKitToolsVisual-Diagram-PackOptions-RejectsInvalidFormats
+                title: >-
+                  The diagram pack options shall refuse, where it is set, a language list that is
+                  absent or empty, or that names a language that is unknown, null or listed twice.
+                justification: |
+                  An option that is accepted must be applied. A list naming an unknown language could
+                  not be applied, an empty one would offer a render tool that draws nothing, and a
+                  duplicate hides a typing mistake; each is refused where the host made it.
+                tests:
+                  - DiagramPackOptions_Formats_InvalidLists_AreRefused
+
+              - id: AgentKitToolsVisual-Diagram-PackOptions-FormatsCopied
+                title: >-
+                  The diagram pack options shall copy the language list they are given and expose a
+                  read-only view of the copy.
+                justification: |
+                  A pack decides what it offers from the options once; if the host's list could be
+                  changed afterwards, or changed through the options, the options would no longer say
+                  what the pack does.
+                tests:
+                  - DiagramPackOptions_Formats_AssignedList_IsCopiedAndExposedReadOnly
+
+              - id: AgentKitToolsVisual-Diagram-PackOptions-VisualApplied
+                title: >-
+                  The diagram pack options shall carry the rendering bounds they are given and refuse
+                  an absent value.
+                justification: |
+                  The bounds are what keep model-authored drawings from exhausting the host; an
+                  absent value would leave the pack nothing to apply.
+                tests:
+                  - DiagramPackOptions_Visual_IsAppliedAndNullIsRefused

@@ -202,3 +202,31 @@ sections:
             tests:
               - RenderErrorShaper_Shape_SyntaxError_StatesCodeLineColumnAndCaret
               - VisualRenderer_RenderAsync_UnsupportedFeature_IsReportedAsANote
+
+          - id: AgentKit-OTS-CanvasNet-HelpCatalog
+            title: >-
+              The CanvasNet Viewer shall provide a help catalog of cards per format, each with an id,
+              aliases, tags, a summary, a text rendering listing the cards below it and its example
+              sources, that can be filtered by tag so that a hidden card is neither found nor listed.
+            justification: |
+              The diagram help tool serves the library's own help rather than a copy that would
+              drift from what the library draws, and hides the cards a model cannot use by tag.
+              AgentKit's own tests read the index, a card with its example, an alias, and a hidden
+              card refused by id and absent from its parent's list.
+            tags: [ots]
+            tests:
+              - DiagramHelpTool_Help_Topic_ReturnsTheCardWithItsExampleSources
+              - DiagramHelpTool_Help_HostOrientedCards_AreHidden
+              - DiagramHelpTool_Help_UnofferedLanguage_IsNotServed
+
+          - id: AgentKit-OTS-CanvasNet-Positions
+            title: >-
+              The CanvasNet Viewer shall report, when asked, the features of a drawn diagram or chart
+              — their kind, id, text and the edges between them — and the picture's dominant colors.
+            justification: |
+              The text preview of the diagram render tool describes the picture to a model that cannot
+              see it from these reports. AgentKit's own test draws a Mermaid flowchart in text preview
+              and finds its node labels and its colors in the description.
+            tags: [ots]
+            tests:
+              - DiagramRenderTool_Render_TextPreview_SavesAndDescribesThePicture

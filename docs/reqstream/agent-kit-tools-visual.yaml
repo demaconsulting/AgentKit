@@ -26,18 +26,24 @@ sections:
       - id: AgentKitToolsVisual-PolicyDerivedPublication
         title: >-
           The library shall publish each visual tool that can succeed under an access policy that
-          permits no writing anywhere, so that a read-only agent keeps the visual tools it can use.
+          permits no writing anywhere, so that a read-only agent keeps the visual tools it can use,
+          and withhold a visual tool whose only outcome under such a policy would be a refusal.
         tags: [system, security]
         justification: |
           The AgentKit packs withhold a tool whose only outcome under a read-only policy would be
           a refusal, and publish the rest. Each image tool can succeed without writing — reading
           an image is a read, and taking a region without a destination returns image content —
           so the rule publishes every one of them under every policy, and an agent configured to
-          read keeps the ability to look at pictures and examine parts of them closely.
+          read keeps the ability to look at pictures and examine parts of them closely. The
+          diagram help tool touches no file and the image-preview render tool returns its
+          picture without writing, so both are published under every policy; the text-preview
+          render tool must save its picture, so it is withheld where nothing may be written.
         children:
           - AgentKitToolsVisual-Image-Pack-PublishedUnderEveryPolicy
+          - AgentKitToolsVisual-Diagram-Pack-TextPreviewRenderRequiresWriteGrant
         tests:
           - AgentKitToolsVisual_SystemComposition_ReadOnlyPolicy_PublishesEveryImageTool
+          - AgentKitToolsVisual_SystemComposition_DiagramPack_ReadOnlyTextPreview_WithholdsRender
 
       - id: AgentKitToolsVisual-ImageFamily-GuardedImageAccess
         title: >-
@@ -118,6 +124,38 @@ sections:
           - AgentKitToolsVisual_SystemComposition_ImagePack_ContributesTheImageFamily
           - AgentKitToolsVisual_SystemComposition_ImagePackWithoutVision_ContributesNoTools
 
+      - id: AgentKitToolsVisual-DiagramFamily-GuardedDiagramDrawing
+        title: >-
+          The library shall provide a diagram family that draws Mermaid, PlantUML, SVG, Vega-Lite
+          and OpenSCAD source a model writes, under the access policy the composing application
+          supplies, showing a vision-capable model the picture and giving a model that cannot see
+          a description of it in words, reporting a source it cannot draw with its location and
+          the help topic to read, serving the drawing help of each language a topic at a time,
+          saving the picture under the write grant when asked, offering only the languages the
+          application chooses, and publishing its tools under one family prefix.
+        tags: [system, security]
+        justification: |
+          An agent writing documentation needs figures, and the figures it can make are the ones
+          it can write as source: flowcharts and sequence diagrams, charts, framed SVG figures,
+          3D parts. Drawing is only useful if the agent can check what it drew and fix it, so the
+          family returns the picture to a model that can see, describes it to one that cannot,
+          and reports a failure precisely enough to fix on the next attempt. The drawing help is
+          the reference for each language and is served a topic at a time so it does not crowd
+          out the work. Drawing runs under the same confinement and bounds as viewing a file —
+          references stay inside the grants and nothing is fetched from the network — and a
+          picture is saved only where the write grant permits. The family is a pack of its own so
+          an application chooses whether to offer drawing at all, and which languages.
+        children:
+          - AgentKitToolsVisual-Diagram-FamilyComposition
+          - AgentKitToolsVisual-Diagram-VisionOrTextPreview
+          - AgentKitToolsVisual-Diagram-ProgressiveHelp
+          - AgentKitToolsVisual-Diagram-DrawFixRedraw
+          - AgentKit-OTS-CanvasNet-HelpCatalog
+          - AgentKit-OTS-CanvasNet-Positions
+        tests:
+          - AgentKitToolsVisual_SystemComposition_DiagramPack_VisionHost_ContributesImagePreview
+          - AgentKitToolsVisual_SystemComposition_DiagramPack_NonVisionHost_ContributesTextPreview
+
       - id: AgentKitToolsVisual-PathDenials-NoHostAbsolutePath
         title: >-
           The library's path-taking tools shall refuse a location the access policy does not permit
@@ -157,10 +195,12 @@ sections:
         children:
           - AgentKitToolsVisual-Rendering-ReferencesConfined
           - AgentKitToolsVisual-Image-ViewTool-InputCheckedBeforeRead
+          - AgentKitToolsVisual-Diagram-RenderTool-InlineReferencesConfined
           - AgentKit-OTS-CanvasNet-FileAccessPolicy
           - AgentKit-OTS-CanvasNet-NoNetwork
         tests:
           - AgentKitToolsVisual_ReferencedFiles_OutsideTheGrants_AreNeverDrawn
+          - AgentKitToolsVisual_ReferencedFiles_InlineDiagramOutsideTheGrants_IsNeverDrawn
           - AgentKitToolsVisual_Rendering_NetworkReferences_AreNeverFetched
 
       - id: AgentKitToolsVisual-RenderingBounded
@@ -186,6 +226,8 @@ sections:
           - AgentKitToolsVisual-VisualOptions-Defaults
           - AgentKitToolsVisual-VisualOptions-RejectsOutOfRange
           - AgentKitToolsVisual-VisualOptions-MinNotAboveMax
+          - AgentKitToolsVisual-Diagram-RenderTool-ObservesCeilings
+          - AgentKitToolsVisual-Diagram-RenderTool-Timeout
           - AgentKit-OTS-CanvasNet-PixelBudget
           - AgentKit-OTS-CanvasNet-Cancellation
         tests:
@@ -212,6 +254,7 @@ sections:
           (https://github.com/demaconsulting/CanvasNet/issues/168).
         children:
           - AgentKitToolsVisual-Rendering-ActionableFailures
+          - AgentKitToolsVisual-Diagram-RenderTool-ShapedFailure
           - AgentKit-OTS-CanvasNet-Diagnostics
           - AgentKit-OTS-CanvasNet-ViewerRender
         tests:
@@ -235,5 +278,7 @@ sections:
           broken picture behind.
         children:
           - AgentKitToolsVisual-Rendering-SavedUnderWriteGrant
+          - AgentKitToolsVisual-Diagram-RenderTool-SaveAs
+          - AgentKitToolsVisual-Diagram-RenderTool-SaveAsCheckedFirst
         tests:
           - Rendering_Pipeline_DrawnPicture_IsSavedToAPermittedDestination

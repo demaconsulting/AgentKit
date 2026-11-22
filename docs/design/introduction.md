@@ -169,6 +169,14 @@ software items, specifically:
 - **ImageViewTool (Unit)** — Publishes the `image_view` tool
 - **ImagePack (Unit)** — Publishes the image family as one pack, holding its rendering options and
   render gate
+- **Diagram (Subsystem)** — The diagram tool family: drawing diagram source a model writes, showing
+  a vision-capable model the picture or giving a model that cannot see a description of it, serving
+  the drawing help of each language a topic at a time, and saving the picture under the write grant
+- **DiagramPackOptions (Unit)** — The rendering bounds and the offered languages of a diagram pack
+- **DiagramHelpTool (Unit)** — Publishes the `diagram_help` tool
+- **DiagramRenderTool (Unit)** — Publishes the `diagram_render` tool
+- **DiagramPack (Unit)** — Publishes the diagram family as one pack, in a preview mode that follows
+  the host's vision capability
 - **Rendering (Subsystem)** — The internal pieces every visual tool draws through: confinement of
   referenced files, bounded opaque rendering, failure shaping and saving under the write grant
 - **VisualAccess (Unit)** — Maps the access policy onto the rendering library's file-access policy
@@ -382,11 +390,13 @@ the other capability packages an application may attach, depending on `AgentKitC
 depended upon by another capability package, and it references no imaging library.
 
 `AgentKitToolsVisual` is an optional capability package of guarded visual tool families, built on
-the same contract. It ships the `Image` family: reading images and PDF documents for a
-vision-capable agent, returning a region of one, trimming one to the region its own content
-occupies, and drawing documents, drawings and diagram files a provider cannot render. The internal
-`Rendering` subsystem holds what every tool that draws shares, and the `VisualOptions` unit the
-bounds a host sets. It is a package of its own because that family needs an imaging library,
+the same contract. It ships two families. The `Image` family reads images and PDF documents for a
+vision-capable agent, returns a region of one, trims one to the region its own content occupies,
+and draws documents, drawings and diagram files a provider cannot render. The `Diagram` family
+draws diagram source an agent writes — showing the picture to a model that can see, or describing
+it to one that cannot — and serves the drawing help for each language. The internal `Rendering`
+subsystem holds what every tool that draws shares, and the `VisualOptions` unit the bounds a host
+sets. It is a package of its own because those families need an imaging library,
 `CanvasNet`, and keeping it here means the library reaches only the applications that attach the
 visual tools. It depends on `AgentKitCore` alone — not on `AgentKitTools` — and no other capability
 package depends on it.
@@ -538,6 +548,13 @@ organized the same way, one folder per tool family:
 ```text
 src/DemaConsulting.AgentKit.Tools.Visual/
 ├── VisualOptions.cs             — the rendering bounds a host gives a pack
+├── Diagram/
+│   ├── DiagramFormats.cs        — supporting table; the known languages, file names, help tags
+│   ├── DiagramHelpTool.cs       — the diagram_help tool
+│   ├── DiagramPack.cs           — publishes the diagram family as one pack
+│   ├── DiagramPackOptions.cs    — the bounds and languages a diagram pack is given
+│   ├── DiagramPreview.cs        — the two preview modes
+│   └── DiagramRenderTool.cs     — the diagram_render tool
 ├── Image/
 │   ├── ImageAdmission.cs        — shared helper; read within the ceilings, triage, decode
 │   ├── ImageAutoCropTool.cs     — the image_auto_crop tool

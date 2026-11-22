@@ -1374,6 +1374,80 @@ reviews:
       - "src/DemaConsulting.AgentKit.Tools.Visual/Image/ImageViewTool.cs"      # unit source
       - "test/DemaConsulting.AgentKit.Tools.Visual.Tests/Image/ImageViewToolTests.cs"  # unit tests
 
+  # AgentKitToolsVisual-Diagram Review (one per subsystem)
+  - id: AgentKitToolsVisual-Diagram
+    title: Review that AgentKitToolsVisual Diagram Satisfies Subsystem Requirements
+    context:
+      - "docs/design/agent-kit-tools-visual.md"
+      - "docs/reqstream/agent-kit-tools-visual.yaml"
+    paths:
+      - "docs/reqstream/agent-kit-tools-visual/diagram.yaml"                # subsystem requirements
+      - "docs/design/agent-kit-tools-visual/diagram.md"                     # subsystem design
+      - "docs/verification/agent-kit-tools-visual/diagram.md"               # subsystem verification
+      - "test/DemaConsulting.AgentKit.Tools.Visual.Tests/Diagram/DiagramTests.cs"     # subsystem tests
+      - "src/DemaConsulting.AgentKit.Tools.Visual/Diagram/DiagramFormats.cs"          # supporting language table
+
+  # AgentKitToolsVisual-Diagram-DiagramPack Review (one per unit)
+  - id: AgentKitToolsVisual-Diagram-DiagramPack
+    title: Review that AgentKitToolsVisual Diagram DiagramPack Implementation is Correct
+    context:
+      - "docs/design/agent-kit-tools-visual.md"
+      - "docs/reqstream/agent-kit-tools-visual.yaml"
+      - "docs/design/agent-kit-tools-visual/diagram.md"
+      - "docs/reqstream/agent-kit-tools-visual/diagram.yaml"
+    paths:
+      - "docs/reqstream/agent-kit-tools-visual/diagram/diagram-pack.yaml"    # unit requirements
+      - "docs/design/agent-kit-tools-visual/diagram/diagram-pack.md"         # unit design
+      - "docs/verification/agent-kit-tools-visual/diagram/diagram-pack.md"   # unit verification
+      - "src/DemaConsulting.AgentKit.Tools.Visual/Diagram/DiagramPack.cs"      # unit source
+      - "src/DemaConsulting.AgentKit.Tools.Visual/Diagram/DiagramPreview.cs"      # unit source (preview mode)
+      - "test/DemaConsulting.AgentKit.Tools.Visual.Tests/Diagram/DiagramPackTests.cs"  # unit tests
+
+  # AgentKitToolsVisual-Diagram-DiagramPackOptions Review (one per unit)
+  - id: AgentKitToolsVisual-Diagram-DiagramPackOptions
+    title: Review that AgentKitToolsVisual Diagram DiagramPackOptions Implementation is Correct
+    context:
+      - "docs/design/agent-kit-tools-visual.md"
+      - "docs/reqstream/agent-kit-tools-visual.yaml"
+      - "docs/design/agent-kit-tools-visual/diagram.md"
+      - "docs/reqstream/agent-kit-tools-visual/diagram.yaml"
+    paths:
+      - "docs/reqstream/agent-kit-tools-visual/diagram/diagram-pack-options.yaml"    # unit requirements
+      - "docs/design/agent-kit-tools-visual/diagram/diagram-pack-options.md"         # unit design
+      - "docs/verification/agent-kit-tools-visual/diagram/diagram-pack-options.md"   # unit verification
+      - "src/DemaConsulting.AgentKit.Tools.Visual/Diagram/DiagramPackOptions.cs"      # unit source
+      - "test/DemaConsulting.AgentKit.Tools.Visual.Tests/Diagram/DiagramPackOptionsTests.cs"  # unit tests
+
+  # AgentKitToolsVisual-Diagram-DiagramHelpTool Review (one per unit)
+  - id: AgentKitToolsVisual-Diagram-DiagramHelpTool
+    title: Review that AgentKitToolsVisual Diagram DiagramHelpTool Implementation is Correct
+    context:
+      - "docs/design/agent-kit-tools-visual.md"
+      - "docs/reqstream/agent-kit-tools-visual.yaml"
+      - "docs/design/agent-kit-tools-visual/diagram.md"
+      - "docs/reqstream/agent-kit-tools-visual/diagram.yaml"
+    paths:
+      - "docs/reqstream/agent-kit-tools-visual/diagram/diagram-help-tool.yaml"    # unit requirements
+      - "docs/design/agent-kit-tools-visual/diagram/diagram-help-tool.md"         # unit design
+      - "docs/verification/agent-kit-tools-visual/diagram/diagram-help-tool.md"   # unit verification
+      - "src/DemaConsulting.AgentKit.Tools.Visual/Diagram/DiagramHelpTool.cs"      # unit source
+      - "test/DemaConsulting.AgentKit.Tools.Visual.Tests/Diagram/DiagramHelpToolTests.cs"  # unit tests
+
+  # AgentKitToolsVisual-Diagram-DiagramRenderTool Review (one per unit)
+  - id: AgentKitToolsVisual-Diagram-DiagramRenderTool
+    title: Review that AgentKitToolsVisual Diagram DiagramRenderTool Implementation is Correct
+    context:
+      - "docs/design/agent-kit-tools-visual.md"
+      - "docs/reqstream/agent-kit-tools-visual.yaml"
+      - "docs/design/agent-kit-tools-visual/diagram.md"
+      - "docs/reqstream/agent-kit-tools-visual/diagram.yaml"
+    paths:
+      - "docs/reqstream/agent-kit-tools-visual/diagram/diagram-render-tool.yaml"    # unit requirements
+      - "docs/design/agent-kit-tools-visual/diagram/diagram-render-tool.md"         # unit design
+      - "docs/verification/agent-kit-tools-visual/diagram/diagram-render-tool.md"   # unit verification
+      - "src/DemaConsulting.AgentKit.Tools.Visual/Diagram/DiagramRenderTool.cs"      # unit source
+      - "test/DemaConsulting.AgentKit.Tools.Visual.Tests/Diagram/DiagramRenderToolTests.cs"  # unit tests
+
   # AgentKitToolsVisual-Rendering Review (one per subsystem)
   - id: AgentKitToolsVisual-Rendering
     title: Review that AgentKitToolsVisual Rendering Satisfies Subsystem Requirements

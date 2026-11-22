@@ -51,9 +51,11 @@ subsystem's review-set.
 
 ### Interfaces
 
-Nothing in the subsystem is public. It is consumed by the tools of the Image subsystem — today
-`ImageViewTool`, which draws through `VisualRenderer`, confines through `VisualAccess` and shapes
-through `RenderErrorShaper` — and by `ImagePack`, which creates the renderer.
+Nothing in the subsystem is public. It is consumed by `ImageViewTool`, which draws through
+`VisualRenderer`, confines through `VisualAccess` and shapes through `RenderErrorShaper`; by
+`DiagramRenderTool`, which does the same for inline source, resolving its references through
+`VisualAccess.InlineBaseFolder`, naming a help topic through `RenderErrorShaper` and saving through
+`RenderDestination`; and by `ImagePack` and `DiagramPack`, each of which creates its own renderer.
 
 | Interface | Direction | Format | Constraints |
 | --- | --- | --- | --- |

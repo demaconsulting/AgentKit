@@ -112,4 +112,5 @@ Mermaid, PlantUML, Vega-Lite and OpenSCAD libraries.
 #### Callers
 
 `VisualRenderer` classifies an exception and cleans a note's message; `ImageViewTool` shapes a failure
-and scrubs a caption.
+and scrubs a caption; `DiagramRenderTool` shapes a failure with a help reference to `diagram_help`
+and scrubs a caption and notes.

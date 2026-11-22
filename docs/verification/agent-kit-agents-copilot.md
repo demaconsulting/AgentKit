@@ -523,9 +523,9 @@ leaves the TRX in `artifacts/live/` too, and the log beside it when
 
 ### Live Scenarios
 
-Every test name carries the prefix `AgentKitAgentsCopilotLive_`, omitted in the table. Twenty-nine tests
-cover nineteen scenarios; the agent scenario, L10, is three tests, the ambient-server scenario, L12, is
-four, and the MCP-source scenario, L14, is six. L16 to L18 are in `CopilotModelCatalogLiveTests`.
+Every test name carries the prefix `AgentKitAgentsCopilotLive_`, omitted in the table. Thirty tests cover nineteen
+scenarios; the image-delivery scenario, L8, is two tests, the agent scenario, L10, is three, the ambient-server
+scenario, L12, is four, and the MCP-source scenario, L14, is six. L16 to L18 are in `CopilotModelCatalogLiveTests`.
 
 | # | Test | Recorded result |
 | --- | --- | --- |
@@ -538,6 +538,7 @@ four, and the MCP-source scenario, L14, is six. L16 to L18 are in `CopilotModelC
 | L6 | `DefaultDeny_OnlyCustomToolRequestsAreApproved` | Pass |
 | L7 | `LargeOutput_ThirtyKilobyteResult_IsDeliveredInline` | Pass |
 | L8 | `ImageDelivery_ImageReadResult_ReachesTheModel` | Pass |
+| L8b | `DiagramRender_ImageReachesTheModel` | Pass (installed; added 2026-11-22) |
 | L9 | `Usage_RotationOnTheRuntimesUsage_PreservesTheCodeword` | Pass (3 rotations) |
 | L10a | `Agent_Streams_TextDeltas` | Pass |
 | L10b | `Agent_SerializedSession_ResumesOnANewAgent` | Pass |
@@ -582,6 +583,10 @@ few that rest on the model's prose are marked.
   reaches the model inline, complete to its end marker, rather than as a temporary file reference.
 - **L8**: an image an AgentKit tool returns is delivered to the model as binary content; the answer
   names blue and yellow (prose).
+- **L8b**: a picture `diagram_render` draws from inline Mermaid source, in the image preview
+  `DiagramPack.For(Vision)` chooses and with the pack's `Instructions` placed in the session's
+  instructions, is delivered to the model as binary content; the answer names the last node,
+  `Charlie` (prose).
 - **L9**: a `CompactingAgentSession` with a 2,500-token window ceiling rotates at least once on the
   runtime's own usage figures, the figures are positive, and the final answer recalls the codeword
   (prose).
@@ -664,22 +669,22 @@ A live run passes when every test that is not skipped passes. A run in which eve
 variable was unset is not evidence of anything and is not recorded as a pass. A fixture that refuses to start the
 selected runtime fails every test with the refusal; on the installed variants that is the version check or discovery
 working as designed against a machine without a supported CLI, and the refusal's text, which the fixture writes to the
-run's log as "Runtime start refused: …", is the evidence. A failure of L0
-means the runtime that started is not the one selected or not a supported version. A failure of L1, L2, L5 or L6 means a
-confined session is not confined on the real runtime; of L3 or L4, that the reserved-name set or the guard no longer
-matches the runtime; of L7 or L8, that a tool's result does not reach the model intact; of L9, that the session engine
-does not hold on the runtime's own usage; of L10a to L10c, that the agent does not stream, resume or deliver attachments
-as designed; of L11, that a host's Copilot variable reaches the runtime AgentKit starts, or that the control no longer
-fails, so L11 proves nothing; of L12a, that an ambient MCP server survives the confinement; of L12b, that the fixture no
-longer injects one, so L12a proves nothing; of L12c, that the seal's session-scoped disable does not take effect on the
-real runtime; of L12d, that the resume-time disabled list is not honored on a session resumed through the channel; of
-L13, that an agent definition or built-in sub-agent reaches a confined session; of L14a, L14c or L14e, that an MCP
-server of that source starts on the runtime AgentKit owns, or, for L14a, that some server of any source started — a
-renamed built-in server, or a managed-catalog or account server for the run's account; of L14b, L14d or L14f, that the
-probe no longer runs without the protection, so the paired scenario proves nothing; of L15, that an ambient channel
-reaches a session; of L16, that the catalog cannot list the service's models for the signed-in user, or lists the
-automatic choice; of L17, that a chosen effort or tier is not accepted by the runtime, or that no limit is reported
-for it; of L18, that an unoffered effort reaches a session. Any such failure is investigated before a release.
+run's log as "Runtime start refused: …", is the evidence. A failure of L0 means the runtime that started is not the one
+selected or not a supported version. A failure of L1, L2, L5 or L6 means a confined session is not confined on the real
+runtime; of L3 or L4, that the reserved-name set or the guard no longer matches the runtime; of L7, L8 or L8b, that a
+tool's result does not reach the model intact; of L9, that the session engine does not hold on the runtime's own usage;
+of L10a to L10c, that the agent does not stream, resume or deliver attachments as designed; of L11, that a host's
+Copilot variable reaches the runtime AgentKit starts, or that the control no longer fails, so L11 proves nothing; of
+L12a, that an ambient MCP server survives the confinement; of L12b, that the fixture no longer injects one, so L12a
+proves nothing; of L12c, that the seal's session-scoped disable does not take effect on the real runtime; of L12d, that
+the resume-time disabled list is not honored on a session resumed through the channel; of L13, that an agent definition
+or built-in sub-agent reaches a confined session; of L14a, L14c or L14e, that an MCP server of that source starts on the
+runtime AgentKit owns, or, for L14a, that some server of any source started — a renamed built-in server, or a
+managed-catalog or account server for the run's account; of L14b, L14d or L14f, that the probe no longer runs without
+the protection, so the paired scenario proves nothing; of L15, that an ambient channel reaches a session; of L16, that
+the catalog cannot list the service's models for the signed-in user, or lists the automatic choice; of L17, that a
+chosen effort or tier is not accepted by the runtime, or that no limit is reported for it; of L18, that an unoffered
+effort reaches a session. Any such failure is investigated before a release.
 
 ### Recorded Run
 
@@ -844,6 +849,11 @@ calls, vision and reasoning, tier windows of 228,000 (`default`) and 1,000,000 (
 the efforts `low`, `medium`, `high`, `xhigh` and `max`. Sessions created at the effort `low` reported
 a usage limit of 100,000 in `default` and 872,000 in `long_context`, as on the bundled runtime, and
 `not-an-effort` was refused with the same message before any session existed.
+
+L8b was added on 2026-11-22 and run alone on the same machine with `claude-haiku-5.5`, with
+`AGENTKIT_COPILOT_LIVE_RUNTIME` set to `installed` and discovery choosing the CLI. It passed in 43
+seconds: the tool result carried the drawn picture as binary content for the model, and the answer
+named the node labels.
 
 **Platform coverage.** Every recorded live run of the owned runtime ran on Windows; the spawned
 runtime has not yet run live on Linux, and discovery's macOS and Linux locations are verified only by

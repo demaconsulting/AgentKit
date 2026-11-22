@@ -140,6 +140,12 @@ which draw through the real library:
 - **Diagnostics** — `RenderErrorShaper_Shape_SyntaxError_StatesCodeLineColumnAndCaret` observes the
   location of a broken source in each format, and
   `VisualRenderer_RenderAsync_UnsupportedFeature_IsReportedAsANote` a note with its code and line.
+- **Help catalog** — `DiagramHelpTool_Help_Topic_ReturnsTheCardWithItsExampleSources` reads a card
+  with its example source and by an alias; `DiagramHelpTool_Help_HostOrientedCards_AreHidden` and
+  `DiagramHelpTool_Help_UnofferedLanguage_IsNotServed` observe that a card hidden by the tag filter
+  is neither found nor listed.
+- **Positions** — `DiagramRenderTool_Render_TextPreview_SavesAndDescribesThePicture` observes the
+  node labels of a Mermaid flowchart and its dominant colors in a text-preview description.
 
 ### Requirements Coverage
 
@@ -179,3 +185,9 @@ which draw through the real library:
 - **`AgentKit-OTS-CanvasNet-Diagnostics`**:
   RenderErrorShaper_Shape_SyntaxError_StatesCodeLineColumnAndCaret,
   VisualRenderer_RenderAsync_UnsupportedFeature_IsReportedAsANote
+- **`AgentKit-OTS-CanvasNet-HelpCatalog`**:
+  DiagramHelpTool_Help_Topic_ReturnsTheCardWithItsExampleSources,
+  DiagramHelpTool_Help_HostOrientedCards_AreHidden,
+  DiagramHelpTool_Help_UnofferedLanguage_IsNotServed
+- **`AgentKit-OTS-CanvasNet-Positions`**:
+  DiagramRenderTool_Render_TextPreview_SavesAndDescribesThePicture

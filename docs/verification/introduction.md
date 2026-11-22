@@ -169,6 +169,14 @@ constituent software items, specifically:
 - **ImageViewTool (Unit)** — Publishes the `image_view` tool
 - **ImagePack (Unit)** — Publishes the image family as one pack, holding its rendering options and
   render gate
+- **Diagram (Subsystem)** — The diagram tool family: drawing diagram source a model writes, showing
+  a vision-capable model the picture or giving a model that cannot see a description of it, serving
+  the drawing help of each language a topic at a time, and saving the picture under the write grant
+- **DiagramPackOptions (Unit)** — The rendering bounds and the offered languages of a diagram pack
+- **DiagramHelpTool (Unit)** — Publishes the `diagram_help` tool
+- **DiagramRenderTool (Unit)** — Publishes the `diagram_render` tool
+- **DiagramPack (Unit)** — Publishes the diagram family as one pack, in a preview mode that follows
+  the host's vision capability
 - **Rendering (Subsystem)** — The internal pieces every visual tool draws through: confinement of
   referenced files, bounded opaque rendering, failure shaping and saving under the write grant
 - **VisualAccess (Unit)** — Maps the access policy onto the rendering library's file-access policy

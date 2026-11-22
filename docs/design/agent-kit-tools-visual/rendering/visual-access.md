@@ -91,6 +91,6 @@ reference. That fails closed and is accepted.
 
 #### Callers
 
-`ImageViewTool` maps the policy for each view. The diagram family will call `InlineBaseFolder` for
-inline source. `VisualRenderer.WarmUpAsync` builds its own refuse-everything policy and does not call
-this unit.
+`ImageViewTool` maps the policy for each view, and `DiagramRenderTool` for each render, calling
+`InlineBaseFolder` for its inline source. `VisualRenderer.WarmUpAsync` builds its own
+refuse-everything policy and does not call this unit.

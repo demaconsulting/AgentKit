@@ -48,11 +48,11 @@ Install the libraries using the .NET CLI:
 ```bash
 dotnet add package DemaConsulting.AgentKit.Core
 dotnet add package DemaConsulting.AgentKit.Tools
-dotnet add package DemaConsulting.AgentKit.Tools.Visual   # optional: the image tools
+dotnet add package DemaConsulting.AgentKit.Tools.Visual   # optional: the image and diagram tools
 ```
 
-The image family ships in its own package, `DemaConsulting.AgentKit.Tools.Visual`, because it needs
-an imaging library; an application that does not attach the image tools leaves it out, and
+The image and diagram families ship in their own package, `DemaConsulting.AgentKit.Tools.Visual`,
+because they need an imaging library; an application that attaches neither leaves it out, and
 `DemaConsulting.AgentKit.Tools` then brings no imaging dependency.
 
 To build an agent from a provider, add the adapter for the provider you target:
@@ -121,7 +121,7 @@ model's settings before a session starts; see *Choosing a Model* below.
 
 Ready-made guarded tool families ship in
 `DemaConsulting.AgentKit.Tools` — the text file, file, markdown, todo, memory and agent families —
-and in `DemaConsulting.AgentKit.Tools.Visual` — the image family — all described under *Tool
+and in `DemaConsulting.AgentKit.Tools.Visual` — the image and diagram families — all described under *Tool
 Families* below, so a consumer can attach shipped tools
 directly, or write its own tools against this contract. Capability packs that adapt other
 libraries, such as document extraction and speech, into guarded agent tools are planned.
@@ -469,9 +469,10 @@ of excluded tools is an invitation to add them back by another route.
 
 # Tool Families
 
-AgentKit ships seven ready-made guarded tool families: six in `DemaConsulting.AgentKit.Tools`, and
-the image family in `DemaConsulting.AgentKit.Tools.Visual`, whose namespace is
-`DemaConsulting.AgentKit.Tools.Visual.Image`. Each family is a pack
+AgentKit ships eight ready-made guarded tool families: six in `DemaConsulting.AgentKit.Tools`, and
+the image and diagram families in `DemaConsulting.AgentKit.Tools.Visual`, whose namespaces are
+`DemaConsulting.AgentKit.Tools.Visual.Image` and `DemaConsulting.AgentKit.Tools.Visual.Diagram`.
+Each family is a pack
 an application adds to a `ToolPackBuilder`; the builder gates each pack on the host capabilities it
 requires and returns the `AIFunction` list to hand to an agent framework. The table below is the
 single place in the user-facing documentation that names every shipped tool; `lint.ps1` reads the
@@ -504,6 +505,8 @@ row.
 | Image | `image_crop` | Returns or writes a pixel region of a PNG/JPEG | `Vision` | No |
 | Image | `image_auto_crop` | Trims an image to its content, with padding | `Vision` | No |
 | Image | `image_view` | Draws a document, drawing or diagram file as a picture | `Vision` | No |
+| Diagram | `diagram_help` | Returns drawing help for a diagram language, by topic | None | No |
+| Diagram | `diagram_render` | Draws diagram source; shows, describes or saves it | `Vision`/None | Text preview |
 | Todo | `todo_list` | Reports the recorded steps, in recorded order | None | No |
 | Todo | `todo_set` | Records a step, or updates the step with that id | None | No |
 | Todo | `todo_remove` | Drops a step by id from the task list | None | No |
@@ -518,19 +521,22 @@ row.
 
 The two **Tool output** rows are not a family a pack contributes. They ship in
 `DemaConsulting.AgentKit.Core` and are appended to a composition only when it retains large tool
-outputs; see *Large Tool Outputs* above. Everything below about the seven families' tools excludes
+outputs; see *Large Tool Outputs* above. Everything below about the eight families' tools excludes
 them.
 
 The **Capability** column is the host capability the family requires; the **Write grant** column
 says whether the tool is published only when the access policy permits writing somewhere.
 
 **A tool marked `Yes` is not published at all unless the policy permits writing somewhere.** Eleven
-of the twenty-nine family tools are marked `Yes`: five in the text file family and six in the file
-family. If every grant an application configures is read-only — or it configures no grants at all —
-those eleven are absent from the composed list, and the seven families together publish eighteen
-tools rather than twenty-nine. The text file family offers `text_file_search`, `text_file_read` and
-`text_file_copy_lines`; the file family offers `file_list`; the markdown, image, todo, memory and
-agent families are unaffected.
+of the thirty-one family tools are marked `Yes`: five in the text file family and six in the file
+family. `diagram_render` is marked `Text preview`: it is treated the same way only when the diagram
+family is in text preview, where it must save the picture it describes. If every grant an
+application configures is read-only — or it configures no grants at all — those eleven are absent
+from the composed list, and the eight families together publish twenty tools rather than
+thirty-one, or nineteen when the diagram family is in text preview. The text file family offers
+`text_file_search`, `text_file_read` and `text_file_copy_lines`; the file family offers
+`file_list`; the diagram family in text preview offers `diagram_help`; the markdown, image, todo,
+memory and agent families, and the diagram family in image preview, are unaffected.
 
 The question is asked once, of the **whole policy**, not of any particular path. A policy granting
 a read-only workspace and a read-write session folder can genuinely write, so it publishes every
@@ -538,7 +544,7 @@ tool — even though a relative name still lands in the read-only workspace and 
 still refused. Only a policy with no read-write grant anywhere withholds them.
 
 **A policy with no grants at all is the one case where a published tool cannot work.** The eleven
-write-performing tools are withheld as above, and the eighteen survivors are published as usual —
+write-performing tools are withheld as above, and the survivors are published as usual —
 but `text_file_read`, `text_file_search`, `text_file_copy_lines`, `file_list`, `image_read` and
 `image_view` then
 refuse every path they are given, because no path resolves under a policy that grants nothing. That
@@ -580,7 +586,10 @@ The text file (`TextFilePack`), file (`FilePack`), Markdown (`MarkdownPack`), to
 memory (`MemoryPack`) families require no host capability. Two families are gated. The image family
 (`ImagePack`) requires the `Vision` host capability, and the agent family (`AgentPack`) requires
 `Delegation`: unless the host declares the capability, the builder never asks the pack to create
-its tools, so a model is never offered a tool its host cannot use. Where the model was chosen from a
+its tools, so a model is never offered a tool its host cannot use. The diagram family
+(`DiagramPack`) requires `Vision` only in image preview; `DiagramPack.For(host)` chooses image
+preview for a host that declares `Vision` and text preview otherwise, so a host that cannot see
+still receives it. Where the model was chosen from a
 catalog, take the `Vision` declaration from the selected model; see *A Vision-Only Application*.
 
 The image family's region tools and its read tool are one capability. `image_read` states the image's
@@ -660,6 +669,21 @@ left out. It takes an optional `page` (from 1) and an optional `width` in pixels
   drawings a pack runs at once (one). Pass options to `new ImagePack(options)`; each value outside
   its range is refused where it is set. `ImagePack.WarmUpAsync` optionally draws a sample of each
   format once, so the first drawing a model asks for does not pay the libraries' start-up cost.
+
+`diagram_render` and `diagram_help` let a model draw the figures it can write as source — Mermaid,
+PlantUML, SVG, Vega-Lite and OpenSCAD — check them and fix them. `diagram_render` takes the source
+inline, never a path, and draws it under the same confinement and bounds as `image_view`; a
+relative reference in the source resolves against the working directory when the agent may read
+it. In image preview it returns the picture; in text preview it returns a description — the
+picture's size, the labels and features it contains, and its dominant colors — and requires
+`save_as`. A source it cannot draw is reported with its line and column, the offending line with a
+caret, and the `diagram_help` topic of the language's diagnostics. `save_as` writes the picture as
+a `.png` under the write grant and replaces an earlier picture of the same name, so a model can save
+on every attempt. `diagram_help` returns an index of topics, then one topic's card with its example
+sources; the cards written for the application rather than the model are not served.
+`DiagramPackOptions` chooses the languages and the `VisualOptions` bounds, and
+`DiagramPack.Instructions` is a short paragraph an application may add to its agent's instructions;
+the pack never adds it itself.
 
 Three of the families carry state or collaborators beyond the path policy, and an application
 should know what it is attaching:

@@ -117,4 +117,5 @@ names. From the CanvasNet Viewer and core: `CanvasNetViewer.Render`, `ViewerRend
 
 #### Callers
 
-`ImagePack` creates one and calls `WarmUpAsync`; `ImageViewTool` calls `RenderAsync`.
+`ImagePack` and `DiagramPack` each create one and call `WarmUpAsync`; `ImageViewTool`
+and `DiagramRenderTool` call `RenderAsync`, the latter asking for a description in text preview.

@@ -89,6 +89,11 @@ includes:
   - docs/reqstream/agent-kit-tools/agent/agent-pack.yaml
   - docs/reqstream/agent-kit-tools/platform-requirements.yaml
   - docs/reqstream/agent-kit-tools-visual.yaml
+  - docs/reqstream/agent-kit-tools-visual/diagram.yaml
+  - docs/reqstream/agent-kit-tools-visual/diagram/diagram-help-tool.yaml
+  - docs/reqstream/agent-kit-tools-visual/diagram/diagram-pack.yaml
+  - docs/reqstream/agent-kit-tools-visual/diagram/diagram-pack-options.yaml
+  - docs/reqstream/agent-kit-tools-visual/diagram/diagram-render-tool.yaml
   - docs/reqstream/agent-kit-tools-visual/image.yaml
   - docs/reqstream/agent-kit-tools-visual/image/image-auto-crop-tool.yaml
   - docs/reqstream/agent-kit-tools-visual/image/image-crop-tool.yaml

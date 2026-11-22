@@ -1,6 +1,7 @@
 package AgentKitToolsVisual {
     private import SoftwareItemMetadata::*;
     private import AgentKitToolsVisual_ImageSubsystem::*;
+    private import AgentKitToolsVisual_DiagramSubsystem::*;
     private import AgentKitToolsVisual_RenderingSubsystem::*;
     private import AgentKitToolsVisual_VisualOptions::*;
 
@@ -24,6 +25,7 @@ package AgentKitToolsVisual {
         }
 
         part image : Image;
+        part diagram : Diagram;
         part renderingSubsystem : Rendering;
         part visualOptions : VisualOptions;
     }

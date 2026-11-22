@@ -19,7 +19,7 @@ distribution for one reason: its families need an imaging library, and keeping t
 means it reaches only the applications that choose the visual tools, while AgentKitTools carries no
 imaging dependency at all.
 
-The system contains two subsystems and one unit:
+The system contains three subsystems and one unit:
 
 - The **Image** subsystem is the image tool family, publishing `image_read`, `image_crop`,
   `image_auto_crop` and `image_view` under the `image` family prefix and attached to an application
@@ -28,6 +28,13 @@ The system contains two subsystems and one unit:
   non-vision host could not use. `image_read` stays a byte-exact pass-through of what a provider
   renders itself; `image_view` draws the documents, drawings and diagram sources a provider cannot
   render. See *Image Subsystem Design*.
+- The **Diagram** subsystem is the diagram tool family, publishing `diagram_help` and
+  `diagram_render` under the `diagram` family prefix as one pack. `diagram_render` draws Mermaid,
+  PlantUML, SVG, Vega-Lite and OpenSCAD source the model writes inline; in image preview it returns
+  the picture and requires the Vision capability, and in text preview it saves the picture and
+  returns a description of it in words, so a model that cannot see can still draw. `diagram_help`
+  serves the rendering library's drawing help for the offered languages a topic at a time. See
+  *Diagram Subsystem Design*.
 - The **Rendering** subsystem holds the internal pieces every tool that draws shares: the mapping
   of the access policy onto the rendering library's file-access policy (`VisualAccess`), the
   renderer that applies the bounds, the opaque background and the promotions (`VisualRenderer`), the
@@ -53,7 +60,11 @@ application through the AgentKitCore pack contract:
 
 An application adds `ImagePack` to give a vision-capable agent the image family, optionally with
 `VisualOptions` bounding its drawings, and may call `WarmUpAsync` once at start-up so the rendering
-library's first-use cost is not paid while a model waits. A composition to
+library's first-use cost is not paid while a model waits. It adds `DiagramPack` — usually
+`DiagramPack.For(host)`, which chooses image preview for a host that declares Vision and text
+preview otherwise — to let an agent draw, optionally with `DiagramPackOptions` choosing the
+languages and the bounds; the pack's `Instructions` paragraph is offered for the application to
+place in its agent's instructions and is never injected. A composition to
 which no family has been added remains well defined — an empty `ToolPackBuilder` built with a valid
 policy yields an empty tool list — and the image family on a host that has not declared Vision
 contributes no tools, because the composition does not ask its pack for them.
@@ -65,6 +76,10 @@ contributes no tools, because the composition does not ask its pack for them.
 | `ImagePack` | Outbound | AgentKitCore pack contract | Prefix `image`; requires Vision |
 | `ImagePack(VisualOptions?)` | Inbound | `VisualOptions` record | Each value range-checked where set |
 | `ImagePack.WarmUpAsync` | Inbound | `Task` | Optional; host-initiated only |
+| `DiagramPack` | Outbound | AgentKitCore pack contract | Prefix `diagram`; Vision for image preview |
+| `DiagramPack(...)`, `DiagramPack.For` | Inbound | Preview mode, options record | Each value checked where set |
+| `DiagramPack.Instructions` | Outbound | `string` | Offered to the host, never injected |
+| `DiagramPack.WarmUpAsync` | Inbound | `Task` | Optional; host-initiated only |
 
 ## Dependencies
 
@@ -123,11 +138,13 @@ another. The family adds two controls of its own:
   header declares, against the policy's `ToolLimits.MaxImagePixels`, before any pixel data is
   allocated, so a small file cannot provoke a large allocation.
 
-Drawing a document adds controls of its own, all held in the Rendering subsystem:
+Drawing a document or a diagram adds controls of its own, all held in the Rendering subsystem:
 
 - **The input is judged first** — the rendering library never judges the file it is asked to draw,
   so `image_view` takes the read decision for it before anything is learned about it, and draws
-  the bytes it read rather than handing the library a path.
+  the bytes it read rather than handing the library a path. `diagram_render` takes no path at all:
+  its source is given inline, bounded by the read ceiling, and its relative references resolve
+  against the working directory only when the agent may read it.
 - **Referenced files are confined** — every picture, include and data file a document references
   is judged by a file-access policy mapped from the access policy: the grant roots (path as written
   and real path), no links below the starting folder, and AgentKit's own read decision, which
@@ -165,6 +182,18 @@ Drawing a document adds controls of its own, all held in the Rendering subsystem
    own folder as the base its references resolve against, within every bound
 5. **Output**: An opaque PNG with a caption, or the shaped failure text, or a denial
 
+**Diagram path:**
+
+1. **Input**: A language, inline source, and optionally a destination and a width
+2. **Request checks**: The language must be offered, the source within the read ceiling, and a
+   destination — required in text preview — permitted by the write decision, before anything is
+   drawn
+3. **Render**: The renderer draws the source under the mapped file-access policy, with the working
+   directory, when readable, as the base its references resolve against, within every bound
+4. **Save**: A destination is written atomically, replacing an earlier picture
+5. **Output**: In image preview an opaque PNG with a caption; in text preview a description of the
+   picture; otherwise the shaped failure text naming a help topic, or a denial
+
 ### Policy-derived publication
 
 The AgentKit packs follow one rule: a pack withholds a tool whose writes the path policy governs
@@ -173,12 +202,19 @@ when the policy permits no writing anywhere, and publishes everything else.
 | Family | Filters? | Needs a write grant | Read-only total |
 | --- | --- | ---: | ---: |
 | Image | No | none | 4 → **4** |
+| Diagram (image preview) | No | none | 2 → **2** |
+| Diagram (text preview) | Yes | `diagram_render` | 2 → **1** |
 
 All four image tools succeed under a read-only policy. Reading or drawing a file is a read, and
 taking a region without a destination returns image content rather than writing a file. The optional
 `destination` that `image_crop` and `image_auto_crop` both carry does need a write grant, but the
 rule gates a tool on the writes it can only perform, not on whether each argument can be used; see
 *Image Pack Design*, *Image Crop Tool Design* and *Image Auto Crop Tool Design*.
+
+`diagram_help` touches no file, and image-preview `diagram_render` returns its picture without
+writing, so both are published under every policy. Text-preview `diagram_render` requires
+`save_as`, so under a policy that permits no writing anywhere its only outcome would be a refusal,
+and it is withheld; see *DiagramPack Unit Design*.
 
 ## Design Constraints
 
@@ -195,7 +231,7 @@ rule gates a tool on the writes it can only perform, not on whether each argumen
 ### Known Limitations
 
 The rendering library is a prerelease, and the following behaviors of the pinned version are known
-and handled here rather than fixed here:
+and handled here rather than fixed here. They apply to `image_view` and `diagram_render` alike:
 
 - **Format failures carry no stable code or structured location**
   ([CanvasNet #166](https://github.com/demaconsulting/CanvasNet/issues/166)). This is why the
