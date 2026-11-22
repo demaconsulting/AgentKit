@@ -813,6 +813,7 @@ sections:
         children:
           - AgentKitCore-ModelInfo-DescribesAModel
           - AgentKitCore-ModelInfo-CapabilitiesCombine
+          - AgentKitCore-ModelInfo-OwnsItsCollections
           - AgentKitCore-ModelCatalog-FiltersByRequirement
           - AgentKitCore-ModelCatalog-CachesForALifetime
           - AgentKitCore-ModelCatalog-SharesOneRead
@@ -823,16 +824,17 @@ sections:
 
       - id: AgentKitCore-ModelSelection-ValidatedAtSessionStart
         title: >-
-          The library shall let a session start on a model only through settings validated against
-          that model as the provider now describes it, refusing a withdrawn model, a model missing a
+          The library shall validate persisted settings against the model as the provider now
+          describes it when a session starts, refusing a withdrawn model, a model missing a
           capability the application requires, and any effort, tier, window or output limit the
-          model does not accept, with every reason worded to be shown to a user.
+          model does not accept, with every reason worded to be shown to a user, and a provider
+          factory shall accept model settings only as a validated selection.
         tags: [system]
         justification: |
           A persisted choice outlives the provider's offering: a model may be withdrawn, lose a
-          capability, or stop accepting a setting. Validating at every session start, through the
-          only form a provider factory accepts, makes an unvalidated or stale choice impossible to
-          run rather than a provider error part-way through a conversation.
+          capability, or stop accepting a setting. Validating at each session start, and having
+          factories accept settings only as a validated selection, reports a stale choice before
+          the session starts rather than as a provider error part-way through a conversation.
         children:
           - AgentKitCore-ModelCatalog-GatesSessionStart
           - AgentKitCore-ModelSettings-Persistable

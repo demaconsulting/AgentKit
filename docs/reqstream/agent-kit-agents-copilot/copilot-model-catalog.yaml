@@ -98,7 +98,8 @@ sections:
             title: >-
               The unit shall carry the service's information and warning messages as notices of the
               matching kind, its data-retention text as a notice that must be shown, and its display
-              name, vendor, billing multiplier, category and price band.
+              name, vendor, billing multiplier, category and price band, and its prompt and vision
+              limits as read-only additional properties.
             justification: |
               The service says some text is required to be shown to the user, and a picker groups
               and badges models by category and price. Carrying them is what lets an application
@@ -106,6 +107,7 @@ sections:
             tests:
               - CopilotModelCatalog_Map_Messages_BecomeNotices
               - CopilotModelCatalog_Map_PickerMetadata_IsCarried
+              - CopilotModelCatalog_Map_VisionLimits_AreCarriedAsReadOnlyExtras
 
           - id: AgentKitAgentsCopilot-CopilotModelCatalog-OmitsTheAutomaticChoice
             title: >-

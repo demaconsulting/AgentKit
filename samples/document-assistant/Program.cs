@@ -7,10 +7,20 @@ using DemaConsulting.AgentKit.Samples.DocumentAssistant;
 // choice is absorbed entirely inside AgentComposition; nothing here knows or cares which provider
 // is used.
 
-// Exit codes: 0 success (including a clean Ctrl-C), 2 for a usage error, 1 for an unexpected fault.
-const int exitSuccess = 0;
-const int exitUnexpected = 1;
-const int exitUsage = 2;
+// Exit codes (see ExitCodes): 0 success (including a clean Ctrl-C), 2 for a usage error, 1 for a
+// failure — a provider that did not respond in time, or an unexpected fault.
+
+// Ctrl-C ends the run cleanly rather than killing the process: cancel the token and let the work in
+// progress unwind. The handler is registered before anything talks to a provider, so listing models
+// can be canceled too, and the token stays in scope for the cancellation handler below, which is how
+// a Ctrl-C is told apart from a provider timeout. The second Ctrl-C (if the first is mid-turn) still
+// hard-terminates.
+using var cancellation = new CancellationTokenSource();
+Console.CancelKeyPress += (_, eventArgs) =>
+{
+    eventArgs.Cancel = true;
+    cancellation.Cancel();
+};
 
 try
 {
@@ -20,15 +30,15 @@ try
     if (options.HelpRequested)
     {
         Console.WriteLine(CommandLineOptions.HelpText());
-        return exitSuccess;
+        return ExitCodes.Success;
     }
 
     // Listing models is the other terminal action: the picker an application would show, filtered
     // to the models that can run this sample. It needs a provider but no workspace.
     if (options.ListModels)
     {
-        await AgentComposition.ListModelsAsync(options, Console.Out, CancellationToken.None);
-        return exitSuccess;
+        await AgentComposition.ListModelsAsync(options, Console.Out, cancellation.Token);
+        return ExitCodes.Success;
     }
 
     // Resolve the workspace to an absolute path so the anchor is unambiguous and a relative path a
@@ -50,14 +60,6 @@ try
         ?? Path.Combine(Path.GetTempPath(), CommandLineOptions.DefaultSessionFolderName));
     Directory.CreateDirectory(sessionRoot);
 
-    // Ctrl-C ends the run cleanly rather than killing the process: cancel the token and let the
-    // chat loop unwind. The second Ctrl-C (if the first is mid-turn) still hard-terminates.
-    using var cancellation = new CancellationTokenSource();
-    Console.CancelKeyPress += (_, eventArgs) =>
-    {
-        eventArgs.Cancel = true;
-        cancellation.Cancel();
-    };
 
     // Print both locations with their access, because the whole demonstration turns on the reader
     // knowing which location carries which permission, and on seeing that the session path is one
@@ -84,23 +86,24 @@ try
         await ChatLoop.RunAsync(setup.Agent, options, cancellation.Token);
     }
 
-    return exitSuccess;
+    return ExitCodes.Success;
 }
 catch (CommandLineException usageError)
 {
     // A user's mistake: a clean one-line message and a usage exit code, no stack trace.
     await Console.Error.WriteLineAsync(usageError.Message);
     await Console.Error.WriteLineAsync("Run with --help to see the available options.");
-    return exitUsage;
+    return ExitCodes.Usage;
 }
-catch (OperationCanceledException)
+catch (OperationCanceledException canceled)
 {
-    // Ctrl-C: a clean, intentional exit.
-    return exitSuccess;
+    // Ctrl-C is a clean, intentional exit; a cancellation nobody asked for - a provider that did not
+    // respond in time - is reported and fails the run.
+    return await ExitCodes.ReportCancellationAsync(canceled, cancellation.Token, Console.Error);
 }
 catch (Exception unexpected)
 {
     // Anything else is a genuine fault worth a full diagnostic for a developer running the sample.
     await Console.Error.WriteLineAsync($"Unexpected error: {unexpected}");
-    return exitUnexpected;
+    return ExitCodes.Failure;
 }

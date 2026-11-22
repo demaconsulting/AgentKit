@@ -9,6 +9,7 @@ package AgentKitAgentsCopilot {
     private import AgentKitAgentsCopilot_CopilotSessionObserver::*;
     private import AgentKitAgentsCopilot_CopilotSummarizer::*;
     private import AgentKitAgentsCopilot_CopilotTurnChannel::*;
+    private import AgentKitAgentsCopilot_CopilotModelCatalog::*;
 
     doc
     /*

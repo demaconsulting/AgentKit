@@ -161,9 +161,11 @@ ordinal ignoring case.
 | --- | --- |
 | Null `client` | `ArgumentNullException` propagates |
 | Zero or negative lifetime | `ArgumentOutOfRangeException` propagates |
-| The model listing fails | Propagates; not cached, so the next query reads again |
+| The model listing fails | Propagates unchanged — `HttpRequestException` when unreachable; not cached |
+| The `HttpClient` times out during the listing | `TaskCanceledException` propagates; not cached |
 | One model's description fails | That model is listed as unusable; the listing succeeds |
-| Cancellation during a description | `OperationCanceledException` propagates; nothing is cached |
+| The caller cancels during a description | `OperationCanceledException` propagates; nothing is cached |
+| One description times out with no caller cancellation | That model is listed as unusable |
 | Metadata without a usable context length | `ContextWindowTokens` is null; no ceiling is enforced |
 | A server older than the capability report | Listed unusable, with an inferred-capabilities notice |
 

@@ -1,9 +1,10 @@
-package AgentKitCore {
+package AgentKitCore_ModelSettings {
     private import SoftwareItemMetadata::*;
+    private import AgentKitCore_ModelInfo::*;
     private import ScalarValues::*;
 
     part def ModelSettings {
-        doc /* Holds the choices a user makes about the model an agent runs on - the model, and optionally a reasoning effort, a context tier, a context window and an output limit - as plain data an application persists; validates them against a model, reporting every problem in words a user reads; and binds them into a validated selection, the only form a provider factory accepts, together with the exception that lists every reason settings cannot be applied. */
+        doc /* Holds the choices a user makes about the model an agent runs on - the model, and optionally a reasoning effort, a context tier, a context window and an output limit - as plain data an application persists; validates them against a model, reporting every problem in words a user reads; and binds them into a validated selection, the form in which provider factories accept settings, together with the exception that lists every reason settings cannot be applied. */
 
         metadata info : SoftwareInfo {
             sourceFiles = ("src/DemaConsulting.AgentKit.Core/ModelSettings.cs");

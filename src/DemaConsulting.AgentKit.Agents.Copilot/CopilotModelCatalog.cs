@@ -56,6 +56,15 @@ namespace DemaConsulting.AgentKit.Agents.Copilot;
 ///     <b>Additional properties</b> written: <c>max_prompt_tokens</c>,
 ///     <c>vision_max_prompt_images</c>, <c>vision_max_prompt_image_size</c>,
 ///     <c>vision_supported_media_types</c> and <c>policy_terms</c>, where the service reports them.
+///     <c>vision_supported_media_types</c> is an <see cref="IReadOnlyList{T}"/> of
+///     <see cref="string"/>.
+///     </para>
+///     <para>
+///     <b>Failures.</b> A client that cannot list models, for example because it is not connected,
+///     fails with an <see cref="InvalidOperationException"/> that carries the sign-in message, with the
+///     SDK's exception as the inner exception. A runtime disposed by its host fails with
+///     <see cref="ObjectDisposedException"/>. Any other failure, including a cancellation no caller
+///     requested, propagates unchanged. Nothing is cached.
 ///     </para>
 ///     <para>
 ///     Cached, single-flight and safe for concurrent use; see <see cref="CachingModelCatalog"/>.
@@ -462,7 +471,7 @@ public sealed class CopilotModelCatalog : CachingModelCatalog
             properties["vision_max_prompt_image_size"] = vision.MaxPromptImageSize;
             if (vision.SupportedMediaTypes is { Count: > 0 } types)
             {
-                properties["vision_supported_media_types"] = types.ToArray();
+                properties["vision_supported_media_types"] = Array.AsReadOnly(types.ToArray());
             }
         }
 

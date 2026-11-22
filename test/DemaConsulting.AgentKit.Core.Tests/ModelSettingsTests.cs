@@ -336,6 +336,44 @@ public class ModelSettingsTests
     }
 
     /// <summary>
+    ///     Proves the problems validation reports are read-only: the list cannot be cast back and
+    ///     altered.
+    /// </summary>
+    [Fact]
+    public void ModelSettings_Validate_Problems_AreReadOnly()
+    {
+        // Arrange: settings with a problem
+        var settings = new ModelSettings("text-small") { ReasoningEffort = "low" };
+
+        // Act
+        var problems = settings.Validate(ModelTestData.TextModel());
+
+        // Assert
+        Assert.NotEmpty(problems);
+        Assert.False(problems is List<string> or string[]);
+        Assert.Throws<NotSupportedException>(() => ((IList<string>)problems).Add("x"));
+    }
+
+    /// <summary>
+    ///     Proves the exception copies the problems it is given and exposes them read-only.
+    /// </summary>
+    [Fact]
+    public void ModelSettings_Exception_Problems_AreCopiedAndReadOnly()
+    {
+        // Arrange: a mutable list of problems
+        var source = new List<string> { "First problem." };
+        var failure = new ModelSettingsException("m", source);
+
+        // Act: change the source after the exception was built
+        source.Add("Added later.");
+
+        // Assert
+        Assert.Equal("First problem.", Assert.Single(failure.Problems));
+        Assert.False(failure.Problems is List<string> or string[]);
+        Assert.Throws<NotSupportedException>(() => ((IList<string>)failure.Problems).Add("x"));
+    }
+
+    /// <summary>
     ///     Proves a selection can be created only by validation, never directly.
     /// </summary>
     [Fact]

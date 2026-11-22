@@ -669,7 +669,7 @@ them without Core choosing a provider on the application's behalf. Its `Delegati
 what lets a guarded tool resolve an oversized output on the way out while forwarding every piece of
 its metadata unchanged. The model-selection units use its `ReasoningOptions` and `ReasoningEffort`,
 the `ModelId` and `MaxOutputTokens` request options, and `AdditionalPropertiesDictionary`, so a
-selection travels on the request options every provider's client already reads. Nothing further is
+selection travels on the standard request options an `IChatClient` reads. Nothing further is
 taken:
 there is no provider package, no agent framework package and no transitive runtime. As a
 third-party published library, `Microsoft.Extensions.AI.Abstractions` is an OTS item; its

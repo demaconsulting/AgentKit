@@ -14,7 +14,7 @@ choice therefore rides on every request, streaming and not.
 
 **Provider-neutral.** The effort is applied as `ChatOptions.Reasoning`, which a provider's client
 maps to its own wire option — OllamaSharp sends it as Ollama's `think` — so no provider-specific
-option is written here, and the same decorator serves every `IChatClient`.
+option is written here, and the same decorator works in any `IChatClient` pipeline.
 
 **Nothing is dropped silently.** Two parts of a selection cannot travel through an `IChatClient`: a
 context tier, which has no meaning there, and an effort with no provider-neutral equivalent, such

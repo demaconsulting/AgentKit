@@ -152,7 +152,9 @@ with the service's code, skipping blank messages; the data-retention text as `Re
 
 Additional properties, written where the service reports them: `max_prompt_tokens`,
 `vision_max_prompt_images`, `vision_max_prompt_image_size`, `vision_supported_media_types` and
-`policy_terms`.
+`policy_terms`. Every value is immutable: numbers and strings, and the media types as an
+`IReadOnlyList<string>` wrapping a fresh array, so nothing reachable from a cached description can be
+altered.
 
 ### Key Methods
 
@@ -205,7 +207,7 @@ additional properties — each as the tables above give.
 | Runtime disposed before construction | `ObjectDisposedException` propagates |
 | Runtime disposed after construction | `ObjectDisposedException` from the next read; nothing restarted |
 | The client cannot list models | `InvalidOperationException` with `SignInMessage`; not cached |
-| Any other failure of the read | Propagates unchanged; not cached |
+| Any other failure, including a cancellation no caller requested | Propagates unchanged; not cached |
 | Zero or negative lifetime | `ArgumentOutOfRangeException` propagates |
 | A null or unnamed entry in the listing | Skipped |
 

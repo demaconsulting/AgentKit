@@ -253,6 +253,26 @@ public class ModelCatalogTests
     }
 
     /// <summary>
+    ///     Proves a listing is read-only, and an attempt to alter it leaves the cached listing whole.
+    /// </summary>
+    [Fact]
+    public async Task ModelCatalog_ListAsync_Result_IsReadOnlyAndDoesNotAlterTheCache()
+    {
+        // Arrange
+        var catalog = new ScriptedModelCatalog([ModelTestData.VisionModel("a"), ModelTestData.VisionModel("b")]);
+        var first = await catalog.ListAsync(cancellationToken: TestContext.Current.CancellationToken);
+
+        // Act: try to clear the listing through a mutable interface, then list again
+        Assert.False(first is ModelInfo[] or List<ModelInfo>);
+        Assert.Throws<NotSupportedException>(() => ((IList<ModelInfo>)first).Clear());
+        var second = await catalog.ListAsync(cancellationToken: TestContext.Current.CancellationToken);
+
+        // Assert: the second listing is complete and came from the cache
+        Assert.Equal(["a", "b"], second.Select(model => model.Id));
+        Assert.Equal(1, catalog.Reads);
+    }
+
+    /// <summary>
     ///     Proves a lookup finds an unusable model, so validation can say why it cannot be used.
     /// </summary>
     [Fact]

@@ -708,7 +708,7 @@ same list and appends `tool_output_read` and `tool_output_search` after every pa
 
 An application that lets its user choose the model needs three things from the provider: the list of
 models, what each one can do, and a check that a saved choice still holds. AgentKit Core describes
-models the same way on every provider, and each adapter package reads its provider's own list.
+models in one shape for each supported provider, and each adapter package reads its provider's own list.
 
 ## Listing Models
 
@@ -734,8 +734,11 @@ var visionModels = await catalog.ListAsync(new ModelQuery
 ```
 
 On Copilot, `new CopilotModelCatalog(runtime)` takes the `CopilotRuntime` AgentKit started, and lists
-the models the service offers the signed-in user. A catalog that cannot reach the service fails with
-an `InvalidOperationException` that says to sign in to GitHub Copilot.
+the models the service offers the signed-in user. When the runtime's client cannot list models — for
+example because you are not signed in — the catalog fails with an `InvalidOperationException` that says
+to sign in to GitHub Copilot. Other failures propagate as they occur. An Ollama catalog that cannot
+reach its server fails with the client's `HttpRequestException`, or with an `OperationCanceledException`
+when the client times out even though your token was not canceled.
 
 A catalog reads its provider once and keeps the list for five minutes, so a picker that lists on every
 keystroke costs one read. It is safe for concurrent use: callers that arrive during a read share it.
@@ -826,9 +829,13 @@ rather than as a provider error part-way through a conversation. For example:
 
 > Model 'text-small' does not support vision, which this application requires.
 
-The result is a `ModelSelection`. Only validation creates one, so holding one proves the check ran.
-The factories take a model choice as a `ModelSelection`, never as raw settings, and apply it once when
-a session starts; the settings do not change for the life of that session.
+`ModelSettingsException` derives from `InvalidOperationException`, so if you also handle
+`InvalidOperationException` — for example the Copilot catalog's sign-in failure — catch
+`ModelSettingsException` first. A failure to read the catalog reaches you as the catalog raises it.
+
+The result is a `ModelSelection`. Only validation creates one, so holding one shows the check ran.
+The factories take model settings as a `ModelSelection` rather than as raw settings, and apply it once
+when a session starts; the settings do not change for the life of that session.
 
 ## A Vision-Only Application
 

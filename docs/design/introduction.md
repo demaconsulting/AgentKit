@@ -90,8 +90,8 @@ software items, specifically:
   gate a session starts through
 - **ModelSettings (Unit)** — The persistable settings a user chooses, their validation against a
   model, and the validated `ModelSelection` a provider factory accepts
-- **ModelSettingsChatClient (Unit)** — The decorator that applies a selection to every `IChatClient`
-  request without overriding what the caller set
+- **ModelSettingsChatClient (Unit)** — The decorator that applies a selection to each request through an
+  `IChatClient` pipeline without overriding what the caller set
 - **AgentKitTools (System)** — A general-purpose capability package of guarded tool families
   built on the AgentKitCore contract, organized as one subsystem per tool family
 - **TextFile (Subsystem)** — The text file tool family: policy-governed searching, reading,
@@ -272,8 +272,10 @@ and what `AgentKitAgentsOllama` adds beneath it is making the context window tha
 told the one the Ollama instance is actually running.
 
 A fourth product requirement, `AgentKit-ModelSelection`, promises that an application can list a
-provider's models, filter them by capability, and start a session only on a validated selection, on
-all three providers. Core and the three adapters deliver it jointly, and the chapter records that too.
+provider's models, filter them by capability, and start a session on a validated selection: the Copilot
+and Ollama adapters list their providers' models, and an `IChatClient` application can validate against a
+model description it builds itself. Core and the three adapters deliver it jointly, and the chapter
+records that too.
 
 Version applicability: This design applies to all versions of the AgentKit.
 
@@ -418,7 +420,7 @@ src/DemaConsulting.AgentKit.Core/
 ├── ModelCatalog.cs             — the catalog contract, the query, the caching base and SelectAsync
 ├── ModelInfo.cs                — the provider-neutral model description and its capability flags
 ├── ModelSettings.cs            — persistable settings, their validation, and the validated selection
-├── ModelSettingsChatClient.cs  — applies a selection to every IChatClient request
+├── ModelSettingsChatClient.cs  — applies a selection to each request through an IChatClient pipeline
 ├── PathPolicy.cs               — the working-directory anchor, access grants, the single
 │                                 containment decision, and the limits it carries
 ├── PathRule.cs                 — one access grant: unrestricted or rooted, read-only or

@@ -2,7 +2,7 @@
 # Software Unit Requirements for ModelCatalog
 #
 # These requirements describe the design-level behavior of the ModelCatalog unit: the catalog
-# contract, the listing query, the caching base every provider catalog shares, and the
+# contract, the listing query, the caching base the provider catalogs share, and the
 # session-start gate.
 
 sections:
@@ -31,7 +31,8 @@ sections:
             title: >-
               A caching catalog shall read its provider only when first asked, shall serve later
               queries from that reading for five minutes unless given another positive lifetime, and
-              shall read again once the reading is older than that.
+              shall read again once the reading is older than that; a listing it returns shall be
+              read-only, so a caller cannot alter the cached reading.
             justification: |
               A picker lists models far more often than a provider's offering changes, and a
               provider listing is a network call that some providers rate-limit. Five minutes is
@@ -42,6 +43,7 @@ sections:
               - ModelCatalog_ListAsync_WithinLifetime_ReadsOnce
               - ModelCatalog_ListAsync_AfterLifetime_ReadsAgain
               - ModelCatalog_Construct_NonPositiveLifetime_Throws
+              - ModelCatalog_ListAsync_Result_IsReadOnlyAndDoesNotAlterTheCache
 
           - id: AgentKitCore-ModelCatalog-SharesOneRead
             title: >-

@@ -105,7 +105,9 @@ dotnet run --project samples/document-assistant -- \
 
 Only the `--provider` value changes what the sample does; the tools, the session, and the chat loop
 are identical for both. Omitting `--prompt` starts an interactive chat that retains conversation state
-across turns and ends on `exit`, `quit`, Ctrl-C, or end-of-input.
+across turns and ends on `exit`, `quit`, Ctrl-C, or end-of-input. A provider that does not respond
+within the sample's client timeout is reported on standard error and the sample exits with code 1;
+Ctrl-C still exits cleanly with code 0.
 
 ## Choosing the Model
 

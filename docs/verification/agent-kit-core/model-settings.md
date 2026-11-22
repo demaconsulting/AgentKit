@@ -42,11 +42,12 @@ within the `DemaConsulting.AgentKit.Core.Tests` project.
 
 ### Acceptance Criteria
 
-A unit test run passes when all twenty-one scenarios below pass without error or exception beyond those
+A unit test run passes when all twenty-three scenarios below pass without error or exception beyond those
 explicitly asserted. Any settings constructed or copied without a model, any settings that do not
 survive a JSON round trip, any rule that accepts what it should refuse or refuses what it should
 accept, any message that differs from the documented text, any problem left unreported when several
-apply, any selection created other than by validation, any selection carrying an approximated
+apply, any list of problems that can be cast back and altered or that changes with the list it was
+copied from, any selection created other than by validation, any selection carrying an approximated
 neutral effort or the wrong tier window, or any default the provider did not publish each constitute
 a failure.
 
@@ -168,6 +169,20 @@ and a negative window — produce five problems rather than only the first.
 
 Error path. Binding settings with two problems throws `ModelSettingsException` naming the model,
 carrying both problems, with a message beginning "Model settings for 'text-small' are not valid: ".
+
+#### AgentKitCore-ModelSettings-ReportsEveryProblem: The Problems Validation Reports Are Read-Only
+
+**Test**: `ModelSettings_Validate_Problems_AreReadOnly`
+
+Error path. The problems `Validate` returns are neither a `List<string>` nor an array, and adding
+one through `IList<string>` throws `NotSupportedException`.
+
+#### AgentKitCore-ModelSettings-ReportsEveryProblem: The Exception Keeps Its Own Read-Only Copy
+
+**Test**: `ModelSettings_Exception_Problems_AreCopiedAndReadOnly`
+
+A problem added to the list an exception was built from does not appear in `Problems`, which is
+neither a `List<string>` nor an array and refuses an addition through `IList<string>`.
 
 #### AgentKitCore-ModelSettings-OnlyValidatedSelectionsExist: Valid Settings Yield a Selection
 

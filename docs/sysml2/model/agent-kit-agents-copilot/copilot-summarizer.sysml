@@ -19,5 +19,5 @@ package AgentKitAgentsCopilot_CopilotSummarizer {
     dependency CopilotSummarizer to CopilotRuntime;
 
     // Each consolidation runs on a validated model selection when the host supplies one.
-    dependency CopilotSummarizer to AgentKitCore::ModelSettings;
+    dependency CopilotSummarizer to AgentKitCore_ModelSettings::ModelSettings;
 }

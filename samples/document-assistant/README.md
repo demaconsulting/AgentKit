@@ -201,6 +201,10 @@ Omit `--prompt` to start an interactive chat instead. The conversation keeps its
 turns, so you can refer back to earlier answers. Type `exit` or `quit`, press Ctrl-C, or reach
 end-of-input to leave.
 
+If the provider stops responding in time — for example, Ollama does not answer within the sample's
+client timeout, two minutes when listing models and ten during a chat — the sample prints the reason
+to standard error and exits with code 1; Ctrl-C still ends the run cleanly with code 0.
+
 ## Options
 
 | Option | Description |

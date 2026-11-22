@@ -7,7 +7,9 @@ This document describes the unit-level verification strategy for the `ModelInfo`
 ### Verification Approach
 
 The unit is plain data and two pure functions, so it is verified directly: tests build descriptions
-by hand, call `Supports` and `ToHostCapabilities`, and assert the results. Nothing is mocked,
+by hand, call `Supports` and `ToHostCapabilities`, and assert the results. The ownership scenarios
+build a description from mutable lists and a mutable dictionary, change them afterwards, and assert
+the description is unchanged and its collections refuse a change. Nothing is mocked,
 because nothing is reached beyond the unit itself.
 
 The descriptions come from the shared `ModelTestData` helper — a vision model, a text-only model and
@@ -33,12 +35,14 @@ the `DemaConsulting.AgentKit.Core.Tests` project.
 
 ### Acceptance Criteria
 
-A unit test run passes when all six scenarios below pass without error or exception beyond those
+A unit test run passes when all twelve scenarios below pass without error or exception beyond those
 explicitly asserted. A hand-built description that is not usable by default or carries a missing
 list, a combined requirement satisfied by a model reporting only part of it, a requirement of
 nothing that some model fails, a flag member that is neither zero nor a single bit, a vision model
-contributing anything but the vision host capability, or a text model contributing any host
-capability each constitute a failure.
+contributing anything but the vision host capability, a text model contributing any host
+capability, a description changed through a collection it was built from or exposes, a list held
+unchanged by a `with` expression that replaced it, a null entry accepted, or a null list left
+missing each constitute a failure.
 
 ### Test Scenarios
 
@@ -85,3 +89,50 @@ delegation stays the application's to declare.
 Error path for the image tool family: a model that calls tools and reasons but cannot see, and a
 model reporting nothing, each contribute `HostCapabilities.None`, so the image family is not offered
 to a model that cannot see what it returns.
+
+#### AgentKitCore-ModelInfo-OwnsItsCollections: Changing a Source List Leaves the Description Unchanged
+
+**Test**: `ModelInfo_Lists_SourceMutatedAfterInit_InstanceUnchanged`
+
+Normal operation. A description is built from mutable effort, tier and notice lists, which are then
+added to, cleared and overwritten; the description still holds exactly the entries it was built
+with.
+
+#### AgentKitCore-ModelInfo-OwnsItsCollections: An Exposed List Cannot Be Cast Back and Altered
+
+**Test**: `ModelInfo_Lists_CannotBeCastBackAndMutated`
+
+Error path. None of the three lists is an array or a `List<T>`, and adding an entry or replacing
+one through `IList<T>` throws `NotSupportedException`, so a caller holding a cached description
+cannot change it under another.
+
+#### AgentKitCore-ModelInfo-OwnsItsCollections: A List Replaced by `with` Is Copied
+
+**Test**: `ModelInfo_With_ReplacedList_IsCopied`
+
+Boundary condition for the record's copy. A `with` expression that replaces the notices copies the
+replacement, so changing its source afterwards leaves the copy unchanged, and the original
+description keeps its own notices.
+
+#### AgentKitCore-ModelInfo-OwnsItsCollections: The Additional Properties Are Copied and Read-Only
+
+**Test**: `ModelInfo_AdditionalProperties_SourceMutatedAfterInit_InstanceUnchanged`
+
+The `AdditionalPropertiesDictionary` a description is built from is changed afterwards; the
+description keeps the original entry, still finds it by a key of another case, is not the source
+dictionary's type, and throws `NotSupportedException` on a write through
+`IDictionary<string, object?>`.
+
+#### AgentKitCore-ModelInfo-OwnsItsCollections: A Null Entry Is Refused
+
+**Test**: `ModelInfo_Lists_NullEntry_IsRefused`
+
+Error path. A notice list holding a null entry is refused with an `ArgumentException` naming the
+list, rather than failing later inside validation.
+
+#### AgentKitCore-ModelInfo-OwnsItsCollections: A Null List Is Taken as Empty
+
+**Test**: `ModelInfo_Lists_Null_IsEmpty`
+
+Boundary condition, as a deserializer may produce. Each list set to null reads back as empty rather
+than missing, matching a description built without the list.

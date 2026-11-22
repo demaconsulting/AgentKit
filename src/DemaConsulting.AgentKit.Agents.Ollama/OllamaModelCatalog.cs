@@ -50,6 +50,13 @@ namespace DemaConsulting.AgentKit.Agents.Ollama;
 ///     <c>quantization_level</c> and <c>size_bytes</c>, where the server reports them.
 ///     </para>
 ///     <para>
+///     <b>Failures.</b> A listing that cannot reach the server fails with the client's exception:
+///     <see cref="System.Net.Http.HttpRequestException"/> when the server is unreachable, or
+///     <see cref="TaskCanceledException"/> (an <see cref="OperationCanceledException"/>) when the
+///     <see cref="System.Net.Http.HttpClient"/> times out. The failure is not cached. A model whose
+///     description fails, including a timed-out description, is listed as unusable instead.
+///     </para>
+///     <para>
 ///     Cached, single-flight and safe for concurrent use; see <see cref="CachingModelCatalog"/>.
 ///     </para>
 /// </remarks>

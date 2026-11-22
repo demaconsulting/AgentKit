@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using Microsoft.Extensions.AI;
 
 namespace DemaConsulting.AgentKit.Core;
@@ -171,6 +172,13 @@ public sealed record ModelNotice(ModelNoticeKind Kind, string Message, string? C
 ///     otherwise; see <see cref="ModelCapabilities"/>.
 ///     </para>
 ///     <para>
+///     <b>Each list is copied when set and exposed read-only</b>, and so is
+///     <see cref="AdditionalProperties"/>, so changing a collection the description was built from
+///     does not change the description, and a list it exposes cannot be cast back and altered. A
+///     <see langword="with"/> expression copies any list it replaces. A <see langword="null"/> list
+///     is taken as empty; a list holding a <see langword="null"/> entry is refused.
+///     </para>
+///     <para>
 ///     Instances are immutable and safe for concurrent use.
 ///     </para>
 /// </remarks>
@@ -200,6 +208,26 @@ public sealed record ModelNotice(ModelNoticeKind Kind, string Message, string? C
 /// </example>
 public sealed record ModelInfo
 {
+    /// <summary>
+    ///     The owned, read-only copy behind <see cref="ReasoningEfforts"/>.
+    /// </summary>
+    private readonly IReadOnlyList<ModelReasoningEffort> _reasoningEfforts = [];
+
+    /// <summary>
+    ///     The owned, read-only copy behind <see cref="ContextTiers"/>.
+    /// </summary>
+    private readonly IReadOnlyList<ModelContextTier> _contextTiers = [];
+
+    /// <summary>
+    ///     The owned, read-only copy behind <see cref="Notices"/>.
+    /// </summary>
+    private readonly IReadOnlyList<ModelNotice> _notices = [];
+
+    /// <summary>
+    ///     The owned, read-only copy behind <see cref="AdditionalProperties"/>.
+    /// </summary>
+    private readonly IReadOnlyDictionary<string, object?>? _additionalProperties;
+
     /// <summary>
     ///     Gets the provider that offers the model, for example <c>copilot</c> or <c>ollama</c>.
     /// </summary>
@@ -266,7 +294,15 @@ public sealed record ModelInfo
     /// <summary>
     ///     Gets the reasoning efforts the model accepts, in the order a picker should show them.
     /// </summary>
-    public IReadOnlyList<ModelReasoningEffort> ReasoningEfforts { get; init; } = [];
+    /// <remarks>
+    ///     Copied when set and exposed read-only. A <see langword="null"/> list is taken as empty.
+    /// </remarks>
+    /// <exception cref="ArgumentException">The list set holds a <see langword="null"/> entry.</exception>
+    public IReadOnlyList<ModelReasoningEffort> ReasoningEfforts
+    {
+        get => _reasoningEfforts;
+        init => _reasoningEfforts = Own(value, nameof(ReasoningEfforts));
+    }
 
     /// <summary>
     ///     Gets the identifier of the effort the provider applies when none is chosen, or
@@ -281,7 +317,15 @@ public sealed record ModelInfo
     /// <summary>
     ///     Gets the context tiers the model offers, in the order a picker should show them.
     /// </summary>
-    public IReadOnlyList<ModelContextTier> ContextTiers { get; init; } = [];
+    /// <remarks>
+    ///     Copied when set and exposed read-only. A <see langword="null"/> list is taken as empty.
+    /// </remarks>
+    /// <exception cref="ArgumentException">The list set holds a <see langword="null"/> entry.</exception>
+    public IReadOnlyList<ModelContextTier> ContextTiers
+    {
+        get => _contextTiers;
+        init => _contextTiers = Own(value, nameof(ContextTiers));
+    }
 
     /// <summary>
     ///     Gets the identifier of the tier the provider applies when none is chosen, or
@@ -310,7 +354,15 @@ public sealed record ModelInfo
     /// <summary>
     ///     Gets the messages about the model an application should show its user.
     /// </summary>
-    public IReadOnlyList<ModelNotice> Notices { get; init; } = [];
+    /// <remarks>
+    ///     Copied when set and exposed read-only. A <see langword="null"/> list is taken as empty.
+    /// </remarks>
+    /// <exception cref="ArgumentException">The list set holds a <see langword="null"/> entry.</exception>
+    public IReadOnlyList<ModelNotice> Notices
+    {
+        get => _notices;
+        init => _notices = Own(value, nameof(Notices));
+    }
 
     /// <summary>
     ///     Gets provider-specific extras the neutral fields do not carry, or <see langword="null"/>
@@ -318,9 +370,23 @@ public sealed record ModelInfo
     /// </summary>
     /// <remarks>
     ///     Each catalog documents the keys it writes. Nothing in AgentKit reads them; they exist for
-    ///     an application that wants to show more than the neutral fields hold.
+    ///     an application that wants to show more than the neutral fields hold. The entries are copied
+    ///     when set into a dictionary whose keys compare ordinally ignoring case, as an
+    ///     <see cref="AdditionalPropertiesDictionary"/>'s do, and exposed read-only; a catalog may pass
+    ///     the <see cref="AdditionalPropertiesDictionary"/> it built. The values are not copied, so a
+    ///     catalog stores only immutable values, such as numbers, strings and read-only lists.
     /// </remarks>
-    public AdditionalPropertiesDictionary? AdditionalProperties { get; init; }
+    /// <exception cref="ArgumentException">
+    ///     The dictionary set holds two keys that differ only in case.
+    /// </exception>
+    public IReadOnlyDictionary<string, object?>? AdditionalProperties
+    {
+        get => _additionalProperties;
+        init => _additionalProperties = value is null
+            ? null
+            : new ReadOnlyDictionary<string, object?>(
+                new Dictionary<string, object?>(value, StringComparer.OrdinalIgnoreCase));
+    }
 
     /// <summary>
     ///     Tests whether the model reports every capability in a requirement.
@@ -328,6 +394,26 @@ public sealed record ModelInfo
     /// <param name="required">The capabilities required. <see cref="ModelCapabilities.None"/> is satisfied by every model.</param>
     /// <returns><see langword="true"/> when every required flag is set on <see cref="Capabilities"/>.</returns>
     public bool Supports(ModelCapabilities required) => (Capabilities & required) == required;
+
+    /// <summary>
+    ///     Copies a list set on the description into an array exposed read-only.
+    /// </summary>
+    /// <typeparam name="T">The entry type.</typeparam>
+    /// <param name="value">The list set, or <see langword="null"/> for an empty one.</param>
+    /// <param name="name">The property's name, reported when an entry is <see langword="null"/>.</param>
+    /// <returns>A read-only view over the copy.</returns>
+    /// <exception cref="ArgumentException"><paramref name="value"/> holds a <see langword="null"/> entry.</exception>
+    private static IReadOnlyList<T> Own<T>(IEnumerable<T>? value, string name)
+        where T : class
+    {
+        T[] copy = [.. value ?? []];
+        if (Array.Exists(copy, item => item is null))
+        {
+            throw new ArgumentException($"{name} must not contain a null entry.", name);
+        }
+
+        return Array.AsReadOnly(copy);
+    }
 }
 
 /// <summary>

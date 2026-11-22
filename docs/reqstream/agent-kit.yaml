@@ -187,17 +187,17 @@ sections:
 
       - id: AgentKit-ModelSelection
         title: >-
-          An application shall be able to list the models a provider offers with their
-          capabilities, filter them by the capabilities it requires, and start a session only with
-          settings validated against the selected model, on GitHub Copilot, on Ollama and on any
-          IChatClient provider.
+          An application shall be able to list the models GitHub Copilot and Ollama offer with their
+          capabilities, filter them by the capabilities it requires, and start a session with
+          settings validated against the selected model; an application on an IChatClient provider
+          shall be able to validate settings against a model description it builds itself.
         tags: [system]
         justification: |
           The first application built on AgentKit offers its user a choice of model and shows only
           models that can see. It needs the provider's own list, described the same way whichever
           provider it is; a filter on capability; a choice of effort, tier and window the model
-          actually accepts; and a guarantee that what was chosen yesterday is still valid when the
-          session starts today — and that the image tools are offered only because the chosen model
+          actually accepts; and a check, when the session starts today, that what was chosen
+          yesterday is still valid — and that the image tools are offered only because the chosen model
           can see. The description, filtering and validation are AgentKit Core's; reading each
           provider and applying the choice to it are the adapters'.
 

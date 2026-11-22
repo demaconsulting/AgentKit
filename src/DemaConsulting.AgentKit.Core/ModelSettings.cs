@@ -15,10 +15,10 @@ namespace DemaConsulting.AgentKit.Core;
 ///     offers today.
 ///     </para>
 ///     <para>
-///     <b>Never applied unvalidated.</b> Provider factories accept a <see cref="ModelSelection"/>,
+///     <b>Validated before use.</b> Provider factories accept a <see cref="ModelSelection"/>,
 ///     which only <see cref="Bind"/> and <see cref="ModelCatalogExtensions.SelectAsync"/> create, so
-///     settings that name a withdrawn model or an effort the model no longer accepts cannot reach a
-///     session. <see cref="Validate"/> reports the same problems without throwing, for a picker that
+///     settings that name a withdrawn model or an effort the model no longer accepts are refused before a
+///     session starts. <see cref="Validate"/> reports the same problems without throwing, for a picker that
 ///     wants to explain them as the user chooses.
 ///     </para>
 ///     <para>
@@ -157,7 +157,7 @@ public sealed record ModelSettings
     /// </remarks>
     /// <param name="model">The model to check against. Must not be <see langword="null"/>.</param>
     /// <param name="required">The capabilities the application requires of the model.</param>
-    /// <returns>The problems found; empty when the settings are valid.</returns>
+    /// <returns>The problems found, as a read-only list; empty when the settings are valid.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="model"/> is <see langword="null"/>.</exception>
     public IReadOnlyList<string> Validate(ModelInfo model, ModelCapabilities required = ModelCapabilities.None)
     {
@@ -189,7 +189,8 @@ public sealed record ModelSettings
         ValidateWindow(model, problems);
         ValidateMaxOutput(model, problems);
 
-        return problems;
+        // Read-only, so the result cannot be cast back to a list and altered.
+        return problems.AsReadOnly();
     }
 
     /// <summary>
@@ -226,7 +227,7 @@ public sealed record ModelSettings
     private static ModelReasoningEffort? FindEffort(ModelInfo model, string? id) =>
         id is null
             ? null
-            : (model.ReasoningEfforts ?? []).FirstOrDefault(effort => string.Equals(effort.Id, id, StringComparison.OrdinalIgnoreCase));
+            : model.ReasoningEfforts.FirstOrDefault(effort => string.Equals(effort.Id, id, StringComparison.OrdinalIgnoreCase));
 
     /// <summary>
     ///     Finds a model's tier by identifier, ignoring case.
@@ -237,7 +238,7 @@ public sealed record ModelSettings
     private static ModelContextTier? FindTier(ModelInfo model, string? id) =>
         id is null
             ? null
-            : (model.ContextTiers ?? []).FirstOrDefault(tier => string.Equals(tier.Id, id, StringComparison.OrdinalIgnoreCase));
+            : model.ContextTiers.FirstOrDefault(tier => string.Equals(tier.Id, id, StringComparison.OrdinalIgnoreCase));
 
     /// <summary>
     ///     Returns the window of the chosen tier, or of the default tier when none is chosen or the
@@ -301,7 +302,7 @@ public sealed record ModelSettings
             return;
         }
 
-        var efforts = model.ReasoningEfforts ?? [];
+        var efforts = model.ReasoningEfforts;
         if (!model.Adjustments.HasFlag(ModelAdjustments.ReasoningEffort) || efforts.Count == 0)
         {
             problems.Add($"Model '{model.Id}' does not support reasoning effort settings.");
@@ -326,7 +327,7 @@ public sealed record ModelSettings
             return;
         }
 
-        var tiers = model.ContextTiers ?? [];
+        var tiers = model.ContextTiers;
         if (!model.Adjustments.HasFlag(ModelAdjustments.ContextTier) || tiers.Count == 0)
         {
             problems.Add($"Model '{model.Id}' offers no context tiers.");
@@ -413,13 +414,13 @@ public sealed record ModelSettings
 }
 
 /// <summary>
-///     Model settings validated against the model they name: the only form in which a provider
-///     factory accepts a model choice.
+///     Model settings validated against the model they name: the form in which provider factories
+///     accept model settings.
 /// </summary>
 /// <remarks>
 ///     <para>
 ///     Created only by <see cref="ModelSettings.Bind"/> and
-///     <see cref="ModelCatalogExtensions.SelectAsync"/>, so holding one is proof the settings were
+///     <see cref="ModelCatalogExtensions.SelectAsync"/>, so holding one shows the settings were
 ///     valid for the model, and the model reported every capability the application required, when
 ///     it was made. A factory that receives one applies it once, when a session starts; the settings
 ///     do not change for the life of that session.
@@ -511,7 +512,7 @@ public sealed class ModelSettingsException : InvalidOperationException
         : base($"Model settings for '{modelId}' are not valid: {string.Join(" ", problems ?? [])}")
     {
         ModelId = modelId;
-        Problems = [.. problems ?? []];
+        Problems = Array.AsReadOnly<string>([.. problems ?? []]);
     }
 
     /// <summary>
@@ -522,5 +523,8 @@ public sealed class ModelSettingsException : InvalidOperationException
     /// <summary>
     ///     Gets every reason the settings cannot be applied, each suitable to show verbatim.
     /// </summary>
+    /// <remarks>
+    ///     A read-only copy of the list given to the constructor.
+    /// </remarks>
     public IReadOnlyList<string> Problems { get; }
 }

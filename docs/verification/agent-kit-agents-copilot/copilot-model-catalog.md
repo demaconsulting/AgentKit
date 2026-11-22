@@ -62,14 +62,15 @@ Unit tests reside in `CopilotModelCatalogTests.cs` within the
 
 ### Acceptance Criteria
 
-A unit test run passes when all fifteen scenarios below pass without error or exception beyond those
+A unit test run passes when all sixteen scenarios below pass without error or exception beyond those
 explicitly asserted. Any read of a disposed runtime that does not throw, any failure to list that
 does not carry the sign-in message, any refresh that does not read again, any model the service
 does not report on treated as unable to call tools, any model reported unable to call tools treated
 as usable, any vision flag set without a positive report, any tier window, label or default that
 differs from the billing derivation, any declared tier duplicated, any effort renamed, reordered or
 given an invented default, any policy-withheld model treated as usable, any service message dropped
-or given the wrong kind, any picker metadata dropped, or any listing that includes the automatic
+or given the wrong kind, any picker metadata dropped, any vision limit dropped or carried as a list
+that can be cast back and altered, or any listing that includes the automatic
 choice or changes the service's order each constitute a failure.
 
 ### Test Scenarios
@@ -93,8 +94,8 @@ Error path: constructing a catalog over a runtime already disposed throws `Objec
 **Test**: `CopilotModelCatalog_ListAsync_RuntimeDisposedLater_Throws`
 
 Error path. A runtime disposed after the catalog was built is refused with `ObjectDisposedException`
-at the next listing — not wrapped as a sign-in failure, and not restarted — which is what reading the
-runtime at every read guarantees.
+at the next listing — not wrapped as a sign-in failure, and not restarted — which follows from reading the
+runtime at every read.
 
 #### AgentKitAgentsCopilot-CopilotModelCatalog-ReadsTheServiceThroughTheRuntime: Refresh Reads Again
 
@@ -175,6 +176,14 @@ An information message, a warning message and a data-retention text become, in t
 
 The identifier, display name, vendor, billing multiplier, category, price category and provider name
 are carried as the service reported them.
+
+#### AgentKitAgentsCopilot-CopilotModelCatalog-SurfacesTheServicesNotices: Limits Carried Read-Only
+
+**Test**: `CopilotModelCatalog_Map_VisionLimits_AreCarriedAsReadOnlyExtras`
+
+The prompt budget is carried as `max_prompt_tokens`, and the supported image types as
+`vision_supported_media_types`: an `IReadOnlyList<string>` holding the service's values in its
+order, which is neither an array nor a `List<string>` and refuses a change through `IList<string>`.
 
 #### AgentKitAgentsCopilot-CopilotModelCatalog-OmitsTheAutomaticChoice: Auto Skipped, Order Kept
 

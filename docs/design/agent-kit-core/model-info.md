@@ -106,7 +106,7 @@ equivalent on it. `Standard` carries the neutral equivalent when there is one, w
 | `Category` | `string?` | null | The provider's picker grouping. |
 | `PriceCategory` | `string?` | null | The provider's price band for a badge. |
 | `Notices` | `IReadOnlyList<ModelNotice>` | empty | Messages an application should show. |
-| `AdditionalProperties` | `AdditionalPropertiesDictionary?` | null | Provider-specific extras. |
+| `AdditionalProperties` | `IReadOnlyDictionary<string, object?>?` | null | Provider-specific extras. |
 
 Invariants and conventions:
 
@@ -120,6 +120,12 @@ Invariants and conventions:
 - `UnusableReason` is null exactly when the catalog that built the record found the model usable; a
   hand-built record is trusted as written.
 - Each catalog documents the `AdditionalProperties` keys it writes. Nothing in AgentKit reads them.
+- Lists and the property dictionary are copied when set and exposed read-only, through
+  `Array.AsReadOnly` and `ReadOnlyDictionary`, so a description cannot change after it is built and
+  an exposed collection cannot be cast back to a mutable one. Catalogs cache descriptions and share
+  them across callers and threads, which is why this matters. A `with` expression copies a replaced
+  list. The dictionary's keys compare ordinally ignoring case, as an `AdditionalPropertiesDictionary`'s
+  do; its values are not copied, so a catalog stores only immutable values.
 
 ### Key Methods
 
@@ -147,18 +153,20 @@ declaration is retained, so it may still narrow or widen it.
 
 ### Error Handling
 
-N/A - the unit holds data and two pure functions, neither of which can fail. `Provider`, `Id` and
-`DisplayName` are `required` members, so the compiler refuses a description that omits one; their
-content is not validated here, because a blank identifier is refused where it is used, by
-`ModelSettings` and `CachingModelCatalog.GetAsync`. A list member deliberately set to null is
-tolerated by the validation that reads it.
+The two pure functions cannot fail. `Provider`, `Id` and `DisplayName` are `required` members, so
+the compiler refuses a description that omits one; their content is not validated here, because a
+blank identifier is refused where it is used, by `ModelSettings` and `CachingModelCatalog.GetAsync`.
+A list member set to null is taken as empty. A list holding a null entry, or a property dictionary
+holding two keys that differ only in case, is refused with `ArgumentException` when the description
+is built, rather than failing later inside validation.
 
 ### Dependencies
 
 - **ToolPack** — supplies `HostCapabilities`, the vocabulary `ToHostCapabilities` produces; see
   *ToolPack Unit Design*.
-- **Microsoft.Extensions.AI.Abstractions** — supplies `ReasoningEffort` and
-  `AdditionalPropertiesDictionary`; see *Microsoft.Extensions.AI.Abstractions Design*.
+- **Microsoft.Extensions.AI.Abstractions** — supplies `ReasoningEffort`, and the
+  `AdditionalPropertiesDictionary` whose key comparison the property dictionary keeps; see
+  *Microsoft.Extensions.AI.Abstractions Design*.
 
 ### Callers
 

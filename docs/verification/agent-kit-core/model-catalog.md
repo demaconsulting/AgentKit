@@ -43,13 +43,14 @@ project.
 
 ### Acceptance Criteria
 
-A unit test run passes when all sixteen scenarios below pass without error or exception beyond
+A unit test run passes when all seventeen scenarios below pass without error or exception beyond
 those explicitly asserted. Any read made before the catalog is asked, any second read within the
 lifetime, any listing served after the lifetime without a new read, any concurrent callers starting
 more than one read, any failure cached, any waiter inheriting another caller's cancellation, any
 provider timeout that starts a second read or fails to reach a waiter, any refresh that does not
 read again, any listing that is re-ordered, includes an unusable model
-unasked, or omits a model satisfying the query, any lookup that cannot find an unusable model, or
+unasked, or omits a model satisfying the query, any listing that can be altered or whose alteration
+reaches the cached reading, any lookup that cannot find an unusable model, or
 any selection made for a withdrawn model, a model missing a required capability, or under a
 spelling other than the catalog's each constitute a failure.
 
@@ -103,6 +104,14 @@ reads again; the scenario also pins `DefaultLifetime` at five minutes.
 
 Error path: a zero lifetime is refused with `ArgumentOutOfRangeException` at construction rather
 than producing a catalog that reads on every query.
+
+#### AgentKitCore-ModelCatalog-CachesForALifetime: A Listing Is Read-Only and Leaves the Cache Whole
+
+**Test**: `ModelCatalog_ListAsync_Result_IsReadOnlyAndDoesNotAlterTheCache`
+
+Error path. A listing is neither an array nor a `List<ModelInfo>`, and clearing it through
+`IList<ModelInfo>` throws `NotSupportedException`; the next listing is complete and is served from
+the cache with no second read.
 
 #### AgentKitCore-ModelCatalog-SharesOneRead: Concurrent Callers Share One Read
 

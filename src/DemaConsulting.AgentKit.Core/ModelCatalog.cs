@@ -44,9 +44,19 @@ public sealed record ModelQuery
 ///     The models one provider offers the signed-in user or the configured server.
 /// </summary>
 /// <remarks>
+///     <para>
 ///     Implementations are expected to be safe for concurrent use and to cache what they read, since
 ///     a picker lists models far more often than a provider's offering changes.
-///     <see cref="CachingModelCatalog"/> supplies that once for every provider.
+///     <see cref="CachingModelCatalog"/> supplies that for the catalogs AgentKit ships and for a host
+///     catalog that derives from it.
+///     </para>
+///     <para>
+///     <b>Failures.</b> A read that fails propagates the provider's own exception — for example a
+///     <see cref="System.Net.Http.HttpRequestException"/> from an HTTP-based provider — and is not
+///     cached. An <see cref="OperationCanceledException"/> may come from the caller's token or from the
+///     provider itself, such as a client timeout. A caller tells them apart by checking its own
+///     token's <see cref="CancellationToken.IsCancellationRequested"/>.
+///     </para>
 /// </remarks>
 public interface IModelCatalog
 {
@@ -61,6 +71,10 @@ public interface IModelCatalog
     /// <param name="query">The query, or <see langword="null"/> for every usable model.</param>
     /// <param name="cancellationToken">Cancels the read when one is needed.</param>
     /// <returns>The matching models. Never <see langword="null"/>.</returns>
+    /// <exception cref="OperationCanceledException">
+    ///     <paramref name="cancellationToken"/> was canceled, or the provider's read was canceled without it,
+    ///     for example by a client timeout; the caller's own token tells the two apart.
+    /// </exception>
     Task<IReadOnlyList<ModelInfo>> ListAsync(ModelQuery? query = null, CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -69,6 +83,10 @@ public interface IModelCatalog
     /// <param name="modelId">The model identifier. Must not be <see langword="null"/> or blank.</param>
     /// <param name="cancellationToken">Cancels the read when one is needed.</param>
     /// <returns>The model, or <see langword="null"/> when the provider does not offer it.</returns>
+    /// <exception cref="OperationCanceledException">
+    ///     <paramref name="cancellationToken"/> was canceled, or the provider's read was canceled without it,
+    ///     for example by a client timeout; the caller's own token tells the two apart.
+    /// </exception>
     Task<ModelInfo?> GetAsync(string modelId, CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -76,6 +94,10 @@ public interface IModelCatalog
     /// </summary>
     /// <param name="cancellationToken">Cancels the read.</param>
     /// <returns>A task that completes when the fresh listing is in place.</returns>
+    /// <exception cref="OperationCanceledException">
+    ///     <paramref name="cancellationToken"/> was canceled, or the provider's read was canceled without it,
+    ///     for example by a client timeout; the caller's own token tells the two apart.
+    /// </exception>
     Task RefreshAsync(CancellationToken cancellationToken = default);
 }
 
@@ -175,10 +197,17 @@ public abstract class CachingModelCatalog : IModelCatalog
 
     /// <inheritdoc/>
     /// <remarks>
-    ///     Reads the provider only when nothing fresh is cached. Performs network I/O on that read.
+    ///     Reads the provider only when nothing fresh is cached. Performs network I/O on that read. Any
+    ///     other failure of the provider's read propagates as the provider's own exception; see the
+    ///     provider catalog's remarks.
     /// </remarks>
-    /// <exception cref="InvalidOperationException">The provider's read failed or returned no listing.</exception>
-    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was canceled.</exception>
+    /// <exception cref="InvalidOperationException">
+    ///     The provider's read returned no listing, or a listing holding a null model.
+    /// </exception>
+    /// <exception cref="OperationCanceledException">
+    ///     <paramref name="cancellationToken"/> was canceled, or the provider's read was canceled without it,
+    ///     for example by a client timeout; the caller's own token tells the two apart.
+    /// </exception>
     public async Task<IReadOnlyList<ModelInfo>> ListAsync(
         ModelQuery? query = null,
         CancellationToken cancellationToken = default)
@@ -186,18 +215,27 @@ public abstract class CachingModelCatalog : IModelCatalog
         var models = await GetModelsAsync(refresh: false, cancellationToken).ConfigureAwait(false);
         var filter = query ?? new ModelQuery();
 
-        return [.. models.Where(filter.Matches)];
+        // A read-only view over a fresh array, so the caller can neither alter the cached listing
+        // nor cast the result back to a mutable list.
+        return Array.AsReadOnly(models.Where(filter.Matches).ToArray());
     }
 
     /// <inheritdoc/>
     /// <remarks>
     ///     An unusable model is returned, so validation can say why it cannot be used rather than
-    ///     only that it is missing. Identifiers are compared by <see cref="IdEquals"/>.
+    ///     only that it is missing. Identifiers are compared by <see cref="IdEquals"/>. Any other
+    ///     failure of the provider's read propagates as the provider's own exception; see the provider
+    ///     catalog's remarks.
     /// </remarks>
     /// <exception cref="ArgumentNullException"><paramref name="modelId"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException"><paramref name="modelId"/> is blank.</exception>
-    /// <exception cref="InvalidOperationException">The provider's read failed or returned no listing.</exception>
-    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was canceled.</exception>
+    /// <exception cref="InvalidOperationException">
+    ///     The provider's read returned no listing, or a listing holding a null model.
+    /// </exception>
+    /// <exception cref="OperationCanceledException">
+    ///     <paramref name="cancellationToken"/> was canceled, or the provider's read was canceled without it,
+    ///     for example by a client timeout; the caller's own token tells the two apart.
+    /// </exception>
     public async Task<ModelInfo?> GetAsync(string modelId, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(modelId);
@@ -210,10 +248,17 @@ public abstract class CachingModelCatalog : IModelCatalog
     /// <inheritdoc/>
     /// <remarks>
     ///     The cached listing is discarded first, so a refresh that fails leaves nothing stale behind
-    ///     and the next query reads again. A read already in flight is joined rather than duplicated.
+    ///     and the next query reads again. A read already in flight is joined rather than duplicated. Any
+    ///     other failure of the provider's read propagates as the provider's own exception; see the
+    ///     provider catalog's remarks.
     /// </remarks>
-    /// <exception cref="InvalidOperationException">The provider's read failed or returned no listing.</exception>
-    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was canceled.</exception>
+    /// <exception cref="InvalidOperationException">
+    ///     The provider's read returned no listing, or a listing holding a null model.
+    /// </exception>
+    /// <exception cref="OperationCanceledException">
+    ///     <paramref name="cancellationToken"/> was canceled, or the provider's read was canceled without it,
+    ///     for example by a client timeout; the caller's own token tells the two apart.
+    /// </exception>
     public async Task RefreshAsync(CancellationToken cancellationToken = default)
     {
         await GetModelsAsync(refresh: true, cancellationToken).ConfigureAwait(false);
@@ -401,6 +446,11 @@ public static class ModelCatalogExtensions
     ///     The selection's settings carry the catalog's own spelling of the model identifier, so a
     ///     bare Ollama name chosen as <c>qwen3</c> is selected as <c>qwen3:latest</c>.
     ///     </para>
+    ///     <para>
+    ///     A failure of the catalog's read propagates as <see cref="IModelCatalog.GetAsync"/> raises it.
+    ///     Because <see cref="ModelSettingsException"/> derives from <see cref="InvalidOperationException"/>,
+    ///     catch it before any <see cref="InvalidOperationException"/> handler.
+    ///     </para>
     /// </remarks>
     /// <param name="catalog">The catalog the model is offered by. Must not be <see langword="null"/>.</param>
     /// <param name="settings">The settings to apply. Must not be <see langword="null"/>.</param>
@@ -412,8 +462,10 @@ public static class ModelCatalogExtensions
     ///     The provider does not offer the model, or the settings are not valid for it. The exception
     ///     lists every problem, each suitable to show verbatim.
     /// </exception>
-    /// <exception cref="InvalidOperationException">The catalog could not read its provider.</exception>
-    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was canceled.</exception>
+    /// <exception cref="OperationCanceledException">
+    ///     <paramref name="cancellationToken"/> was canceled, or the provider's read was canceled without it,
+    ///     for example by a client timeout; the caller's own token tells the two apart.
+    /// </exception>
     /// <example>
     ///     <code>
     ///     public async Task&lt;ModelSelection?&gt; StartAsync(

@@ -15,5 +15,5 @@ package AgentKitAgentsChatClient_ChatClientProviderSessionFactory {
 
     // A supplied model selection is applied to every request each session sends through Core's
     // settings decorator.
-    dependency ChatClientProviderSessionFactory to AgentKitCore::ModelSettingsChatClient;
+    dependency ChatClientProviderSessionFactory to AgentKitCore_ModelSettingsChatClient::ModelSettingsChatClient;
 }

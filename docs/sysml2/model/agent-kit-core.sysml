@@ -27,6 +27,10 @@ package AgentKitCore {
     private import AgentKitCore_InMemoryProviderSession::*;
     private import AgentKitCore_CompactingAgentSession::*;
     private import AgentKitCore_AgentKitChatReducer::*;
+    private import AgentKitCore_ModelInfo::*;
+    private import AgentKitCore_ModelCatalog::*;
+    private import AgentKitCore_ModelSettings::*;
+    private import AgentKitCore_ModelSettingsChatClient::*;
 
     doc
     /*

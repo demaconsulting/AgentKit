@@ -29,8 +29,8 @@ NuGet dependency AgentKit Core carries.
   `ImagePromotingChatClient` and `ModelSettingsChatClient` decorate and `AgentKitChatReducer` reads
 - `ChatOptions` — its `ModelId`, `MaxOutputTokens` and `Reasoning` members, with `ReasoningOptions`
   and the `ReasoningEffort` scale, which carry a model selection on every request
-  `ModelSettingsChatClient` forwards; and `AdditionalPropertiesDictionary`, which `ModelInfo` carries
-  provider-specific facts in
+  `ModelSettingsChatClient` forwards; and `AdditionalPropertiesDictionary`, in which the provider
+  catalogs build the provider-specific facts a `ModelInfo` exposes read-only
 
 ### Integration Pattern
 

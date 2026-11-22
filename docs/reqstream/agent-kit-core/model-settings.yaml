@@ -93,10 +93,14 @@ sections:
               binding invalid settings shall fail carrying all of them.
             justification: |
               A user who fixes one problem only to be shown the next has been made to guess. Every
-              reason is collected so a settings dialog can show them together.
+              reason is collected so a settings dialog can show them together. The list is
+              read-only, and the exception keeps its own copy, so the problems shown are the
+              problems found.
             tests:
               - ModelSettings_Validate_SeveralProblems_AreAllReported
               - ModelSettings_Bind_InvalidSettings_ThrowsWithEveryProblem
+              - ModelSettings_Validate_Problems_AreReadOnly
+              - ModelSettings_Exception_Problems_AreCopiedAndReadOnly
 
           - id: AgentKitCore-ModelSettings-OnlyValidatedSelectionsExist
             title: >-
@@ -104,8 +108,8 @@ sections:
               against a model, and shall carry the provider-neutral equivalent of the chosen effort,
               where one exists, and the window of the chosen or default tier.
             justification: |
-              Factories accept a selection rather than raw settings so that unvalidated or stale
-              settings are impossible to express rather than merely discouraged. The neutral effort
+              Factories accept a selection rather than raw settings so that settings reach a factory
+              only after they have been validated. The neutral effort
               is what an IChatClient pipeline applies, and an effort with no neutral equivalent
               carries none rather than an approximation.
             tests:

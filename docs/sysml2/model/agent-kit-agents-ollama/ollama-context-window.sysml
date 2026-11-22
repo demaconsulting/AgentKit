@@ -14,5 +14,5 @@ package AgentKitAgentsOllama_OllamaContextWindow {
     }
 
     // The window reading takes the model and its stated window from a validated model selection.
-    dependency OllamaContextWindow to AgentKitCore::ModelSettings;
+    dependency OllamaContextWindow to AgentKitCore_ModelSettings::ModelSettings;
 }

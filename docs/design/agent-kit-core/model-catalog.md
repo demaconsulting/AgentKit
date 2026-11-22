@@ -103,10 +103,12 @@ released, so a waiter that reads again starts a new read rather than re-joining 
 
 **Purpose:** List the models that satisfy a query.
 
-**Algorithm:** Obtain the listing through `GetModelsAsync`, then return a new list of the models
+**Algorithm:** Obtain the listing through `GetModelsAsync`, then return a new read-only list of the models
 that `query` — or a default query, meaning every usable model — matches, in the listing's order.
 
-**Postconditions:** Never null. Performs network I/O only when nothing fresh is cached.
+**Postconditions:** Never null, and read-only: the result wraps a fresh array through `Array.AsReadOnly`,
+so a caller can neither cast it back to a mutable list nor alter the cached snapshot. Performs
+network I/O only when nothing fresh is cached.
 
 #### GetAsync(string modelId, CancellationToken cancellationToken)
 
@@ -191,14 +193,18 @@ exception listing every problem.
 | Null `providerName`, `modelId`, `catalog`, `settings`, or model passed to `Matches` | `ArgumentNullException` |
 | Blank `providerName` or `modelId` | `ArgumentException` propagates |
 | Zero or negative lifetime | `ArgumentOutOfRangeException` ("A catalog lifetime must be positive.") |
-| The provider's read throws | Propagates to the owner and every waiter; not cached |
+| The provider's read throws | The provider's own exception (e.g. `HttpRequestException`) to all; not cached |
 | The read returns no listing | `InvalidOperationException` ("The {provider} catalog read returned no listing.") |
 | The listing holds a null model | `InvalidOperationException` ("The {provider} catalog read returned a null model.") |
 | The caller's token is canceled | `OperationCanceledException`; only that caller's wait stops |
 | The owner of a joined read cancels its own token | The waiter reads again for itself |
-| The provider cancels the read (e.g. a client timeout) | A failure for the owner and every waiter; not cached |
+| The provider cancels the read (e.g. a client timeout) | `OperationCanceledException` to all; not cached |
 | The provider does not offer the selected model | `ModelSettingsException` with the not-available problem |
 | The settings are not valid for the model | `ModelSettingsException` from `Bind`, listing every problem |
+
+"To all" means the owner of the read and every caller waiting on it. A provider's own cancellation
+reaches them as `OperationCanceledException` although no caller's token was canceled, so a caller
+tells a timeout from its own cancellation by its token's `IsCancellationRequested`.
 
 The dividing line: a malformed argument is a defect in the caller and is refused at once; a
 provider that could not be read is a condition of the environment, reported to whoever asked and

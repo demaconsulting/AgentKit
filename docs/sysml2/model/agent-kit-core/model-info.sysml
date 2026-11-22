@@ -1,5 +1,6 @@
-package AgentKitCore {
+package AgentKitCore_ModelInfo {
     private import SoftwareItemMetadata::*;
+    private import AgentKitCore_ToolPack::*;
     private import ScalarValues::*;
 
     enum def ModelCapabilities {

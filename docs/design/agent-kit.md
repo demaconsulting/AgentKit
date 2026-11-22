@@ -10,8 +10,9 @@ returned reaches the model intact. Each promise is demonstrated end to end rathe
 its parts. A fourth, `AgentKit-Tools-AnyAgentRuntime`, is not a provider capability: it promises that
 AgentKit's tools and the controls around them work in an agent runtime the application built itself.
 A fifth, `AgentKit-ModelSelection`, is not a provider capability either: it promises that an
-application can list a provider's models, filter them by capability, and start a session only on
-settings validated against the selected model, on all three providers.
+application can list a provider's models, filter them by capability, and start a session on settings
+validated against the selected model: the Copilot and Ollama adapters list their providers' models, and an
+`IChatClient` application can validate against a model description it builds itself.
 
 ## Why the Capabilities Sit Above the Packages
 
@@ -75,13 +76,14 @@ provider is honored only by `ChatClientAgent`. On the GitHub Copilot path, whose
 history and fixes a session's tools at creation, `CopilotAgentFactory` and `CompactingAgentSession`
 remain the recommended route; the user guide describes both.
 
-## Model Selection on Every Provider
+## Model Selection Across Providers
 
 `AgentKit-ModelSelection` is delivered jointly, because the provider-neutral half and the
 provider-specific half live in different packages:
 
 - **AgentKitCore** describes a model, filters a catalog by capability, caches the listing, validates
-  persisted settings at session start, and applies a selection to every `IChatClient` request.
+  persisted settings at session start, and applies a selection to each request through an `IChatClient`
+  pipeline.
 - **AgentKitAgentsChatClient** applies a selection on its agent factory and provider-session factory,
   and offers `UseModelSettings` for a pipeline the host builds.
 - **AgentKitAgentsOllama** reads the server's models as a catalog, and takes the window the session

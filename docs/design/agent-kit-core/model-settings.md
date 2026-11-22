@@ -14,13 +14,14 @@ and reads it back on the next launch, so the record is plain data — strings an
 serializes as it stands. It names each choice by the identifier a `ModelInfo` publishes, which is
 what lets a choice saved yesterday be checked against what the provider offers today.
 
-**Never applied unvalidated.** Provider factories accept a `ModelSelection`, not settings, and only
+**Validated before use.** Provider factories accept a `ModelSelection`, not settings, and only
 `Bind` and `ModelCatalogExtensions.SelectAsync` can create one, because its constructor is internal.
-Holding a selection is therefore proof that the settings were valid for the model, and that the
+Holding a selection therefore shows that the settings were valid for the model, and that the
 model reported every capability the application required, when the selection was made. Settings
-that name a withdrawn model or an effort the model no longer accepts are not refused at call time;
-they cannot reach a session at all. `Validate` reports the same problems without throwing, for a
-picker that wants to explain them as the user chooses.
+that name a withdrawn model or an effort the model no longer accepts are refused when the
+selection is made, before a session starts, rather than by the provider part-way through a
+conversation. `Validate` reports the same problems without throwing, for a picker that wants to
+explain them as the user chooses.
 
 **Every problem at once, each worded for the user.** A user who fixes one problem only to be shown
 the next has been made to guess, so every rule is checked and every problem collected. Each message
@@ -67,8 +68,8 @@ accounts against. Either way it may not exceed what the model provides.
 | `ContextTierWindowTokens` | `int?` | The chosen tier's window, else the default tier's, or null. |
 
 `ModelSettingsException` derives from `InvalidOperationException`, because the settings are
-well-formed but wrong for the model as it now is. It carries `ModelId` and `Problems`, a copy of
-every reason, each suitable to show verbatim. Its message is "Model settings for '{id}' are not
+well-formed but wrong for the model as it now is. It carries `ModelId` and `Problems`, a read-only
+copy of every reason, each suitable to show verbatim. Its message is "Model settings for '{id}' are not
 valid: " followed by the problems joined with spaces.
 
 ### Validation Rules
@@ -144,7 +145,7 @@ effort yields settings with none.
 **Algorithm:** Apply V2 to V10 in order, appending each problem found; no rule stops another except
 that the window checks end after a V7 problem.
 
-**Postconditions:** An empty list when the settings are valid. Holds no state; the same inputs give
+**Postconditions:** A read-only list, empty when the settings are valid. Holds no state; the same inputs give
 the same problems.
 
 #### Bind(ModelInfo model, ModelCapabilities required)

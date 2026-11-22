@@ -20,5 +20,5 @@ package AgentKitAgentsCopilot_CopilotProviderSessionFactory {
 
     // Every session is configured from a validated model selection when the host supplies one, and
     // its window becomes the ceiling the session accounts against.
-    dependency CopilotProviderSessionFactory to AgentKitCore::ModelSettings;
+    dependency CopilotProviderSessionFactory to AgentKitCore_ModelSettings::ModelSettings;
 }

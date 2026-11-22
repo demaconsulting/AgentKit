@@ -24,6 +24,26 @@ sections:
             tests:
               - ModelInfo_Construct_ByHand_DefaultsToUsableWithEmptyLists
 
+          - id: AgentKitCore-ModelInfo-OwnsItsCollections
+            title: >-
+              The unit shall copy every list and the additional-properties dictionary it is given and
+              expose them read-only, so a description cannot change after it is built.
+            justification: |
+              A catalog caches its descriptions and hands the same instances to every caller, on
+              any thread. A description that kept the caller's list, or exposed one that could be
+              cast back and altered, could be changed by one caller under another, and the
+              validation a selection records would no longer describe the model it holds. Copying
+              on the way in and exposing read-only views on the way out keeps each description as
+              it was built; a list holding a null entry is refused, and a null list is taken as
+              empty.
+            tests:
+              - ModelInfo_Lists_SourceMutatedAfterInit_InstanceUnchanged
+              - ModelInfo_Lists_CannotBeCastBackAndMutated
+              - ModelInfo_With_ReplacedList_IsCopied
+              - ModelInfo_AdditionalProperties_SourceMutatedAfterInit_InstanceUnchanged
+              - ModelInfo_Lists_NullEntry_IsRefused
+              - ModelInfo_Lists_Null_IsEmpty
+
           - id: AgentKitCore-ModelInfo-CapabilitiesCombine
             title: >-
               Model capabilities shall be independently combinable flags, each zero or a single bit,

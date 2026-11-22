@@ -76,8 +76,8 @@ sections:
             justification: |
               The effort reaches Ollama as its think option through the provider-neutral reasoning
               option, which has exactly these levels on Ollama; anything finer would collapse. A
-              GPT-OSS model thinks regardless, so offering to turn it off would offer something
-              that cannot happen. A thinking model thinks unless told otherwise, so no default is
+              GPT-OSS model thinks regardless, so offering to turn it off would offer a setting
+              the model does not honor. A thinking model thinks unless told otherwise, so no default is
               invented.
             tests:
               - OllamaModelCatalog_GetAsync_ThinkingModel_OffersFourEfforts

@@ -1,3 +1,4 @@
+using System.Globalization;
 using DemaConsulting.AgentKit.Core;
 using Microsoft.Copilot;
 using Microsoft.Extensions.AI;
@@ -215,6 +216,34 @@ public sealed class CopilotModelCatalogTests
         Assert.Equal("lightweight", model.Category);
         Assert.Equal("low", model.PriceCategory);
         Assert.Equal(CopilotModelCatalog.ProviderId, model.Provider);
+    }
+
+    /// <summary>
+    ///     Proves the prompt and vision limits are carried as read-only additional properties: the
+    ///     media types are a read-only list, not an array that could be cast back and altered.
+    /// </summary>
+    [Fact]
+    public void CopilotModelCatalog_Map_VisionLimits_AreCarriedAsReadOnlyExtras()
+    {
+        // Arrange: the fixture with the service's vision limits
+        var source = Haiku();
+        source.Capabilities.Limits!.Vision = new Rpc.ModelCapabilitiesLimitsVision
+        {
+            MaxPromptImages = 20,
+            MaxPromptImageSize = 3_145_728,
+            SupportedMediaTypes = ["image/png", "image/jpeg"],
+        };
+
+        // Act
+        var properties = CopilotModelCatalog.Map(source).AdditionalProperties;
+
+        // Assert
+        Assert.NotNull(properties);
+        Assert.Equal(936_000L, Convert.ToInt64(properties["max_prompt_tokens"], CultureInfo.InvariantCulture));
+        var mediaTypes = Assert.IsAssignableFrom<IReadOnlyList<string>>(properties["vision_supported_media_types"]);
+        Assert.Equal(["image/png", "image/jpeg"], mediaTypes);
+        Assert.False(mediaTypes is string[] or List<string>);
+        Assert.Throws<NotSupportedException>(() => ((IList<string>)mediaTypes)[0] = "image/gif");
     }
 
     /// <summary>
