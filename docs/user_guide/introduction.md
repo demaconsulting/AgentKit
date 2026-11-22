@@ -1097,8 +1097,9 @@ is not a candidate. If `npm config get prefix` names another folder, name that p
 — well over half a minute under antivirus scanning — while the CLI unpacks its package into the user's
 cache (`%LOCALAPPDATA%\copilot\pkg` on Windows);
 later starts take a second or two. That cache, and any organization policy in its managed-settings
-folder, is shared with the user's own `copilot`. The CLI's own configuration, MCP servers, plugins and
-sign-in are **not** used: the runtime's home is AgentKit's data directory.
+folder, is shared with the user's own `copilot`. The CLI's own configuration, MCP servers and plugins
+are **not** used: the runtime's home is AgentKit's data directory. Its sign-in can be: see *Signing
+In*.
 
 ### Bundling the Runtime Instead
 
@@ -1179,17 +1180,12 @@ The runtime is always:
   caches are not kept there: they go to the platform's cache folder (`%LOCALAPPDATA%` on Windows,
   `XDG_CACHE_HOME` or its default elsewhere).
 
-`CopilotRuntimeOptions` takes only the data directory and, optionally, a GitHub token, a log level, a
-logger, the runtime source and a CLI path. With no token the runtime authenticates from the
-`COPILOT_GITHUB_TOKEN`, `GH_TOKEN` or `GITHUB_TOKEN` environment variable, or as the user the GitHub
-CLI is signed in as (`gh auth login`; the runtime runs `gh auth token`, so `gh` must be on `PATH`).
-**A sign-in made only with the Copilot CLI is not used**, even when the installed CLI is the runtime:
-it lives in the system keychain or the Copilot CLI's own home, and the runtime AgentKit starts reads
-neither. Pass `gitHubToken:` to supply a credential directly, and set `COPILOT_GH_HOST` for a GitHub
-Enterprise Cloud account with data residency. `StartAsync` refuses a runtime that started but is not
-signed in, naming these options. Once started, the runtime reports what runs: `runtime.CliPath` (the
-installed CLI, or `null` for the bundled runtime), `runtime.RuntimeVersion` and
-`runtime.ProtocolVersion`.
+`CopilotRuntimeOptions` takes only the data directory and, optionally, how the runtime signs in (a
+GitHub token or token provider, a GitHub host, and whether the Copilot CLI sign-in may be used), a log
+level, a logger, the runtime source and a CLI path. *Signing In* below covers the sign-in options.
+Once started, the runtime reports what runs: `runtime.CliPath` (the installed CLI, or `null` for the
+bundled runtime), `runtime.RuntimeVersion` and `runtime.ProtocolVersion`, and who it runs as:
+`runtime.SignInSource`, `runtime.GitHubHost` and `runtime.GitHubLogin`.
 
 Copilot arrives as a complete runtime carrying its own tools — shell, fetch, file editing and more.
 The factory suppresses them by deriving the session allow-list from the same tools you supplied, so
@@ -1244,6 +1240,80 @@ the same way it does when you pick an Ollama model for an `IChatClient` agent. S
 the working directory *through* the factory rather than by building a session configuration
 yourself — a hand-built session forgoes the built-in tool suppression and the default-safe
 permission handler.
+
+### Signing In
+
+The runtime signs in to GitHub from the first of these sources that applies:
+
+1. **A token from the application**: `gitHubToken:`, or `gitHubTokenProvider:` for an application
+   that refreshes its own tokens.
+2. **A token in the environment**: `COPILOT_GITHUB_TOKEN`, `GH_TOKEN` or `GITHUB_TOKEN`.
+3. **The user's Copilot CLI sign-in** (`copilot login`), unless the application passes
+   `useCopilotCliSignIn: false`.
+4. **The runtime's own fallbacks**: a sign-in stored in AgentKit's data directory, then the GitHub CLI
+   (`gh auth login`; the runtime runs `gh auth token`, so `gh` must be on `PATH`).
+
+This is the order the Copilot CLI itself uses, so the runtime signs in as `copilot` would in the same
+shell. A token in the environment comes before the stored sign-ins on purpose: it is set for one
+process or job — CI, a container, a service account — and a sign-in stored for the user should not
+quietly replace it. If a stray `GITHUB_TOKEN` is set for another tool, unset it for the application,
+or pass `gitHubToken:` explicitly.
+
+**What the Copilot CLI sign-in shares.** Only the login. AgentKit reads the signed-in account's host
+and login from the Copilot CLI's `config.json` (in `COPILOT_HOME`, or `.copilot` in the user's
+profile) and asks the Copilot CLI itself for that account's token: it runs the same CLI once more,
+for a moment, on a new temporary folder holding nothing but that host and login, with no session,
+and deletes the folder afterwards. The CLI reads the token from the system credential store, where
+`copilot login` put it; AgentKit never reads the credential store itself. The runtime then receives
+the token and the host, nothing else: none of the user's MCP servers, hooks, agents, skills, plugins,
+instructions, settings or history, and its data directory stays private. The token is kept in memory
+only — AgentKit does not write or log it. This adds a second or two to the start.
+
+**GitHub Enterprise Cloud hosts.** Each source is used with its own host. The Copilot CLI sign-in
+uses its account's host. A token needs its host too: GitHub refuses a token for a `*.ghe.com` account
+used against `github.com` with 401 Bad credentials. Pass the host as `gitHubHost:`, or set
+`COPILOT_GH_HOST`:
+
+```csharp
+var options = new CopilotRuntimeOptions(
+    dataDirectory,
+    gitHubToken: token,
+    gitHubHost: "example.ghe.com");
+```
+
+When a host is chosen this way, the Copilot CLI sign-in is used only if its account is on that host.
+
+**A token provider** is asked once when the runtime starts, and again by each session the runtime
+opens, so the runtime can refresh a token before it expires. It receives the host and whether the
+token replaces one about to expire, may be called from any thread, and returns a
+`CopilotGitHubToken` with the token's remaining lifetime when known:
+
+```csharp
+var options = new CopilotRuntimeOptions(
+    dataDirectory,
+    gitHubHost: "example.ghe.com",
+    gitHubTokenProvider: async (request, cancellationToken) =>
+        new CopilotGitHubToken(await tokenStore.GetTokenAsync(request.Host, cancellationToken)));
+```
+
+Pass either a token or a provider, not both. A provider that fails or returns no token stops the
+start, with the provider's error as the inner exception; a session whose provider fails is refused.
+
+**Which account it is.** `runtime.SignInSource` says which source was used, and `runtime.GitHubHost`
+and `runtime.GitHubLogin` which account; with a logger, the start logs the same, and warns when the
+runtime signed in on another account than the Copilot CLI's. The account decides which models are
+offered: a GitHub Enterprise Cloud account may offer different models from a `github.com` one.
+
+**Platforms.** The Copilot CLI sign-in has been tested on Windows with the installed CLI. It has not
+been tested on macOS, where the Copilot CLI may ask the user to allow access to its keychain item (an
+unanswered prompt ends the attempt after 60 seconds), on Linux, or with the bundled runtime. Wherever
+it does not work, AgentKit moves on to the next source, and the reason appears in the start's log and
+in the message if no source signs the runtime in.
+
+**Signing in from the application, later.** The runtime can also run GitHub's device-code sign-in and
+keep the result in AgentKit's data directory. AgentKit does not offer that yet: the runtime would store
+the token in plain text in the data directory, and each sign-in creates a new token. It may be added
+later, with that caveat documented.
 
 ### Permissions Are Default-Deny
 
@@ -1418,9 +1488,22 @@ for answer quality across a long conversation, not to save money.
 - **`ArgumentException`: the Copilot CLI path "is a batch file".** The `cliPath` names a `copilot.cmd`
   or `.bat`, which Windows would run through `cmd.exe`. Name `copilot.exe` — such as the one
   `CopilotCli.FindInstalled()` returns — or, for an npm installation, the package's `npm-loader.js`.
-- **`InvalidOperationException`: the runtime "started but is not signed in".** Supply a token, set
-  `COPILOT_GITHUB_TOKEN`, `GH_TOKEN` or `GITHUB_TOKEN`, or sign in with `gh auth login` and keep `gh`
-  on `PATH`; a Copilot CLI sign-in is not used.
+- **`InvalidOperationException`: the runtime "started but is not signed in".** The message lists each
+  sign-in source in order and what it found. Sign in with `copilot login` (add
+  `--host https://<name>.ghe.com` for a GitHub Enterprise Cloud account) or `gh auth login` with `gh`
+  on `PATH`, or pass `gitHubToken:` or `gitHubTokenProvider:`, with `gitHubHost:` for a `*.ghe.com`
+  account. When a token was used and not accepted, the message says which: a GitHub Enterprise Cloud
+  token without its host is the usual cause, and an environment token that is not meant for the
+  application can be unset.
+- **The runtime signed in as an unexpected account or host.** Check `runtime.SignInSource`,
+  `runtime.GitHubHost` and `runtime.GitHubLogin`. A token in `COPILOT_GITHUB_TOKEN`, `GH_TOKEN` or
+  `GITHUB_TOKEN` comes before the Copilot CLI sign-in; otherwise the Copilot CLI's account comes before
+  the GitHub CLI's. Pass `gitHubHost:` to choose a host, or `useCopilotCliSignIn: false` to skip the
+  Copilot CLI sign-in.
+- **The Copilot CLI account was found but its token could not be read.** The message names the account
+  and the reason. Run `copilot` once to check that it is still signed in (`copilot login` again if
+  not); on macOS, allow access to the keychain item if asked. AgentKit moves on to the GitHub CLI
+  meanwhile.
 - **`InvalidOperationException`: the runtime "could not list models".** The runtime's connection was
   lost or its sign-in lapsed; start a new runtime, signed in as above.
 - **The runtime fails to start.** `CopilotRuntime.StartAsync` raises an `InvalidOperationException`
@@ -1478,6 +1561,25 @@ the machine. These are breaking changes, accepted while the package is pre-1.0:
   anything starts, and a runtime that started but is not signed in; each refusal says what to do. On
   the installed CLI it also takes longer: it runs the CLI once to read its version, and the first
   start of a CLI version unpacks it.
+
+### Migrating to the Copilot CLI Sign-In
+
+This release lets the runtime sign in with the user's Copilot CLI sign-in, and against the right
+GitHub host:
+
+- **The account may change.** With no token from the application or the environment, the runtime
+  now signs in as the Copilot CLI's account before trying the GitHub CLI. A machine whose GitHub CLI
+  is signed in to `github.com` while the Copilot CLI is signed in to a GitHub Enterprise Cloud host
+  now runs on the Copilot CLI's account and host, whose models and policies may differ. Check
+  `runtime.SignInSource`, `runtime.GitHubHost` and `runtime.GitHubLogin`, and pass
+  `useCopilotCliSignIn: false` to keep the earlier behavior.
+- **`CopilotRuntimeOptions`'s constructor gained three optional parameters**, `gitHubHost`,
+  `gitHubTokenProvider` and `useCopilotCliSignIn`. Source that calls it compiles unchanged, but a host
+  built against an earlier release must be recompiled.
+- **The start can take a second or two longer** when the Copilot CLI sign-in is used, while the CLI
+  reads the account's token.
+- **The "not signed in" message has changed.** It now lists what each source found. Code that matched
+  its earlier text should match the exception type instead.
 
 ### Migrating from the Earlier Adapter
 

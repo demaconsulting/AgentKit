@@ -53,8 +53,8 @@ We follow a standard GitHub workflow for contributions:
 - [Python 3][python] (`lint.ps1` installs the YAML linters `yamllint` and `yamlfix` into a local `.venv`)
 - A code editor (Visual Studio, VS Code, or Rider recommended)
 - Only to run the Copilot samples or the opt-in live Copilot suite: the [GitHub Copilot CLI][copilot-cli] 1.0.113
-  or later (check it with `copilot --no-auto-update --version`), and a GitHub sign-in through `gh auth login` or
-  `GH_TOKEN`. The live suite's bundled variant needs no CLI; `build.ps1` needs neither
+  or later (check it with `copilot --no-auto-update --version`), and a GitHub sign-in through `copilot login`,
+  `gh auth login` or `GH_TOKEN`. The live suite's bundled variant needs no CLI; `build.ps1` needs neither
 
 The remaining linters (TextLint for spell-checking and LintMark for Markdown) are .NET local tools restored by
 `dotnet tool restore`; no Node.js or npm installation is required.

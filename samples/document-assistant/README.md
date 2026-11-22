@@ -381,9 +381,9 @@ in exactly the same way.
     can report a newer version that `copilot update` downloaded, which AgentKit does not run; only
     upgrading the installation changes it). Nothing is downloaded at build time and the sample ships no
     runtime.
-  - A GitHub user with Copilot access signed in with the GitHub CLI (`gh auth login`, with `gh` on `PATH`), or
-    a token in `GH_TOKEN`. Signing in to the Copilot CLI itself is **not** enough: AgentKit keeps the
-    runtime's credentials in its own data directory and does not use the CLI's sign-in.
+  - A GitHub user with Copilot access signed in with the Copilot CLI (`copilot login`) or the GitHub CLI
+    (`gh auth login`, with `gh` on `PATH`), or a token in `GH_TOKEN`. AgentKit uses only the Copilot CLI
+    sign-in's account, never the CLI's other configuration.
   - Nothing about the shell: AgentKit starts the runtime with the shell's `COPILOT_`/`GITHUB_COPILOT_`
     variables withheld apart from an allow-listed credential, network and telemetry-off set, so the sample
     runs from a Copilot CLI shell too. The runtime keeps its state in
