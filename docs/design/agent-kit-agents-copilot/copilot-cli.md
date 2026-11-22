@@ -229,7 +229,9 @@ Refusing the CLI (not found, too old) is `CopilotRuntime`'s decision, made with 
 
 ### Callers
 
-`CopilotRuntime.ResolveLaunchAsync` calls `FindInstalled`, `ReadVersionAsync`, `IsSupported` and the
-explanations; `CopilotRuntime.ExplainStartFailure` calls `IsProtocolMismatch`, `ParseServerProtocol`
-and `ExplainProtocolMismatch`. A host calls `FindInstalled()` to show a user which CLI AgentKit would
-run, and reads `MinimumVersion` for its own diagnostics.
+`CopilotRuntime.ResolveLaunchAsync` calls `FindInstalled`, `ReadVersionAsync`, `IsSupported` and the explanations;
+`CopilotRuntime.ExplainStartFailure` calls `IsProtocolMismatch`, `ParseServerProtocol` and `ExplainProtocolMismatch`.
+`CopilotSignIn` calls `FindOnPath` to report whether the GitHub CLI is on `PATH`, and `IsSearchableDirectory` with the
+search context's `ExecutableName` to keep the GitHub CLI off the sign-in helper's `PATH`; both are internal for that
+reason. A host calls `FindInstalled()` to show a user which CLI AgentKit would run, and reads `MinimumVersion` for its
+own diagnostics.

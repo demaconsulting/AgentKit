@@ -82,8 +82,8 @@ choice or changes the service's order each constitute a failure.
 **Test**: `CopilotModelCatalog_ListAsync_ClientNotConnected_FailsWithTheSignInMessage`
 
 Error path through the real SDK. A runtime whose client was never connected fails the listing with
-`InvalidOperationException` carrying exactly the sign-in message, which names `gh auth login` and
-says the Copilot CLI's own sign-in is not used, with the SDK's own `InvalidOperationException` kept
+`InvalidOperationException` carrying exactly the sign-in message, which names `copilot login`,
+`gh auth login` and `gitHubHost`, with the SDK's own `InvalidOperationException` kept
 as the inner exception.
 
 #### AgentKitAgentsCopilot-CopilotModelCatalog-ReadsTheServiceThroughTheRuntime: Disposed Runtime Refused

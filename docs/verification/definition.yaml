@@ -111,6 +111,7 @@ input-files:
   - docs/verification/agent-kit-agents-copilot/copilot-agent-factory.md
   - docs/verification/agent-kit-agents-copilot/copilot-agent.md
   - docs/verification/agent-kit-agents-copilot/copilot-runtime.md
+  - docs/verification/agent-kit-agents-copilot/copilot-sign-in.md
   - docs/verification/agent-kit-agents-copilot/copilot-cli.md
   - docs/verification/agent-kit-agents-copilot/copilot-provider-session.md
   - docs/verification/agent-kit-agents-copilot/copilot-provider-session-factory.md

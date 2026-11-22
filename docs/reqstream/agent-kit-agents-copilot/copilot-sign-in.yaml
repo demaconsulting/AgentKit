@@ -1,0 +1,153 @@
+---
+# Software Unit Requirements for CopilotSignIn
+#
+# These requirements describe the design-level behavior of the CopilotSignIn unit: how the Copilot
+# runtime AgentKit starts signs in to GitHub, in which order the sign-in sources apply, which GitHub
+# host goes with each, and how the user's Copilot CLI sign-in is reused without sharing anything but
+# its account entry.
+
+sections:
+  - title: AgentKitAgentsCopilot Requirements
+    sections:
+      - title: CopilotSignIn Requirements
+        requirements:
+          - id: AgentKitAgentsCopilot-CopilotSignIn-OrdersTheSources
+            title: >-
+              The sign-in shall use the first source that applies, in this order: a token or token
+              provider the host supplies; a token in COPILOT_GITHUB_TOKEN, GH_TOKEN or GITHUB_TOKEN;
+              the user's Copilot CLI sign-in, unless the host turned it off; and the runtime's own
+              fallbacks, a sign-in stored in the data directory and the GitHub CLI.
+            justification: |
+              The host's own token is the most deliberate choice. Environment tokens come next
+              because the Copilot CLI and the GitHub CLI both put them ahead of their stored sign-in,
+              so the runtime signs in as the Copilot CLI would in the same shell, and because a
+              variable is a deliberate per-process choice (CI, a container, a service account) that an
+              ambient per-user sign-in must not silently override. The Copilot CLI sign-in comes
+              before the GitHub CLI because it is the user's Copilot-specific choice of account and
+              host.
+            tests:
+              - CopilotSignIn_ResolveAsync_ExplicitToken_WinsWithoutRunningTheHelper
+              - CopilotSignIn_ResolveAsync_Provider_IsAskedForTheEffectiveHost
+              - CopilotSignIn_ResolveAsync_EnvironmentToken_SkipsTheCopilotCli
+              - CopilotSignIn_ResolveAsync_NoTokens_UsesTheCopilotCliTokenAndHost
+              - CopilotSignIn_ResolveAsync_CopilotCliTurnedOff_DoesNotReadTheConfiguration
+              - CopilotSignIn_Classify_MapsTheRuntimesKindOfSignIn
+
+          - id: AgentKitAgentsCopilot-CopilotSignIn-KeepsTheHostWithTheSource
+            title: >-
+              The sign-in shall use a host-supplied token or token provider with the host the host
+              chose, else COPILOT_GH_HOST, else github.com; shall use the Copilot CLI sign-in with its
+              account's host, and not at all when another host was chosen; and shall give the runtime
+              the chosen host for its own fallbacks.
+            justification: |
+              A GitHub Enterprise Cloud token used without its host is refused by GitHub with 401 Bad
+              credentials, and a user whose GitHub CLI and Copilot CLI are signed in on different hosts
+              would otherwise be signed in on the wrong one without notice.
+            tests:
+              - CopilotSignIn_ResolveAsync_ExplicitTokenWithHost_SetsTheHostName
+              - CopilotSignIn_ResolveAsync_Provider_IsAskedForTheEffectiveHost
+              - CopilotSignIn_ResolveAsync_RequestedHostDiffers_SkipsTheCopilotCli
+              - CopilotSignIn_ResolveAsync_Fallbacks_KeepTheChosenHostAndReportTheGitHubCli
+              - CopilotSignIn_NormalizeHost_AcceptedForms_Normalize
+              - CopilotSignIn_NormalizeHost_RejectedForms_Throw
+
+          - id: AgentKitAgentsCopilot-CopilotSignIn-ReusesTheCopilotCliSignIn
+            title: >-
+              The sign-in shall read the user's last signed-in Copilot CLI account from COPILOT_HOME or
+              the profile's .copilot folder, and obtain its token through a short-lived Copilot runtime
+              of the same executable that opens no session, runs on a new temporary home holding only
+              that account entry, withholds every token and host variable, hides the GitHub CLI, and
+              is used only when it reports the same account signed in through its stored sign-in.
+            tags: [security]
+            justification: |
+              The Copilot CLI keeps its token in the system credential store, which the SDK forces off
+              for the confined runtime's Empty mode after the caller's environment, so no supported
+              option lets the confined runtime read it. A second, short-lived runtime in the only mode
+              that reads the store can, and because it opens no session and its home holds nothing
+              but the account entry, no MCP server, hook, agent, skill, plugin or instruction can
+              load. Reading the store only through the Copilot CLI itself keeps the library free of
+              platform credential-store code. Checking the reported account before reading the
+              account list keeps the token tied to exactly the account the user chose.
+            tests:
+              - CopilotSignIn_LookUpCopilotCliAccount_ReadsCopilotHomeOrTheProfileDefault
+              - CopilotSignIn_LookUpCopilotCliAccount_DataDirectoryAsHome_IsNotRead
+              - CopilotSignIn_ReadCopilotCliAccount_SingleAccountWithCommentsAndTrailingCommas_IsRead
+              - CopilotSignIn_ReadCopilotCliAccount_UnusableConfiguration_ReportsWhy
+              - CopilotSignIn_ReadCopilotCliAccount_TooLarge_IsNotRead
+              - CopilotSignIn_BuildHelperOptions_RunsTheSameExecutableWithNothingElse
+              - CopilotSignIn_BuildHelperEnvironment_WithholdsTokensAndHidesTheGitHubCli
+              - CopilotSignIn_BuildHelperEnvironment_ScriptCli_KeepsTheFolderHoldingNode
+              - CopilotSignIn_ResolveAsync_HelperNotSignedInAsTheAccount_DoesNotReadTheAccountList
+              - CopilotSignIn_ResolveAsync_AccountList_TakesOnlyTheAccountsUserEntry
+
+          - id: AgentKitAgentsCopilot-CopilotSignIn-SharesOnlyTheAccountEntry
+            title: >-
+              The sign-in shall write nothing to the helper runtime's temporary home but the account's
+              host and login and an empty GitHub CLI configuration folder, shall hand the confined
+              runtime only the token and the account's host, and shall delete the temporary home and
+              stop the helper whatever the outcome.
+            tags: [security]
+            justification: |
+              The user asked that the confined runtime share only the login: the user's MCP servers,
+              hooks, agents, skills, plugins, instructions, settings and history must never reach a
+              confined agent. The token stays in memory and in the runtime's environment, so the
+              library never persists it.
+            tests:
+              - CopilotSignIn_ResolveAsync_HelperHome_HoldsOnlyTheAccountEntry
+              - CopilotSignIn_ResolveAsync_NoTokens_UsesTheCopilotCliTokenAndHost
+              - CopilotSignIn_ResolveAsync_HelperFails_FallsThroughWithAFinding
+              - CopilotSignIn_ResolveAsync_HelperTimesOut_FallsThroughWithAFinding
+              - CopilotSignIn_ResolveAsync_CallerCancels_PropagatesAndCleansUp
+
+          - id: AgentKitAgentsCopilot-CopilotSignIn-FallsThroughOnFailure
+            title: >-
+              The sign-in shall record a missing, unreadable, oversized or malformed Copilot CLI
+              configuration, a missing account, a helper that fails, times out, reports another account
+              or yields no token, and an account list the SDK cannot read, and shall then let the next
+              source apply; the caller's cancellation shall propagate.
+            justification: |
+              The Copilot CLI sign-in relies on undocumented CLI contracts and on a credential store the
+              user may not unlock, so it must never make a start fail that the next source could have
+              signed in. The SDK 2.0.1 account list fails to deserialize any account but a stored
+              sign-in, so that failure is a finding too.
+            tests:
+              - CopilotSignIn_ResolveAsync_HelperFails_FallsThroughWithAFinding
+              - CopilotSignIn_ResolveAsync_HelperTimesOut_FallsThroughWithAFinding
+              - CopilotSignIn_ResolveAsync_AccountListFails_FallsThroughWithAFinding
+              - CopilotSignIn_ResolveAsync_HelperNotSignedInAsTheAccount_DoesNotReadTheAccountList
+              - CopilotSignIn_ResolveAsync_CallerCancels_PropagatesAndCleansUp
+              - CopilotSignIn_ReadCopilotCliAccount_UnusableConfiguration_ReportsWhy
+
+          - id: AgentKitAgentsCopilot-CopilotSignIn-AsksTheHostsTokenProvider
+            title: >-
+              The sign-in shall ask the host's token provider once at start for the effective host, as
+              a first request, refuse a start whose provider fails or returns no token with an
+              explanation that names the provider, let the provider's cancellation propagate, and give
+              each session a provider that asks the host's with the session's host and whether it is a
+              refresh, reporting an unknown lifetime as eight hours.
+            justification: |
+              A host that refreshes its own tokens must be asked for a token the moment the runtime
+              needs one, never handed a silent fallback to another sign-in when its provider fails.
+            tests:
+              - CopilotSignIn_ResolveAsync_Provider_IsAskedForTheEffectiveHost
+              - CopilotSignIn_ResolveAsync_ProviderReturnsNull_Throws
+              - CopilotSignIn_ResolveAsync_ProviderThrows_ThrowsWithTheCause
+              - CopilotSignIn_ResolveAsync_ProviderCanceled_PropagatesCancellation
+              - CopilotSignIn_CreateSessionTokenProvider_AsksTheHostsProvider
+
+          - id: AgentKitAgentsCopilot-CopilotSignIn-ReportsWhatEachSourceFound
+            title: >-
+              The sign-in shall explain a runtime that is not signed in by listing every source, in
+              order, with what it found and the remedies, shall log the source, host and login the
+              runtime signed in with and warn when that is not the Copilot CLI's account, and shall put
+              no token in any finding, message, log entry or string form.
+            tags: [security]
+            justification: |
+              A refusal that lists each source shows which one the user expected and why it did not
+              apply. A token in a message or log would leak a credential into places built to be
+              shared.
+            tests:
+              - CopilotSignIn_ExplainUnauthenticated_ListsEverySourceWithoutTheToken
+              - CopilotSignIn_ExplainUnauthenticated_RejectedTokens_SayWhatToChange
+              - CopilotSignIn_PlanToString_RedactsTheToken
+              - CopilotSignIn_Report_LogsTheSignInAndWarnsOnAnotherAccount

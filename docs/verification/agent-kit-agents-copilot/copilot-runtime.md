@@ -1,7 +1,8 @@
 ## CopilotRuntime Unit Verification Design
 
 This document describes the unit-level verification strategy for the `CopilotRuntime` class, its
-options type, `CopilotRuntimeOptions`, and its runtime-source type, `CopilotRuntimeSource`.
+options type, `CopilotRuntimeOptions`, its runtime-source type, `CopilotRuntimeSource`, and its
+token-provider types, `CopilotGitHubTokenRequest` and `CopilotGitHubToken`.
 
 ### Verification Approach
 
@@ -79,8 +80,10 @@ working directory, or with any client-level capability channel set; options or e
 differ between the two runtime sources; a launch that searches or probes for the bundled runtime,
 prefers discovery to a named CLI, or follows `COPILOT_CLI_PATH`; a missing named CLI, a machine
 without a CLI, or a too-old CLI that is not refused before a client exists; a protocol mismatch not
-explained as too old or too new; a runtime that does not report its launch and status, or an
-unauthenticated one that is accepted; any
+explained as too old or too new; a runtime that does not report its launch, status and sign-in, or an
+unauthenticated one that is accepted or refused without each sign-in source's finding; a resolved
+token or host that does not reach the client options, or an environment changed when the plan names
+neither; a session provider applied on a runtime without one, or missing on a runtime with one; any
 `COPILOT_` or `GITHUB_COPILOT_` variable outside the pass-through set reaching the runtime environment,
 or any other host variable dropped; a pass-through set other than the documented one; a data directory
 accepted when it names a file, is a non-empty directory without the marker, or has a marker that is a
@@ -163,9 +166,36 @@ status is returned as read.
 **Test**: `CopilotRuntime_VerifyStarted_Unauthenticated_IsRefusedWithSignInGuidance`
 
 Error path. A runtime reporting it is not authenticated is refused with an `InvalidOperationException`
-carrying the runtime's status message, that the Copilot CLI's own sign-in is not used, and every
-remedy: `gitHubToken`, `COPILOT_GITHUB_TOKEN`, `GH_TOKEN` or `GITHUB_TOKEN`, `gh auth login`, and
-`COPILOT_GH_HOST`.
+carrying the runtime's status message, the four sign-in sources numbered in order with what each
+found, and the remedies: `copilot login`, `gh auth login` and `gitHubHost`. The message no longer
+says that the Copilot CLI's own sign-in is not used.
+
+#### AgentKitAgentsCopilot-CopilotRuntime-UsesTheResolvedSignIn: The Chosen Token and Host Reach the Runtime
+
+**Tests**:
+
+- `CopilotRuntime_BuildClientOptions_SignInPlan_CarriesTheTokenAndHost`
+- `CopilotRuntime_BuildClientOptions_NoTokenOrHost_LeavesTheEnvironmentUnchanged`
+
+Normal operation. A plan carrying the Copilot CLI's token and its host puts the token in the client's
+GitHub token and the bare host name in the runtime's `COPILOT_GH_HOST`, replacing the host
+environment's value, still in Empty mode. A plan for an environment token hands over no token and
+leaves the runtime's environment exactly the filtered host environment.
+
+#### AgentKitAgentsCopilot-CopilotRuntime-ReportsHowItSignedIn: The Account That Signed In
+
+**Test**: `CopilotRuntime_Properties_ReportTheSignIn`
+
+A runtime built with a Copilot CLI plan and an authentication status of kind `token` reports
+`CopilotSignInSource.CopilotCli` and the reported host and login; one built without reports
+`Unknown` and no host or login.
+
+#### AgentKitAgentsCopilot-CopilotRuntime-SuppliesTheSessionSignIn: Sessions Ask the Host's Provider
+
+**Test**: `CopilotRuntime_ApplySessionSignIn_SetsTheProviderOnlyWhenTheRuntimeHasOne`
+
+A runtime started with a token provider sets a session token provider on create and resume options
+and no session token; one without leaves the session's GitHub options untouched.
 
 #### AgentKitAgentsCopilot-CopilotRuntime-WithholdsCopilotEnvironment: The Host's Copilot Variables Stay Out
 
@@ -244,13 +274,21 @@ behind is empty, so the next start refuses the directory as carrying an invalid 
 - `CopilotRuntimeOptions_Constructor_RelativeDataDirectory_IsResolvedToAFullPath`
 - `CopilotRuntimeOptions_Constructor_BlankCliPath_IsNull`
 - `CopilotRuntimeOptions_Constructor_FullyQualifiedCliPath_IsKept`
+- `CopilotRuntimeOptions_GitHubHost_IsNormalized`
+- `CopilotRuntimeOptions_SignInOptions_DefaultAndKeepTheirValues`
+- `CopilotGitHubToken_Constructor_ValidatesAndRedacts`
 
 With every option a host can set supplied, the tests assert no plugin directory, session filesystem,
 test options, extension launch provider, installation handler, model request handler, model listing
 handler, telemetry, network callbacks, Entra registration or telemetry forwarder is set; that the
 token, log level and logger reach the client options; that a blank token is treated as none; that
 a relative data directory is resolved to a full path when the options are built; that a blank CLI path
-is treated as none for either source; and that a fully qualified CLI path is kept, normalized.
+is treated as none for either source; and that a fully qualified CLI path is kept, normalized. A
+GitHub host given as `example.ghe.com`, `https://example.ghe.com` or `https://example.ghe.com/` is kept
+as `https://example.ghe.com`, and a blank one as none; by default there is no host and no provider and
+the Copilot CLI sign-in is allowed, and a provider and `useCopilotCliSignIn: false` are kept. A
+provider's token must not be blank and must report more than one hour of life, and no string form of
+it carries the token.
 
 #### AgentKitAgentsCopilot-CopilotRuntime-ExplainsAMissingRuntime: The Cause That Fits What Was Launched
 
@@ -260,14 +298,13 @@ is treated as none for either source; and that a fully qualified CLI path is kep
 - `CopilotRuntime_StartClient_InstalledCliFailure_DoesNotBlameTheSdkReference`
 - `CopilotRuntime_StartClient_Succeeds_DoesNotThrow`
 
-Error path and normal operation. A bundled start failing with the SDK's runtime-not-found error is
-rethrown as an `InvalidOperationException` whose message carries the runtime's error and the remedy —
-a `PackageReference` to `Microsoft.Copilot.SDK` — and names every authentication source,
-`COPILOT_GITHUB_TOKEN` among them, and whose inner exception is the original, by reference; a failure
-whose message is null, on a start whose launch is not known, is explained for both sources rather
-than masked. An installed CLI's failure names the CLI and its version, keeps the cause and an
-authentication source, and does not mention a package reference. A start that succeeds passes
-through.
+Error path and normal operation. A bundled start failing with the SDK's runtime-not-found error is rethrown as an
+`InvalidOperationException` whose message carries the runtime's error and the remedy — a `PackageReference` to
+`Microsoft.Copilot.SDK` — and names every sign-in source, in order, from `gitHubToken` or `gitHubTokenProvider` to the
+user's Copilot CLI sign-in, and whose inner exception is the original, by reference; a failure whose message is null, on
+a start whose launch is not known, is explained for both sources rather than masked. An installed CLI's failure names
+the CLI and its version, keeps the cause and an authentication source, and does not mention a package reference. A start
+that succeeds passes through.
 
 #### AgentKitAgentsCopilot-CopilotRuntime-PassesCancellationThrough: Cancellation Is Not a Fault
 
@@ -325,6 +362,8 @@ conversations through this method.
 - `CopilotRuntimeOptions_Constructor_RelativeCliPath_Throws`
 - `CopilotRuntimeOptions_Constructor_BatchFileCliPath_Throws` (`.cmd`, `.CMD` and `.bat`)
 - `CopilotRuntimeOptions_Constructor_CliPathWithBundled_Throws`
+- `CopilotRuntimeOptions_InvalidGitHubHost_Throws`
+- `CopilotRuntimeOptions_TokenAndProvider_Throws`
 
 Null options are refused with `ArgumentNullException` before anything is created; a null data
 directory with `ArgumentNullException`, a whitespace one with `ArgumentException`, and a path the
@@ -334,4 +373,6 @@ kept as its inner exception. An undefined runtime source is refused with
 the bundled runtime, with `ArgumentException` naming `cliPath`. A CLI path naming a batch file —
 `copilot.cmd`, `copilot.CMD` or `copilot.bat` — is refused with `ArgumentException` naming `cliPath`,
 whose message says it is a batch file and points to `copilot.exe` or the npm package's
-`npm-loader.js`.
+`npm-loader.js`. A GitHub host using `http`, carrying a path, a port or a user name is refused with
+`ArgumentException` naming `gitHubHost`, and a token given with a token provider with
+`ArgumentException` naming `gitHubTokenProvider`.

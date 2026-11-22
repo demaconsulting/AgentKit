@@ -92,8 +92,9 @@ follow:
   two tiers derived from billing.
 - **`SignInMessage`** (`const string`) — "The Copilot runtime could not list models: it is not
   connected or not signed in to GitHub. Sign it in with a GitHub token (CopilotRuntimeOptions'
-  gitHubToken, COPILOT_GITHUB_TOKEN, GH_TOKEN or GITHUB_TOKEN) or 'gh auth login'; the Copilot CLI's
-  own sign-in is not used."
+  gitHubToken or gitHubTokenProvider, COPILOT_GITHUB_TOKEN, GH_TOKEN or GITHUB_TOKEN), 'copilot
+  login' or 'gh auth login', with CopilotRuntimeOptions' gitHubHost for a GitHub Enterprise Cloud
+  account."
 - **`_read`** (`Func<CancellationToken, Task<IList<Rpc.Model>>>`) — reads the service's listing.
   Built over the runtime in production, and supplied directly by the test seam.
 

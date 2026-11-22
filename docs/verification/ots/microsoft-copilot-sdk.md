@@ -30,7 +30,11 @@ This document provides the verification evidence for the `Microsoft.Copilot.SDK`
   offers the signed-in user, its capabilities, limits, billing, reasoning efforts, policy and
   messages;
 - per-session inference options carrying a reasoning effort and a context tier on the options a
-  session is created and resumed with.
+  session is created and resumed with;
+- GitHub authentication: a client-level token passed to the runtime it spawns, a CodingAgent-mode
+  client on a supplied home whose runtime reads the system credential store and lists its accounts
+  with their tokens, and a session-level token provider asked for each session's token with the host
+  and whether it is a refresh.
 
 ### Verification Approach
 
@@ -349,7 +353,54 @@ requires the inference options on the shared session-options base.
 
 **Requirement coverage**: `AgentKit-OTS-MicrosoftCopilotSDK-InferenceOptions`.
 
+#### CopilotRuntime_BuildClientOptions_SignInPlan_CarriesTheTokenAndHost
+
+**Scenario**: The client options are built from a sign-in plan carrying a token and a host name.
+
+**Expected**: `ClientGitHubOptions.Token` carries the token, and the spawned connection's replacement
+environment carries `COPILOT_GH_HOST` with the bare host name, in Empty mode.
+
+**Requirement coverage**: `AgentKit-OTS-MicrosoftCopilotSDK-GitHubAuthentication`.
+
+#### CopilotSignIn_BuildHelperOptions_RunsTheSameExecutableWithNothingElse
+
+**Scenario**: The helper's client options are built for an installed CLI path, an environment and a
+home.
+
+**Expected**: The SDK accepts `CopilotClientMode.CodingAgent` on a spawned stdio connection with that
+path, environment and base directory, and no token, arguments or capability channel.
+
+**Requirement coverage**: `AgentKit-OTS-MicrosoftCopilotSDK-GitHubAuthentication`.
+
+#### CopilotSignIn_CreateSessionTokenProvider_AsksTheHostsProvider
+
+**Scenario**: The session token provider AgentKit builds is called with the SDK's own
+`GitHubTokenProviderArgs`, for `Initial` and `Refresh`.
+
+**Expected**: The SDK's argument type carries the host and the reason, and its result and token types
+carry the access token and its lifetime in seconds.
+
+**Requirement coverage**: `AgentKit-OTS-MicrosoftCopilotSDK-GitHubAuthentication`.
+
+#### CopilotSignIn_ResolveAsync_AccountList_TakesOnlyTheAccountsUserEntry
+
+**Scenario**: The account list is hand-built from the SDK's `AccountAllUsers` and `AuthInfoUser`
+types, with another login's entry before the account's.
+
+**Expected**: The SDK's types carry the host, login and token AgentKit reads, and only the account's
+own entry's token is taken.
+
+**Requirement coverage**: `AgentKit-OTS-MicrosoftCopilotSDK-GitHubAuthentication`.
+
 ### Requirements Coverage
+
+The GitHub authentication entries are qualified the same way: the offline tests build the client
+token, the helper's CodingAgent options on the same executable and the session token provider, and
+map the SDK's account list; the live suite shows the runtime honors them — the Copilot CLI account's
+token read through the helper and accepted with its host (L-S1, L-S2), an explicit token with its
+host (L-S3), and a token provider asked at start and again for a session on a client started with its
+token (L-S4). The account list's deserialization defect for accounts other than a stored sign-in was
+observed live with the GitHub CLI visible to the helper, which is why the helper hides it.
 
 The lifecycle entries are qualified, and the qualification is part of the evidence rather than a
 footnote to it: the SDK's session and client types cannot be constructed in a test, so those
@@ -412,6 +463,11 @@ the older protocol is refused (recorded in *AgentKitAgentsCopilot System Verific
 - **`AgentKit-OTS-MicrosoftCopilotSDK-InferenceOptions`**:
   CopilotAgentFactory_BuildSessionConfig_Selection_SetsModelEffortAndTier,
   CopilotAgentFactory_ResumeAndEnginePaths_CarryTheSameSelection
+- **`AgentKit-OTS-MicrosoftCopilotSDK-GitHubAuthentication`** _(evidence above the runtime only)_:
+  CopilotRuntime_BuildClientOptions_SignInPlan_CarriesTheTokenAndHost,
+  CopilotSignIn_BuildHelperOptions_RunsTheSameExecutableWithNothingElse,
+  CopilotSignIn_CreateSessionTokenProvider_AsksTheHostsProvider,
+  CopilotSignIn_ResolveAsync_AccountList_TakesOnlyTheAccountsUserEntry
 
 The live suite's supplementary evidence for the same functionality, by scenario:
 
@@ -445,3 +501,7 @@ The live suite's supplementary evidence for the same functionality, by scenario:
 - **Model listing**: `AgentKitAgentsCopilotLive_Catalog_ListsFiltersAndRefreshes`,
   `AgentKitAgentsCopilotLive_Selection_UnofferedEffort_IsRefusedBeforeAnySession`
 - **Inference options**: `AgentKitAgentsCopilotLive_Selection_SessionRunsOnTheChosenEffortAndTier`
+- **GitHub authentication**: `AgentKitAgentsCopilotLive_SignIn_DefaultOptions_UseTheCopilotCliAccount`,
+  `AgentKitAgentsCopilotLive_SignIn_GitHubCliHidden_StillUsesTheCopilotCliAccount`,
+  `AgentKitAgentsCopilotLive_SignIn_ExplicitTokenAndHost_AreUsed`,
+  `AgentKitAgentsCopilotLive_SignIn_TokenProvider_SignsInTheRuntimeAndItsSessions`

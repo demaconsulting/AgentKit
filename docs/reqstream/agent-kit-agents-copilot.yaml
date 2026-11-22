@@ -328,7 +328,8 @@ sections:
         title: >-
           The library shall report a Copilot runtime that cannot start — no installed CLI found, a CLI
           too old or too new for the library, a CLI whose version cannot be read, a bundled runtime
-          that was not provisioned, or a runtime that is not signed in — with the runtime's own error
+          that was not provisioned, or a runtime that is not signed in, listing what each sign-in
+          source found — with the runtime's own error
           where there is one and the likely cause and remedy, and shall pass a canceled start through
           unchanged.
         justification: |
@@ -349,10 +350,12 @@ sections:
           - AgentKitAgentsCopilot-CopilotCli-ReportsWhereItLooked
           - AgentKitAgentsCopilot-CopilotCli-RequiresTheMinimumVersion
           - AgentKitAgentsCopilot-CopilotCli-ExplainsAProbeThatFails
+          - AgentKitAgentsCopilot-CopilotSignIn-ReportsWhatEachSourceFound
         tests:
           - AgentKitAgentsCopilot_Runtime_FailedStart_IsExplained
           - AgentKitAgentsCopilot_Runtime_UnsupportedCli_IsRefusedWithUpgradeGuidance
           - AgentKitAgentsCopilot_Runtime_Unauthenticated_IsRefusedWithSignInGuidance
+          - AgentKitAgentsCopilot_Runtime_NoSourceSignsIn_RefusalListsWhatEachSourceFound
 
       - id: AgentKitAgentsCopilot-Runtime-InstalledCliByDefault
         title: >-
@@ -371,8 +374,8 @@ sections:
           read first and an older CLI is refused with how to upgrade it. Which executable runs is the
           host's choice, never the ambient environment, and either executable runs in Empty mode, as a
           child process with the host's Copilot variables withheld, on the data directory the library
-          owns, so the choice never changes what reaches the model. Authentication is unchanged: the
-          CLI's own sign-in is not used.
+          owns, so the choice never changes what reaches the model. How the runtime signs in does not
+          depend on which executable runs (see AgentKitAgentsCopilot-Runtime-SignsInAsTheUser).
         children:
           - AgentKitAgentsCopilot-CopilotRuntime-SpawnsTheSelectedRuntime
           - AgentKitAgentsCopilot-CopilotRuntime-RefusesAnUnsupportedCli
@@ -448,6 +451,39 @@ sections:
         tests:
           - AgentKitAgentsCopilot_Runtime_ClientOptionsAreConfined
           - AgentKitAgentsCopilot_Runtime_ForeignDataDirectory_IsRefused
+
+      - id: AgentKitAgentsCopilot-Runtime-SignsInAsTheUser
+        title: >-
+          The library shall sign the Copilot runtime in from, in order, a token or token provider the
+          host supplies, a GitHub token in the environment, the user's Copilot CLI sign-in unless the
+          host turns it off, and the runtime's own fallbacks, using the GitHub host that belongs to the
+          source used, and shall take nothing from the user's Copilot CLI configuration but the
+          signed-in account's host and login.
+        tags: [security]
+        justification: |
+          A user signed in only with the Copilot CLI expects an application built on it to work, and
+          a user whose GitHub CLI and Copilot CLI are signed in on different hosts expects the Copilot
+          account; before this, such a runtime was refused or signed in to another host without
+          notice. The order follows the Copilot CLI's own, so the runtime signs in as copilot would in
+          the same shell, and lets a deliberate per-process token win over an ambient per-user
+          sign-in. Sharing only the account entry keeps the user's MCP servers, hooks, agents, skills,
+          plugins, instructions, settings and history out of a confined agent: the confined runtime's
+          mode, environment and data directory are unchanged, and it receives only a token and a host.
+        children:
+          - AgentKitAgentsCopilot-CopilotSignIn-OrdersTheSources
+          - AgentKitAgentsCopilot-CopilotSignIn-KeepsTheHostWithTheSource
+          - AgentKitAgentsCopilot-CopilotSignIn-ReusesTheCopilotCliSignIn
+          - AgentKitAgentsCopilot-CopilotSignIn-SharesOnlyTheAccountEntry
+          - AgentKitAgentsCopilot-CopilotSignIn-FallsThroughOnFailure
+          - AgentKitAgentsCopilot-CopilotSignIn-AsksTheHostsTokenProvider
+          - AgentKitAgentsCopilot-CopilotRuntime-UsesTheResolvedSignIn
+          - AgentKitAgentsCopilot-CopilotRuntime-ReportsHowItSignedIn
+          - AgentKitAgentsCopilot-CopilotRuntime-SuppliesTheSessionSignIn
+          - AgentKitAgentsCopilot-CopilotRuntime-OffersOnlyNeutralOptions
+          - AgentKitAgentsCopilot-CopilotTurnChannel-AppliesTheHostsTokenProvider
+          - AgentKit-OTS-MicrosoftCopilotSDK-GitHubAuthentication
+        tests:
+          - AgentKitAgentsCopilot_Runtime_SignIn_FollowsTheSourceOrderWithTheSourcesHost
 
       - id: AgentKitAgentsCopilot-ModelCatalog-ListsTheServicesModels
         title: >-

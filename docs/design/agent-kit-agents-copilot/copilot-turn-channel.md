@@ -166,11 +166,12 @@ never deleted; on a disposed runtime it fails before any start.
 shares, and the path the opt-in live suite uses to inspect a session opened exactly as production
 opens one.
 
-**Algorithm:** `OpenConfinedAsync` with discovery on the runtime's client for the options' working
-directory, the client's session creation, the live seal, and, as the abandon step, `ReleaseAsync`
-with the handle's release and the client's deletion of the session. Each step — discovery, creation,
-the abandoning deletion — reads `runtime.Client` when it runs, so a disposed runtime fails the step
-with `ObjectDisposedException` rather than being restarted.
+**Algorithm:** First apply the runtime's session-level sign-in (`runtime.ApplySessionSignIn(config)`), so a session on a
+runtime started with the host's token provider asks that provider for its tokens; see *CopilotRuntime Unit Design*. Then
+`OpenConfinedAsync` with discovery on the runtime's client for the options' working directory, the client's session
+creation, the live seal, and, as the abandon step, `ReleaseAsync` with the handle's release and the client's deletion of
+the session. Each step — discovery, creation, the abandoning deletion — reads `runtime.Client` when it runs, so a
+disposed runtime fails the step with `ObjectDisposedException` rather than being restarted.
 
 **Preconditions:** `runtime` and `config` are not null.
 
@@ -180,7 +181,8 @@ with `ObjectDisposedException` rather than being restarted.
 
 **Purpose:** Resume a session through the confining protocol.
 
-**Algorithm:** As `CreateConfinedSessionAsync`, resuming rather than creating, with `ReleaseAsync` of
+**Algorithm:** As `CreateConfinedSessionAsync` — the runtime's session-level sign-in applied first —
+resuming rather than creating, with `ReleaseAsync` of
 the handle alone as the abandon step; each step reads `runtime.Client` when it runs.
 
 **Preconditions:** `runtime`, `sessionId` and `config` are not null.

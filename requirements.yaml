@@ -120,6 +120,7 @@ includes:
   - docs/reqstream/agent-kit-agents-copilot/copilot-agent.yaml
   - docs/reqstream/agent-kit-agents-copilot/copilot-agent-factory.yaml
   - docs/reqstream/agent-kit-agents-copilot/copilot-runtime.yaml
+  - docs/reqstream/agent-kit-agents-copilot/copilot-sign-in.yaml
   - docs/reqstream/agent-kit-agents-copilot/copilot-cli.yaml
   - docs/reqstream/agent-kit-agents-copilot/copilot-provider-session.yaml
   - docs/reqstream/agent-kit-agents-copilot/copilot-provider-session-factory.yaml

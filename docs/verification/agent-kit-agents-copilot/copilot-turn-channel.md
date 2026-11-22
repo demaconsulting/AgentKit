@@ -241,3 +241,15 @@ in *AgentKitAgentsCopilot System Verification Design* runs the protocol end to e
 factory's own configurations, and the opt-in live suite shows on the real runtime the created path
 (L12a, L12c) and the resume-time disabled list on a session resumed through the channel (L12d); the
 abandonment policy itself is reviewed.
+
+#### AgentKitAgentsCopilot-CopilotTurnChannel-AppliesTheHostsTokenProvider: Sessions on a Provider's Runtime Ask It
+
+**Test**: `CopilotSessionChannel_Open_RuntimeWithTokenProvider_AppliesItToTheSession`
+
+Normal operation. On a runtime built with a sign-in plan carrying a token provider, over a client that
+can never start, `CreateConfinedSessionAsync` and `ResumeConfinedSessionAsync` each fail at discovery
+— so no session is created — after setting a session token provider on the options; on a runtime
+without one, none is set. Invoking the session provider with the SDK's arguments for
+`https://example.ghe.com` and `Refresh` asks the host's provider once, with that host and
+`IsRefresh` true, and hands back its token. That the runtime then asks the session provider is shown
+by the opt-in live suite (L-S4).

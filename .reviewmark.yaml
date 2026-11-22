@@ -1794,8 +1794,31 @@ reviews:
       - "src/DemaConsulting.AgentKit.Agents.Copilot/CopilotRuntime.cs"         # unit source
       - "src/DemaConsulting.AgentKit.Agents.Copilot/CopilotRuntimeOptions.cs"  # unit source (options type)
       - "src/DemaConsulting.AgentKit.Agents.Copilot/CopilotRuntimeSource.cs"   # unit source (runtime source type)
+      - "src/DemaConsulting.AgentKit.Agents.Copilot/CopilotGitHubToken.cs"     # unit source (provider token type)
+      - "src/DemaConsulting.AgentKit.Agents.Copilot/CopilotGitHubTokenRequest.cs"  # unit source (provider request type)
       - "test/DemaConsulting.AgentKit.Agents.Copilot.Tests/CopilotRuntimeTests.cs"  # unit tests
       - "test/DemaConsulting.AgentKit.Agents.Copilot.Tests/FakeCopilotCliMachine.cs"  # fake CLI machine
+
+  # AgentKitAgentsCopilot-CopilotSignIn Review (one per unit)
+  #
+  # The fake CLI machine is the sign-in tests' PATH and file system; it is reviewed with the
+  # CopilotCli and CopilotRuntime units that own it, and is context here.
+  - id: AgentKitAgentsCopilot-CopilotSignIn
+    title: Review that AgentKitAgentsCopilot CopilotSignIn Implementation is Correct
+    context:
+      - "docs/design/agent-kit-agents-copilot.md"
+      - "docs/reqstream/agent-kit-agents-copilot.yaml"
+      - "docs/design/ots/microsoft-copilot-sdk.md"
+      - "docs/design/agent-kit-agents-copilot/copilot-runtime.md"
+      - "docs/design/agent-kit-agents-copilot/copilot-cli.md"
+      - "test/DemaConsulting.AgentKit.Agents.Copilot.Tests/FakeCopilotCliMachine.cs"
+    paths:
+      - "docs/reqstream/agent-kit-agents-copilot/copilot-sign-in.yaml"   # unit requirements
+      - "docs/design/agent-kit-agents-copilot/copilot-sign-in.md"        # unit design
+      - "docs/verification/agent-kit-agents-copilot/copilot-sign-in.md"  # unit verification
+      - "src/DemaConsulting.AgentKit.Agents.Copilot/CopilotSignIn.cs"         # unit source
+      - "src/DemaConsulting.AgentKit.Agents.Copilot/CopilotSignInSource.cs"   # unit source (sign-in source type)
+      - "test/DemaConsulting.AgentKit.Agents.Copilot.Tests/CopilotSignInTests.cs"  # unit tests
 
   # AgentKitAgentsCopilot-CopilotCli Review (one per unit)
   - id: AgentKitAgentsCopilot-CopilotCli

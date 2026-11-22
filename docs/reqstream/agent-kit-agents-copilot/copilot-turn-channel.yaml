@@ -158,3 +158,17 @@ sections:
               - CopilotSessionChannel_Seal_ServerStillEnabledAfterCreation_IsDisabledThenVerified
               - CopilotSessionChannel_Seal_ServerThatStaysEnabled_RefusesNamingIt
               - CopilotSessionChannel_NoInstalledPluginsPatch_ReplacesTheListWithAnEmptyOne
+
+          - id: AgentKitAgentsCopilot-CopilotTurnChannel-AppliesTheHostsTokenProvider
+            title: >-
+              The production channel shall, before creating or resuming a session, apply the runtime's
+              session-level sign-in, so a session on a runtime started with the host's GitHub token
+              provider asks that provider for its tokens, with the session's GitHub host and whether
+              the token is a refresh.
+            justification: |
+              A runtime started with a token provider holds only the token the provider gave at start;
+              a session that asks the provider for its own token lets the runtime refresh it before it
+              expires, without the host restarting the runtime. Applying it on the one path every
+              opener and resumer shares means no session can miss it.
+            tests:
+              - CopilotSessionChannel_Open_RuntimeWithTokenProvider_AppliesItToTheSession
