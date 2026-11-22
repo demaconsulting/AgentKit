@@ -13,6 +13,8 @@ package AgentKitAgentsOllama {
      * none was chosen. It exists so that capability can be depended upon by an application rather
      * than copied out of a sample, and so the OllamaSharp dependency it carries stays out of the
      * IChatClient adapter that serves every provider in that family alike.
+     * It also describes the models a server holds as a model catalog - what each can do and the
+     * length it was trained for, as the ceiling a chosen window is refused above.
      */
 
     part def AgentKitAgentsOllamaSystem {
@@ -27,5 +29,6 @@ package AgentKitAgentsOllama {
 
         part ollamaContextWindow : OllamaContextWindow;
         part ollamaContextSizingChatClient : OllamaContextSizingChatClient;
+        part ollamaModelCatalog : OllamaModelCatalog;
     }
 }

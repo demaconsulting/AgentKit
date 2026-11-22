@@ -5,7 +5,7 @@
 The AgentKitAgentsOllama system makes the context window a conversation on an Ollama model is
 accounted against the window the Ollama instance is actually using — by asking the server to run at
 a size the application chose, and by reporting the size a running instance is using when none was
-chosen.
+chosen — and describes the models the server holds as a model catalog.
 
 ## Purpose
 
@@ -22,16 +22,21 @@ turn can tell. That asymmetry is the reason this system exists rather than a con
 The decisive fact about Ollama is that a model has two context lengths and only one of them is
 enforced. The model file publishes a maximum; the server decides at load time what the running
 instance will use. The published figure describes the file and is routinely far larger than what the
-instance runs at, so this system never consults it. Only two figures are honest: the one the
+instance runs at, so this system never accounts against it. Only two figures are honest: the one the
 application asked the server to run at, and the one the running instance reports. Where neither is
 available, a conservative default is reported and named as an assumption.
+
+The server is also the only source for which of its models can run an agent and which can see. An
+application with a model picker needs that list, and needs a window the model cannot honor refused
+before a session starts. The catalog reads the server's own description of each model for this, and
+it reads the trained length **only** as the ceiling a stated window is refused above.
 
 Ollama will answer, and will take direction, but only through Ollama's own APIs — which is what
 makes this a package rather than a helper inside the chat-client adapter. That adapter serves every
 `IChatClient` provider and must stay free of any one of them; see *AgentKitAgentsChatClient System
 Design*.
 
-The system deliberately stops at these two jobs. It does not wrap `ChatClientProviderSessionFactory`
+The system deliberately stops at these three jobs. It does not wrap `ChatClientProviderSessionFactory`
 in a convenience factory: once the window is known, configuring a session with it is one line of
 ordinary chat-client use, and a wrapper would add a type without adding a capability.
 
@@ -40,15 +45,18 @@ ordinary chat-client use, and a wrapper would add a type without adding a capabi
 This system carries `OllamaSharp`, and carrying it is its whole justification as a separate package.
 AgentKitAgentsChatClient must not acquire a provider-specific dependency — an application reaching
 OpenAI or AI Foundry through that adapter would take an Ollama client library it never calls — so
-the Ollama-specific code lives here instead. The system references `OllamaSharp` and the
-provider-neutral chat abstractions it decorates, and nothing else: it takes no reference on
-AgentKitCore, because the window it reports is an ordinary integer and none of Core's contracts
-appear in its surface, and it takes no reference on either provider adapter.
+the Ollama-specific code lives here instead. The system references `OllamaSharp`, the
+provider-neutral chat abstractions it decorates, and AgentKitCore. It references Core for the
+provider-neutral model types — `ModelInfo`, `CachingModelCatalog` and `ModelSelection` — that appear
+on the catalog's surface and on the reading's selection overload. Core depends only on the chat
+abstractions this system already references, so the reference adds no agent runtime. The system
+takes no reference on either provider adapter.
 
 ## Architecture
 
-The system is two units, one for each half of the promise. Neither needs the other, and a subsystem
-layer between them would cost a requirements file, a design document, a verification document and a
+The system is three units, one for each job. The reading and the decorator need nothing of each
+other; the catalog and the reading share only the tag-normalization helper and the catalog's provider
+id. A subsystem layer between them would cost a requirements file, a design document, a verification document and a
 review-set without removing anything anyone has to review.
 
 - **OllamaContextWindow (Unit)** — the discovered window and its source, the conservative fallback,
@@ -56,8 +64,13 @@ review-set without removing anything anyone has to review.
 - **OllamaContextSizingChatClient (Unit)** — a decorator over the application's chat client that
   names the chosen context length on every request it forwards, so the instance the server runs is
   the one the session accounts against.
+- **OllamaModelCatalog (Unit)** — describes the models the server holds: what each can do, whether an
+  agent can run on it, the efforts it accepts, and its trained length as a ceiling. It shares the
+  tag-normalization helper with `OllamaContextWindow`, so a bare model name resolves the same way in
+  both, and supplies the provider id the reading's selection overload checks.
 
-The two meet only in the application that composes them, and only through one integer: the window the
+The reading and the decorator meet only in the application that composes them, and only through one
+integer: the window the
 application ends up with — stated by it, or read back from the running instance, or assumed — is
 handed to the decorator and, where it was stated, to the reading as well, which is why the reading
 reports such a figure as `Stated` without asking the server about it.
@@ -71,6 +84,9 @@ that can be subtly and silently wrong — is exercisable without a server.
 - **`OllamaContextWindow.ReadAsync`** — inbound, called by the host. Takes an Ollama client, a model
   name and an optionally stated window. Performs network I/O; tolerates the server query failing;
   propagates cancellation.
+- **`OllamaContextWindow.ReadAsync(client, ModelSelection, cancellationToken)`** — inbound, called by
+  the host with a selection from the catalog. Takes the model and the stated window from the
+  selection, and refuses a selection of another provider's model.
 - **`OllamaContextWindow.Select`** — inbound, called by the host or by `ReadAsync`. Takes what the
   server reported. Pure; contacts nothing. Its signature no longer carries a model-metadata
   argument, which is a breaking change from the previous shape and is the point of this design
@@ -78,8 +94,12 @@ that can be subtly and silently wrong — is exercisable without a server.
 - **`OllamaContextWindow`** — outbound. A token count, always positive, and the source it came from.
 - **`OllamaContextSizingChatClient`** — inbound, constructed by the host around the client it
   already owns. Presents `IChatClient`, so it composes anywhere that interface is accepted.
+- **`OllamaModelCatalog`** — inbound, constructed by the host over its Ollama client. Presents
+  Core's `IModelCatalog` — `ListAsync`, `GetAsync` and `RefreshAsync` — and so serves Core's
+  `SelectAsync` gate. Cached for five minutes; performs network I/O on a read.
 - **Ollama HTTP API** — outbound, through `OllamaSharp`. The running-models query, which is
-  optional, and the chat requests the application sends, which carry the chosen context length.
+  optional; the chat requests the application sends, which carry the chosen context length; and, for
+  the catalog only, the model listing (`/api/tags`) and each model's description (`/api/show`).
 
 The window is delivered as a plain integer on the returned record, so a host hands it to
 `ChatClientProviderSessionFactory` directly. The decorator presents only `IChatClient`. None of this
@@ -88,22 +108,29 @@ system's types appear in the session the application goes on to build.
 ## Dependencies
 
 - **OllamaSharp** — supplies the Ollama client interface, the running-models report, and the
-  translation of a named context-length option into the Ollama request's own options block; see
-  *OllamaSharp Design*.
+  translation of a named context-length option into the Ollama request's own options block; for the
+  catalog, the model listing (`ListLocalModelsAsync`) and each model's description
+  (`ShowModelAsync`); and the mapping of a provider-neutral reasoning effort to Ollama's `think`
+  option. See *OllamaSharp Design*.
 - **Microsoft.Extensions.AI.Abstractions** — supplies `IChatClient`, `ChatOptions` and the
   delegating chat-client base the sizing decorator is built on. Referenced directly because these
   types appear on this system's own public surface.
+- **AgentKitCore** — supplies `ModelInfo`, `CachingModelCatalog` and `ModelSelection`, which appear
+  on the catalog's surface and on the reading's selection overload.
 
-The system depends on nothing else — not AgentKitCore, not either provider adapter.
+The system depends on nothing else — not either provider adapter.
 
 ## Risk Control Measures
 
 The risk this system is a control for is a session told a window larger than the server enforces,
-which loses conversation history with no error raised anywhere. Four measures bound it:
+which loses conversation history with no error raised anywhere. Five measures bound it:
 
-- **A published maximum is never used.** The only figure the system will report from the server is
-  one describing the running instance. What the model file could support is not asked for at all,
-  so it cannot leak into the account through any path.
+- **A published maximum is never used as the window to account against.** The only figure the
+  reading will report from the server is one describing the running instance. What the model file
+  could support is not asked for by the reading at all, so it cannot leak into the account through
+  any path. The catalog reads it, but only as a ceiling.
+- **A stated window above the trained length is refused.** The catalog reports the trained length as
+  the model's ceiling, and validation refuses a chosen window above it before any request is sent.
 - **The reported size is asked for on every request.** Whichever rung produced it, the window the
   application will account against is put on each request the run sends, so the instance is
   loaded at it and reloaded at it, and the reported figure is true rather than merely asserted. Why
@@ -132,6 +159,13 @@ no stated size ──▶ model name ──▶ list running models ──▶ Sele
 (tokens, any source) ──▶ sizing decorator ──▶ every chat request names the context length
 ```
 
+A selection from the catalog reaches the same path. Its chosen window, already checked against the
+trained length, is the stated size:
+
+```text
+selection ──▶ ReadAsync(selection) ──▶ (selection's window, Stated) or the running-instance path
+```
+
 The running-models query may fail; a failure contributes nothing and the conservative default is
 reported as assumed. Cancellation is not treated as a failure — it stops the read rather than
 yielding an assumed window. A stated size is never confirmed against the server at run time: asking
@@ -150,7 +184,8 @@ it was asked to observe.
 - **Regulatory**: the system's requirements trace to the `AgentKit-Provider-Ollama` capability,
   which promises a guarded agent on a model served by Ollama carrying a conversation past the
   window that server enforces; the agent and the session half of that promise are delivered by
-  AgentKitAgentsChatClient, and this system supplies the window figure and makes it true. See
+  AgentKitAgentsChatClient, and this system supplies the window figure and makes it true. The
+  catalog and the selection overload also trace to the `AgentKit-ModelSelection` capability. See
   *AgentKit Product Capability Design*.
 
 ## Document Conventions

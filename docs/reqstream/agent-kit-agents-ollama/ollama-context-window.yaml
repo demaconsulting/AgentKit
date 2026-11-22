@@ -92,8 +92,8 @@ sections:
 
           - id: AgentKitAgentsOllama-OllamaContextWindow-NeverConsultsAPublishedMaximum
             title: >-
-              The unit shall not report a context length taken from what a model file publishes,
-              whatever the server would say about it.
+              The unit shall not report, as the window to account against, a context length taken
+              from what a model file publishes.
             justification: |
               A published maximum describes what the model file could support, not what the instance
               is running: one live server published 262,144 tokens for a model it was running at
@@ -101,7 +101,9 @@ sections:
               talking long after the server had begun discarding the start of the conversation, with
               nothing reporting an error - the one failure mode this whole reading exists to
               prevent. Not asking for it at all is what makes that guarantee hold rather than merely
-              happen to hold.
+              happen to hold. The model catalog does read the trained length, but only as the
+              ceiling a stated window is checked against and refused above, never as a window to
+              account against.
             tests:
               - OllamaContextWindow_ReadAsync_ModelNotLoaded_NeverAsksForThePublishedMaximum
 
@@ -130,3 +132,18 @@ sections:
               it refuses the value at the line that wrote it rather than somewhere further on.
             tests:
               - OllamaContextWindow_Construct_WindowOfZeroOrLess_Throws
+
+          - id: AgentKitAgentsOllama-OllamaContextWindow-StatesTheSelectionsWindow
+            title: >-
+              The unit shall report the window a model selection chose as stated, and with none
+              chosen shall keep its precedence of the loaded instance then the assumed default; it
+              shall refuse a selection of another provider's model.
+            justification: |
+              An application whose user chose a window wants the session accounted against exactly
+              that figure, which the server is asked to run at; one that chose none gets what it
+              got before. The trained length the catalog reported is never the answer, because it
+              describes the file rather than the instance.
+            tests:
+              - OllamaContextWindow_ReadAsync_SelectionWithWindow_ReportsItAsStated
+              - OllamaContextWindow_ReadAsync_SelectionWithoutWindow_ReadsTheLoadedInstance
+              - OllamaContextWindow_ReadAsync_SelectionFromAnotherProvider_Throws

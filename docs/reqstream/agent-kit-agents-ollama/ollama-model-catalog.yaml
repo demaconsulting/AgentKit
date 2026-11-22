@@ -1,0 +1,105 @@
+---
+# Software Unit Requirements for OllamaModelCatalog
+#
+# These requirements describe the design-level behavior of the OllamaModelCatalog unit: the
+# description of the models an Ollama server holds, in the provider-neutral terms the Core model
+# catalog defines.
+
+sections:
+  - title: AgentKitAgentsOllama Requirements
+    sections:
+      - title: OllamaModelCatalog Requirements
+        requirements:
+          - id: AgentKitAgentsOllama-OllamaModelCatalog-ReportsTheServersCapabilities
+            title: >-
+              The unit shall report a model as vision-capable, tool-calling or thinking exactly when
+              the server reports that capability for it, including a model whose vision has no
+              separate projector.
+            justification: |
+              An application that shows only vision models has to know which models can see, and
+              the server knows: since Ollama 0.6.4 its description of a model lists what the model
+              can do. A newer engine embeds vision in the model itself, with no projector, so a test
+              of the projector alone would hide a vision model; the server's own report has no such
+              gap. A capability the server did not report is not set, which keeps a model that
+              cannot see out of a vision application.
+            tests:
+              - OllamaModelCatalog_ListAsync_CapturedServer_DescribesTheVisionModels
+              - OllamaModelCatalog_GetAsync_VisionWithoutProjector_IsVision
+
+          - id: AgentKitAgentsOllama-OllamaModelCatalog-UsableOnlyWithCompletionAndTools
+            title: >-
+              The unit shall report a model as usable only when the server reports it can both
+              complete a chat and call tools, and otherwise shall say which it cannot do.
+            justification: |
+              Every AgentKit agent is a tool-using chat agent, so an embedding model, or a chat
+              model that cannot call tools, cannot run one. Saying which is missing is what lets a
+              picker that shows unusable models explain why.
+            tests:
+              - OllamaModelCatalog_ListAsync_EmbeddingModel_IsUnusable
+              - OllamaModelCatalog_Map_CompletionWithoutTools_IsUnusable
+
+          - id: AgentKitAgentsOllama-OllamaModelCatalog-InfersCapabilitiesFromAnOlderServer
+            title: >-
+              For a server that reports no capabilities, the unit shall infer vision from the
+              model's projector or its architecture's vision metadata, shall mark the model unusable
+              because tool support cannot be confirmed, and shall say the capabilities were
+              inferred.
+            justification: |
+              A server older than the capability report still serves models an application may want
+              to see listed. Vision can be inferred from the model's own metadata, but tool calling
+              cannot, and an agent offered to a model that cannot call tools fails on its first
+              turn; marking it unusable with a reason is the conservative answer.
+            tests:
+              - OllamaModelCatalog_Map_PreCapabilityServerWithProjector_InfersVision
+              - OllamaModelCatalog_Map_PreCapabilityServer_InfersVisionFromVisionKeysOnly
+
+          - id: AgentKitAgentsOllama-OllamaModelCatalog-ReportsTrainedLengthAsCeiling
+            title: >-
+              The unit shall report the context length a model was trained for as the model's
+              largest window, so a stated window above it is refused, and shall report none when the
+              model's metadata carries none.
+            justification: |
+              A window above the trained length is not one the model can honor, so the user's
+              choice is refused before the session starts rather than discovered by the server. The
+              figure is a ceiling only: the running instance is usually far below it, which is why
+              the window reading never accounts against it.
+            tests:
+              - OllamaModelCatalog_ListAsync_CapturedServer_DescribesTheVisionModels
+              - OllamaModelCatalog_Map_NoContextLength_ReportsNoCeiling
+              - OllamaModelCatalog_SelectAsync_WindowAboveTrainedLength_IsRefused
+
+          - id: AgentKitAgentsOllama-OllamaModelCatalog-OffersEffortsAThinkingModelHonors
+            title: >-
+              The unit shall offer a thinking model the efforts off, low, medium and high, each with
+              its provider-neutral equivalent, shall not offer off to a model that cannot stop
+              thinking, and shall publish no default effort.
+            justification: |
+              The effort reaches Ollama as its think option through the provider-neutral reasoning
+              option, which has exactly these levels on Ollama; anything finer would collapse. A
+              GPT-OSS model thinks regardless, so offering to turn it off would offer something
+              that cannot happen. A thinking model thinks unless told otherwise, so no default is
+              invented.
+            tests:
+              - OllamaModelCatalog_GetAsync_ThinkingModel_OffersFourEfforts
+              - OllamaModelCatalog_Map_GptOss_IsNotOfferedOff
+
+          - id: AgentKitAgentsOllama-OllamaModelCatalog-ToleratesAModelItCannotDescribe
+            title: >-
+              The unit shall list a model the server will not describe as unusable, saying so,
+              rather than failing the whole listing.
+            justification: |
+              A model removed while the listing is read, or one the server cannot describe, is one
+              model's problem; failing the listing would hide every other model from the picker.
+            tests:
+              - OllamaModelCatalog_ListAsync_DescriptionFails_ModelIsUnusable
+
+          - id: AgentKitAgentsOllama-OllamaModelCatalog-MatchesAnUntaggedModelName
+            title: >-
+              The unit shall find a model by its bare name when the server lists it under the latest
+              tag.
+            justification: |
+              Users and settings commonly name a model bare, and the server resolves that name to
+              its latest tag. A lookup that compared the spellings literally would report the model
+              as unavailable.
+            tests:
+              - OllamaModelCatalog_GetAsync_BareName_FindsTheLatestTag

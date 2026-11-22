@@ -1,3 +1,4 @@
+using DemaConsulting.AgentKit.Core;
 using OllamaSharp;
 using OllamaSharp.Models;
 
@@ -63,7 +64,7 @@ public enum OllamaContextWindowSource
 ///     </para>
 ///     <para>
 ///     Reading the server and choosing among what it reported are deliberately separate:
-///     <see cref="ReadAsync"/> performs the I/O, and <see cref="Select"/> is a pure function holding
+///     <see cref="ReadAsync(IOllamaApiClient, string, int?, CancellationToken)"/> performs the I/O, and <see cref="Select"/> is a pure function holding
 ///     the whole precedence, so that precedence can be exercised without a server.
 ///     </para>
 ///     <para>
@@ -175,6 +176,73 @@ public sealed record OllamaContextWindow(int Tokens, OllamaContextWindowSource S
     }
 
     /// <summary>
+    ///     Reads the window for a model selected from an <see cref="OllamaModelCatalog"/>, taking the
+    ///     stated window from the selection.
+    /// </summary>
+    /// <remarks>
+    ///     <para>
+    ///     The same reading as <see cref="ReadAsync(IOllamaApiClient, string, int?, CancellationToken)"/>,
+    ///     with the model and the stated window taken from the selection. A window the user chose wins
+    ///     outright and has already been checked against the length the model was trained for; with
+    ///     none chosen, the loaded instance is asked and otherwise the conservative default is
+    ///     assumed. The trained length itself is never reported as a window.
+    ///     </para>
+    ///     <para>
+    ///     Compose the request side with the same figure — an
+    ///     <see cref="OllamaContextSizingChatClient"/> over the returned <see cref="Tokens"/> — so the
+    ///     server is asked to run at the window the session accounts against.
+    ///     </para>
+    /// </remarks>
+    /// <param name="client">The Ollama client to ask. Must not be <see langword="null"/>.</param>
+    /// <param name="selection">
+    ///     A selection of an Ollama model. Must not be <see langword="null"/>.
+    /// </param>
+    /// <param name="cancellationToken">Cancels the query.</param>
+    /// <returns>The window to account against, and where it came from. Never <see langword="null"/>.</returns>
+    /// <exception cref="ArgumentNullException">
+    ///     <paramref name="client"/> or <paramref name="selection"/> is <see langword="null"/>.
+    /// </exception>
+    /// <exception cref="ArgumentException">
+    ///     <paramref name="selection"/> names a model from a provider other than Ollama.
+    /// </exception>
+    /// <exception cref="OperationCanceledException">
+    ///     <paramref name="cancellationToken"/> was canceled during the query.
+    /// </exception>
+    /// <example>
+    ///     <code>
+    ///     public async Task&lt;IChatClient&gt; ConfigureAsync(
+    ///         OllamaApiClient ollama,
+    ///         ModelSelection selection,
+    ///         CancellationToken cancellationToken)
+    ///     {
+    ///         var window = await OllamaContextWindow.ReadAsync(ollama, selection, cancellationToken);
+    ///
+    ///         // Ask the server for that window on every request, and apply the rest of the selection.
+    ///         return new ModelSettingsChatClient(
+    ///             new OllamaContextSizingChatClient(ollama, window.Tokens),
+    ///             selection);
+    ///     }
+    ///     </code>
+    /// </example>
+    public static Task<OllamaContextWindow> ReadAsync(
+        IOllamaApiClient client,
+        ModelSelection selection,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(client);
+        ArgumentNullException.ThrowIfNull(selection);
+
+        if (!string.Equals(selection.Model.Provider, OllamaModelCatalog.ProviderId, StringComparison.Ordinal))
+        {
+            throw new ArgumentException(
+                $"The selection names a model from provider '{selection.Model.Provider}', not '{OllamaModelCatalog.ProviderId}'.",
+                nameof(selection));
+        }
+
+        return ReadAsync(client, selection.Model.Id, selection.Settings.ContextWindowTokens, cancellationToken);
+    }
+
+    /// <summary>
     ///     Chooses the window from what was stated and what the server reported.
     /// </summary>
     /// <remarks>
@@ -247,9 +315,13 @@ public sealed record OllamaContextWindow(int Tokens, OllamaContextWindowSource S
     /// <summary>
     ///     Returns a model name with an explicit tag, so two spellings of one model compare equal.
     /// </summary>
+    /// <remarks>
+    ///     Shared with <see cref="OllamaModelCatalog"/>, whose lookups must resolve a bare name the
+    ///     same way this reading does.
+    /// </remarks>
     /// <param name="model">The model name, tagged or bare.</param>
     /// <returns>The name with a tag.</returns>
-    private static string Tagged(string model) =>
+    internal static string Tagged(string model) =>
         model.Contains(':', StringComparison.Ordinal) ? model : model + ":latest";
 
     /// <summary>

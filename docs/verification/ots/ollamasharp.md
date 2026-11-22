@@ -4,16 +4,19 @@ This document provides the verification evidence for the `OllamaSharp` OTS softw
 
 ### Required Functionality
 
-`OllamaSharp` supplies three things AgentKit depends on and does not implement: `RunningModel`,
+`OllamaSharp` supplies five things AgentKit depends on and does not implement: `RunningModel`,
 carrying the context length a running instance was loaded with; `ListRunningModelsAsync`, which
-fetches that report over the Ollama HTTP API; and, through its `IChatClient` implementation, the
+fetches that report over the Ollama HTTP API; through its `IChatClient` implementation, the
 carriage of a named context-length chat option into the Ollama request's own options block on the
-wire. AgentKit implements no Ollama wire protocol, names no endpoint and parses no response; the
-AgentKitAgentsOllama package reads this report and annotates requests.
+wire; the model listing and each model's description, which the catalog reads; and the mapping of a
+provider-neutral reasoning effort and model identifier onto Ollama's `think` and `model`. AgentKit
+implements no Ollama wire protocol, names no endpoint and parses no response; the
+AgentKitAgentsOllama package reads these reports and annotates requests.
 
-The model-metadata query is deliberately no longer used. It reports what a model file could support
-rather than what an instance is running, and against a live server the two differed by a factor of
-thirty-two in the direction that loses conversation history.
+The model-metadata query is deliberately not used **for the window**. It reports what a model file
+could support rather than what an instance is running, and against a live server the two differed by
+a factor of thirty-two in the direction that loses conversation history. The catalog uses the listing
+and the description for capabilities and for the trained length as a ceiling only.
 
 ### Verification Approach
 
@@ -29,7 +32,10 @@ way: what is at stake in both is the library's own request shaping and its own d
 which a hand-built value cannot exercise because the test author picks its type. AgentKit drives a
 real `OllamaApiClient` against an HTTP server started on loopback — replaying payloads captured
 verbatim from a live Ollama 0.34.1 server for the query, and reading back the request body the
-client sent for the option. The client issues its own requests and parses its own responses.
+client sent for the option. The client issues its own requests and parses its own responses. The
+catalog's listing and descriptions are verified the same way, replaying `/api/tags` and `/api/show`
+payloads captured from a live Ollama 0.34.2 server, and the reasoning mapping by reading `think` back
+off the chat request body the client sent.
 
 **What remains outside automated scope.** The payloads are replayed rather than re-fetched, so a
 future Ollama release that changed the shape of the loaded-model report would not be detected until
@@ -102,6 +108,40 @@ following user message carries one entry in `images`.
 
 **Requirement coverage**: `AgentKit-OTS-OllamaSharp-ChatWire`.
 
+#### OllamaModelCatalog_ListAsync_CapturedServer_DescribesTheVisionModels
+
+**Scenario**: A real `OllamaApiClient` is pointed at a loopback HTTP server replaying the captured
+listing and descriptions of five models, and the catalog lists the models reporting vision and tool
+calling.
+
+**Expected**: `ListLocalModelsAsync` and `ShowModelAsync` deserialize the replies so that exactly the
+three vision models are listed, each usable and reporting vision, tool calling and reasoning, with
+trained lengths of 262,144, 131,072 and 262,144 read from the architecture metadata.
+
+**Requirement coverage**: `AgentKit-OTS-OllamaSharp-ModelDetails`.
+
+#### OllamaModelCatalog_GetAsync_VisionWithoutProjector_IsVision
+
+**Scenario**: The same arrangement, looking up `gemma4:e4b`, a model whose vision is embedded and
+which has no projector.
+
+**Expected**: The description's capability report deserializes, so the model reports vision, and its
+details carry the family `gemma4`.
+
+**Requirement coverage**: `AgentKit-OTS-OllamaSharp-ModelDetails`.
+
+#### AgentKitAgentsOllama_ModelSelection_ChosenModelRunsWithItsWindowAndEffort
+
+**Scenario**: A real `OllamaApiClient` is used as an `IChatClient` beneath AgentKit's model-settings
+and sizing decorators, with a selection of `gemma4:e4b` at the effort `none`, against a loopback HTTP
+server.
+
+**Expected**: The chat request body the server receives names the model as `model` and carries
+`think: false`, which requires the library to translate the provider-neutral reasoning effort and
+model identifier into Ollama's request.
+
+**Requirement coverage**: `AgentKit-OTS-OllamaSharp-ReasoningAndOutputMapping`.
+
 ### Requirements Coverage
 
 - **`AgentKit-OTS-OllamaSharp-ModelReports`**:
@@ -114,3 +154,8 @@ following user message carries one entry in `images`.
   OllamaContextSizingChatClient_GetResponseAsync_ThroughTheRealClient_SendsTheContextLengthOnTheWire
 - **`AgentKit-OTS-OllamaSharp-ChatWire`**:
   AgentKitAgentsChatClient_ImagePromotion_OverOllamaSharp_ToolMessageCarriesNoImageBytes
+- **`AgentKit-OTS-OllamaSharp-ModelDetails`**:
+  OllamaModelCatalog_ListAsync_CapturedServer_DescribesTheVisionModels,
+  OllamaModelCatalog_GetAsync_VisionWithoutProjector_IsVision
+- **`AgentKit-OTS-OllamaSharp-ReasoningAndOutputMapping`**:
+  AgentKitAgentsOllama_ModelSelection_ChosenModelRunsWithItsWindowAndEffort
