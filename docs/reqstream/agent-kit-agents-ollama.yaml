@@ -93,6 +93,7 @@ sections:
           - AgentKitAgentsOllama-OllamaContextSizingChatClient-PreservesTheCallersRequest
           - AgentKitAgentsOllama-OllamaContextSizingChatClient-DoesNotOverruleAStatedSize
           - AgentKitAgentsOllama-OllamaContextSizingChatClient-RejectsASizeNoInstanceCouldRun
+          - AgentKitAgentsOllama-OllamaContextSizingChatClient-ReportsItsWindow
           - AgentKit-OTS-OllamaSharp-ContextLengthOption
         tests:
           - AgentKitAgentsOllama_ContextSizing_EveryRequestAsksTheServerForTheStatedWindow
@@ -115,6 +116,7 @@ sections:
           - AgentKitAgentsOllama-OllamaModelCatalog-OffersEffortsAThinkingModelHonors
           - AgentKitAgentsOllama-OllamaModelCatalog-ToleratesAModelItCannotDescribe
           - AgentKitAgentsOllama-OllamaModelCatalog-MatchesAnUntaggedModelName
+          - AgentKitAgentsOllama-OllamaModelCatalog-KeepsTheServersOrder
           - AgentKit-OTS-OllamaSharp-ModelDetails
         tests:
           - AgentKitAgentsOllama_ModelSelection_ChosenModelRunsWithItsWindowAndEffort

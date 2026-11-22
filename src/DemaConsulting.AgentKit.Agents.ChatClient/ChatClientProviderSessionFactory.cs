@@ -1,6 +1,7 @@
 // Copyright (c) DEMA Consulting
 // SPDX-License-Identifier: MIT
 
+using System.Globalization;
 using DemaConsulting.AgentKit.Core;
 using Microsoft.Extensions.AI;
 
@@ -79,20 +80,33 @@ public sealed class ChatClientProviderSessionFactory : IProviderSessionFactory
     ///     The validated model selection to apply to every request each session sends, or
     ///     <see langword="null"/> to send requests as the client is configured. When supplied, a
     ///     <see cref="ModelSettingsChatClient"/> is placed directly over the supplied client, beneath
-    ///     the recorder. The window is still stated here rather than taken from the selection, because
-    ///     the figure a session accounts against is the provider's to report and the application's
-    ///     to state.
+    ///     the recorder. The window a session accounts against is <paramref name="windowTokens"/>; a
+    ///     selection that also carries a context window must state the same figure, and
+    ///     <paramref name="client"/> must apply it, so the window accounted against is the window the
+    ///     provider runs at.
     /// </param>
     /// <exception cref="ArgumentNullException"><paramref name="client"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="windowTokens"/> is not positive.</exception>
     /// <exception cref="ArgumentException">
     ///     <paramref name="selection"/> carries a context tier or an effort with no provider-neutral
-    ///     equivalent, which an <see cref="IChatClient"/> cannot apply.
+    ///     equivalent, which an <see cref="IChatClient"/> cannot apply; or a context window that differs
+    ///     from <paramref name="windowTokens"/> or that <paramref name="client"/> does not apply.
     /// </exception>
     public ChatClientProviderSessionFactory(IChatClient client, int windowTokens, ModelSelection? selection = null)
     {
         ArgumentNullException.ThrowIfNull(client);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(windowTokens);
+
+        // A session accounting against one figure while the provider runs at another would rotate
+        // too early or too late, and nothing in the exchange would say so.
+        if (selection?.Settings.ContextWindowTokens is { } window && window != windowTokens)
+        {
+            throw new ArgumentException(
+                $"The selection's ContextWindowTokens ({window.ToString("N0", CultureInfo.InvariantCulture)}) differs "
+                + $"from windowTokens ({windowTokens.ToString("N0", CultureInfo.InvariantCulture)}); a session must "
+                + "account against the window the provider runs at.",
+                nameof(selection));
+        }
 
         // Wrapped once here rather than per session: the decorator holds no per-conversation state,
         // and building it now refuses a selection the client cannot apply where the host composed it.

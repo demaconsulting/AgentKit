@@ -63,9 +63,11 @@ a model:
 Both enumerations follow the rule `HostCapabilities` follows: each member is zero or a single bit,
 so a combined requirement such as `Vision | ToolCalls` is satisfied only by a model reporting both,
 and no member silently satisfies another. Members are added only when an application needs to
-filter on one. What a stated window means is the provider's: on Ollama it is the exact length the
-server is asked to load the model at, and on Copilot a ceiling that only lowers the window a session
-accounts against.
+filter on one. What a stated window means depends on the provider and the path. On Ollama it is the
+exact length the server is asked to load the model at; over an `IChatClient` a client beneath must
+apply it, reporting so as an `IContextWindowChatClient`, or it is refused. On Copilot it is a ceiling
+that only lowers the window a session accounts against, applied by the provider-session factory and
+never sent to the runtime; the plain Copilot agent and the summarizer refuse it.
 
 `ModelNoticeKind` decides how prominently a notice is shown: `Info` (for example a tooltip),
 `Warning` (a caution to see before choosing) and `Required` (text the provider says must be shown,

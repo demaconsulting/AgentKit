@@ -103,3 +103,15 @@ sections:
               as unavailable.
             tests:
               - OllamaModelCatalog_GetAsync_BareName_FindsTheLatestTag
+
+          - id: AgentKitAgentsOllama-OllamaModelCatalog-KeepsTheServersOrder
+            title: >-
+              The unit shall list the models in the order the server lists them, without re-sorting
+              them.
+            justification: |
+              The catalog contract lists models in the provider's order, and a host that groups or
+              sorts its picker does so itself. A catalog that re-sorted one provider's models and not
+              another's would give the same contract two meanings.
+            tests:
+              - OllamaModelCatalog_ListAsync_KeepsTheServersOrder
+              - OllamaModelCatalog_ListAsync_CapturedServer_DescribesTheVisionModels

@@ -42,9 +42,11 @@ the user would be given something other than what was chosen. A GPT-OSS model ca
 so it is not offered `none`. No default effort is published: a thinking model thinks unless told
 otherwise. A level is a hint the model interprets; Ollama does not validate it.
 
-**Identifiers are the server's, with the server's resolution.** Models are identified by the name
-the server lists and sorted by it. A lookup by a bare name finds the `latest` tag, as the server
-itself resolves it, using the same tagging rule as *OllamaContextWindow Unit Design*.
+**Identifiers and order are the server's, with the server's resolution.** Models are identified by
+the name the server lists and returned in the order the server lists them, which is the provider's
+order the catalog contract promises; a host that wants another order sorts its picker itself. A
+lookup by a bare name finds the `latest` tag, as the server itself resolves it, using the same
+tagging rule as *OllamaContextWindow Unit Design*.
 
 Reading, caching and single-flight behavior are inherited; see *ModelCatalog Unit Design*. Safe for
 concurrent use.
@@ -118,7 +120,8 @@ lifetime and the clock.
 **Algorithm:** List the installed models, treating a null listing as empty and dropping any entry
 with no name. Describe the models with at most `DescribeParallelism` show requests in flight,
 writing each result into the slot of the model it describes, and map each listed model with its
-description. Return the models sorted by identifier, ordinal ignoring case.
+description. Return the models in the order the server listed them; since each description was
+written to its listed slot, the order survives the parallel reads.
 
 **Postconditions:** One description per named installed model. A failure to list fails the read; a
 failure to describe one model costs only that model. Performs network I/O.

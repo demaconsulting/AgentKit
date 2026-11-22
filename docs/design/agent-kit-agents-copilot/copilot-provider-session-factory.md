@@ -151,8 +151,10 @@ rather than asserted.
 **Purpose:** Hold what every session this factory creates needs, and nothing else.
 
 **Algorithm:** Reject a null runtime and a ceiling below one, check the runtime is not disposed
-(`CopilotRuntime.ThrowIfDisposed`), and refuse an ambiguous or foreign selection through
-`CopilotAgentFactory.ValidateSelection`. Build the production channel opener over the runtime — one that
+(`CopilotRuntime.ThrowIfDisposed`), and refuse an ambiguous or foreign selection, and one carrying an
+output limit the runtime cannot take, through `CopilotAgentFactory.ValidateSelection` with
+`windowAccounted: true` — this factory accounts against a window, so a selection's window is accepted
+here as the ceiling. Build the production channel opener over the runtime — one that
 deletes each session when it is released, because a rotated session is finished with by definition —
 once, so every session a rotation creates demonstrably runs on the runtime the host started. The
 opener is handed the runtime, not its client, and reads the client at each open and release: the SDK
@@ -276,6 +278,7 @@ asserts on it directly — the configuration no longer carries it.
 | Both a model name and a selection | `ArgumentException` naming `selection` propagates |
 | A selection of another provider's model | `ArgumentException` naming `selection` propagates |
 | A ceiling stated both directly and in the selection | `ArgumentException` naming `selection` propagates |
+| A selection carrying an output limit | `ArgumentException` naming `selection` propagates |
 | Null `seed` | `ArgumentNullException` propagates |
 | Cancellation before opening | `OperationCanceledException`; nothing is opened |
 | Cancellation after opening | `OperationCanceledException`; session released |

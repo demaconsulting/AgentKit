@@ -21,7 +21,9 @@ model reported every capability the application required, when the selection was
 that name a withdrawn model or an effort the model no longer accepts are refused when the
 selection is made, before a session starts, rather than by the provider part-way through a
 conversation. `Validate` reports the same problems without throwing, for a picker that wants to
-explain them as the user chooses.
+explain them as the user chooses. A factory that receives a selection applies it once, when a
+session starts, and refuses with an `ArgumentException` naming the setting any setting its path
+cannot apply, so no chosen setting is dropped silently.
 
 **Every problem at once, each worded for the user.** A user who fixes one problem only to be shown
 the next has been made to guess, so every rule is checked and every problem collected. Each message
@@ -52,9 +54,12 @@ All three types are immutable and safe for concurrent use.
 
 A null member leaves that choice to the provider. `ModelId` is held behind a private field whose
 `init` accessor refuses a null or blank value, so the invariant also holds for a copy made with a
-`with` expression. What a window does is the provider's: on Ollama it is the exact length the
-server is asked to run the model at, and on Copilot a ceiling that only lowers the window a session
-accounts against. Either way it may not exceed what the model provides.
+`with` expression. What a window does depends on the path that receives it. On Ollama it is the
+exact length the server is asked to run the model at, applied by a client that asks for it on every
+request; a selection carrying a window over an `IChatClient` is refused unless such a client applies
+it. On Copilot it is a ceiling that only lowers the window a session accounts against, applied by
+the provider-session factory; the plain Copilot agent and the summarizer account against no window
+and refuse it. It may not exceed what the model provides.
 
 `ModelSelection` is a sealed class with an internal constructor:
 
@@ -191,7 +196,8 @@ rather than an approximation.
   compose a `ModelSettingsChatClient` from it; see their unit designs.
 - **CopilotAgentFactory**, **CopilotProviderSessionFactory** and **CopilotSummarizer** — accept a
   selection naming a Copilot model and apply its model, effort and tier; the provider-session
-  factory also applies its window as a ceiling; see their unit designs.
+  factory also applies its window as a ceiling, while the agent factory and the summarizer refuse a
+  window, and all three refuse an output limit; see their unit designs.
 - **OllamaContextWindow** — `ReadAsync(client, selection)` takes the model and the stated window from
   a selection naming an Ollama model; see *OllamaContextWindow Unit Design*.
 - **Applications** — persist settings, validate them in a picker, and bind them when a session

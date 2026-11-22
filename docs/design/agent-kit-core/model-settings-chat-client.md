@@ -27,18 +27,33 @@ it wins; only what the caller left unset is filled in. The caller's options obje
 to, because one instance is commonly reused for every request of a session and writing to it would
 leak the selection outward.
 
-**The window is not applied here.** A context window is stated where the provider is configured — to
-the provider-session factory, and on Ollama to the decorator that asks the server for it; see
-*OllamaContextWindow Unit Design*. Applying it here as well would give the same figure two owners.
+**The window is confirmed, not applied.** An `IChatClient` has no provider-neutral context window, so
+this decorator cannot state one. A provider client that asks for a window on every request — on
+Ollama, the context-sizing decorator; see *OllamaContextSizingChatClient Unit Design* — reports the
+figure by implementing `IContextWindowChatClient`. A selection carrying `ContextWindowTokens` is
+accepted only when `innerClient.GetService<IContextWindowChatClient>()` finds such a client beneath
+reporting the same window; a missing or different window is refused at construction. Applying the
+window here as well would give the same figure two owners; dropping it would discard the user's
+choice with nothing reporting it.
 
-The class holds no mutable state and is as safe for concurrent use as the client it wraps. Disposing
-it disposes the wrapped client, as every delegating client does.
+### IContextWindowChatClient
+
+`public interface IContextWindowChatClient : IChatClient` declares one member, `int
+ContextWindowTokens { get; }` — the window, in tokens, the client asks its provider for on every
+request. It lives in this unit because this unit is its only consumer. A `DelegatingChatClient`
+returns itself from `GetService` for an interface it implements and otherwise asks the client it
+wraps, so the implementer is found however deep beneath the decorator it sits. A provider whose
+window is set some other way implements the interface on its own client or decorator.
+
+The decorator class holds no mutable state and is as safe for concurrent use as the client it wraps.
+Disposing it disposes the wrapped client, as every delegating client does.
 
 ### Data Model
 
 - **`_selection`** (`ModelSelection`) — the validated selection applied to every request. Set at
-  construction and never replaced. Invariant: carries no context tier, and carries a reasoning
-  effort only when that effort has a provider-neutral equivalent.
+  construction and never replaced. Invariant: carries no context tier, carries a reasoning effort
+  only when that effort has a provider-neutral equivalent, and carries a context window only when a
+  client beneath reported applying that same window at construction.
 
 The wrapped client is held by the base `DelegatingChatClient` and is never replaced.
 
@@ -52,9 +67,17 @@ The wrapped client is held by the base `DelegatingChatClient` and is never repla
 whose settings name a context tier ("Context tier '{tier}' cannot be applied through an IChatClient,
 which has no context tiers."), and one whose settings name an effort while its
 `StandardReasoningEffort` is null ("Effort '{effort}' has no provider-neutral equivalent and cannot
-be applied through an IChatClient."). Record the selection.
+be applied through an IChatClient."). When the settings carry `ContextWindowTokens`, ask the inner
+client for an `IContextWindowChatClient`: refuse when none is found ("The selection's
+ContextWindowTokens ({window}) is not applied by any client beneath: an IChatClient carries no
+context window of its own. Compose a client that applies it at the same size, such as
+OllamaContextSizingChatClient, or select without a window."), and when the one found reports
+another figure ("The selection's ContextWindowTokens ({window}) differs from the {applied} tokens the
+client beneath applies; state the same window in both places."). Figures are written with group
+separators, culture-invariant. Record the selection.
 
-**Preconditions:** Both arguments are non-null; the selection is one an `IChatClient` can apply.
+**Preconditions:** Both arguments are non-null; the selection is one an `IChatClient` can apply,
+and any window it carries is applied by a client beneath.
 
 #### GetResponseAsync(IEnumerable&lt;ChatMessage&gt;, ChatOptions?, CancellationToken)
 
@@ -88,9 +111,10 @@ Private helper returning the options to forward.
 | Null `innerClient` or `selection` | `ArgumentNullException` propagates |
 | Selection naming a context tier | `ArgumentException` naming `selection` propagates |
 | Selection naming an effort with no neutral equivalent | `ArgumentException` naming `selection` propagates |
+| Selection window not applied beneath, or applied at another size | `ArgumentException` naming `selection` propagates |
 | Failure inside the wrapped client | Propagates unchanged; this unit adds no handling |
 
-Both refusals are composition errors in the host, made where the pipeline is assembled, so they
+All three refusals are composition errors in the host, made where the pipeline is assembled, so they
 surface before any request is sent.
 
 ### Dependencies
@@ -110,3 +134,6 @@ surface before any request is sent.
   selection; see *ChatClientProviderSessionFactory Unit Design*.
 - **Applications** — compose one over their own client, for example over the Ollama
   context-sizing decorator. The document-assistant sample is the worked example.
+
+`IContextWindowChatClient` is implemented by **OllamaContextSizingChatClient**, which reports the
+`num_ctx` it asks for; see *OllamaContextSizingChatClient Unit Design*.

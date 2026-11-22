@@ -306,6 +306,35 @@ public class ChatClientProviderSessionFactoryTests
     }
 
     /// <summary>
+    ///     Proves a selection whose window differs from the window the factory accounts against is
+    ///     refused, even when the client applies the selection's window, because a session would
+    ///     account against one figure while the provider ran at another.
+    /// </summary>
+    [Fact]
+    public void ChatClientProviderSessionFactory_Constructor_SelectionWindowDiffersFromWindowTokens_Throws()
+    {
+        // Arrange: the client applies the selection's 8,192 tokens; the factory is told 4,096
+        var selection = new ModelSettings("vision-large") { ContextWindowTokens = 8192 }
+            .Bind(ChatClientAgentFactoryTests.SelectableModel());
+        using var client = new ChatClientAgentFactoryTests.WindowApplyingChatClient(
+            RecordingChatClient.Answering("x", 1),
+            8192);
+
+        // Act
+        var failure = Assert.Throws<ArgumentException>(
+            () => new ChatClientProviderSessionFactory(client, Window, selection));
+        var matching = new ChatClientProviderSessionFactory(client, 8192, selection);
+
+        // Assert: the mismatch names both figures; the matching window is accepted and accounted
+        Assert.Equal("selection", failure.ParamName);
+        Assert.Contains(
+            "ContextWindowTokens (8,192) differs from windowTokens (4,096)",
+            failure.Message,
+            StringComparison.Ordinal);
+        Assert.Equal(8192, matching.WindowTokens);
+    }
+
+    /// <summary>
     ///     Proves a window that is not positive is refused, because every session this factory makes
     ///     would report an occupancy against it.
     /// </summary>

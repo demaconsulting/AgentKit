@@ -648,7 +648,10 @@ The system additionally exposes the model-selection API:
   A model the provider does not offer is refused with `ModelSettingsException`.
 - **`new ModelSettingsChatClient(IChatClient innerClient, ModelSelection selection)`**: Applies the
   selection's model, effort and output limit to every request. A selection carrying a context tier,
-  or an effort with no provider-neutral equivalent, is refused with `ArgumentException`.
+  or an effort with no provider-neutral equivalent, is refused with `ArgumentException`, and so is
+  one carrying a context window unless a client beneath reports applying that same window.
+- **`IContextWindowChatClient`**: A chat client that asks its provider for a stated context window
+  on every request, reporting the figure as `ContextWindowTokens`; found through `GetService`.
 
 | Interface | Direction | Format | Constraints |
 | --- | --- | --- | --- |

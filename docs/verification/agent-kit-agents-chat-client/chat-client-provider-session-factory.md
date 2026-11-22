@@ -54,8 +54,8 @@ reaches a client other than the factory's, any seed that fails to reach the sess
 any two creations yielding the same session, any seeded tool that is declared but not invoked, any
 occupancy that is a total across a turn's requests rather than its last prompt, any replacement
 reporting a figure its predecessor left behind, any turn reaching the provider without the selected
-model or effort, or any invalid argument, or any selection the client cannot apply, accepted rather
-than refused constitutes a failure.
+model or effort, or any invalid argument, any selection the client cannot apply, or any selection
+whose window differs from the stated window, accepted rather than refused constitutes a failure.
 
 ### Test Scenarios
 
@@ -144,3 +144,10 @@ than any figure from the selection.
 
 Error path: a selection carrying a context tier is refused with `ArgumentException` at construction,
 where the application configured its provider, rather than dropped on every request.
+
+**Test**: `ChatClientProviderSessionFactory_Constructor_SelectionWindowDiffersFromWindowTokens_Throws`
+
+Error path and its counterpart: a selection carrying an 8,192-token window, over a client reporting
+that it applies 8,192 tokens, is refused with `ArgumentException` naming `selection` when the stated
+window is 4,096, the message naming both figures; with a stated window of 8,192 the same selection
+is accepted and the factory reports that window.

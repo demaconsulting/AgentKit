@@ -45,8 +45,8 @@ public sealed class OllamaModelCatalogTests
             new ModelQuery { Require = ModelCapabilities.Vision | ModelCapabilities.ToolCalls },
             TestContext.Current.CancellationToken);
 
-        // Assert: sorted by name, every capability reported, and the trained length as the ceiling
-        Assert.Equal(["gemma4:26b", "gemma4:e4b", "qwen3.8:27b"], models.Select(model => model.Id));
+        // Assert: in the server's order, every capability reported, and the trained length as the ceiling
+        Assert.Equal(["gemma4:26b", "qwen3.8:27b", "gemma4:e4b"], models.Select(model => model.Id));
         Assert.All(models, model =>
         {
             Assert.Equal(OllamaModelCatalog.ProviderId, model.Provider);
@@ -54,7 +54,29 @@ public sealed class OllamaModelCatalogTests
             Assert.True(model.IsUsable);
             Assert.Null(model.DefaultReasoningEffort);
         });
-        Assert.Equal([262_144, 131_072, 262_144], models.Select(model => model.ContextWindowTokens));
+        Assert.Equal([262_144, 262_144, 131_072], models.Select(model => model.ContextWindowTokens));
+    }
+
+    /// <summary>
+    ///     Proves the models are listed in the order the server lists them, not re-sorted, so a
+    ///     picker shows the provider's order as the catalog contract states.
+    /// </summary>
+    [Fact]
+    public async Task OllamaModelCatalog_ListAsync_KeepsTheServersOrder()
+    {
+        // Arrange: the captured listing is deliberately not in name order
+        using var server = CapturedServer();
+        var catalog = new OllamaModelCatalog(new OllamaApiClient(new Uri(server.Url!)));
+
+        // Act
+        var models = await catalog.ListAsync(
+            new ModelQuery { IncludeUnusable = true },
+            TestContext.Current.CancellationToken);
+
+        // Assert: every installed model, exactly as /api/tags listed them
+        Assert.Equal(
+            ["gemma4:26b", "mxbai-embed-large:latest", "nomic-embed-text:latest", "qwen3.8:27b", "gemma4:e4b"],
+            models.Select(model => model.Id));
     }
 
     /// <summary>

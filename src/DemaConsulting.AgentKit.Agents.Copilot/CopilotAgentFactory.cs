@@ -261,8 +261,12 @@ public static class CopilotAgentFactory
     ///     The model the user chose from a <see cref="CopilotModelCatalog"/>, validated, or
     ///     <see langword="null"/>. It names the model every session of the agent runs on, and its
     ///     reasoning effort and context tier — each only when chosen — are set on every session it
-    ///     creates or resumes, so the settings hold for the life of the conversation. Pass this or
-    ///     <paramref name="model"/>, not both.
+    ///     creates or resumes, so the settings hold for the life of the conversation. A selection
+    ///     carrying a context window is refused: this agent's sessions are accounted against no
+    ///     window, so there is nothing for a ceiling to lower; use
+    ///     <see cref="CopilotProviderSessionFactory"/> to cap the window a conversation accounts
+    ///     against. A selection carrying an output limit is refused because the runtime takes none.
+    ///     Pass this or <paramref name="model"/>, not both.
     /// </param>
     /// <returns>An agent that runs on the supplied runtime with only the supplied tools available.</returns>
     /// <exception cref="ArgumentNullException">
@@ -275,7 +279,8 @@ public static class CopilotAgentFactory
     ///     name of one of the Copilot runtime's built-in tools — <c>view</c>, <c>powershell</c>,
     ///     <c>bash</c> and the like, compared case-insensitively. Rename such a tool. Also thrown when
     ///     both <paramref name="model"/> and <paramref name="selection"/> are passed, or the
-    ///     selection names another provider's model.
+    ///     selection names another provider's model, or it carries a context window or an output
+    ///     limit, neither of which this agent can apply.
     /// </exception>
     /// <example>
     ///     <para>
@@ -332,7 +337,7 @@ public static class CopilotAgentFactory
     {
         ArgumentNullException.ThrowIfNull(runtime);
         runtime.ThrowIfDisposed();
-        ValidateSelection(model, selection);
+        ValidateSelection(model, selection, windowAccounted: false);
 
         // A conversation's sessions are kept when released, because the conversation continues on
         // the next run; a run made without a conversation deletes its session, because nothing could
@@ -688,7 +693,9 @@ public static class CopilotAgentFactory
     ///     A validated model selection, or <see langword="null"/>. When supplied it names the model in
     ///     place of <paramref name="model"/>, and its reasoning effort and context tier — each only
     ///     when chosen — are set on the session's inference options. An effort or tier not chosen
-    ///     leaves the inference options untouched, so the runtime's own default applies.
+    ///     leaves the inference options untouched, so the runtime's own default applies. Its context
+    ///     window is not set here: the provider-session factory applies it as a ceiling, and every
+    ///     other caller refuses it in <see cref="ValidateSelection"/>.
     /// </param>
     private static void ApplySessionSettings(
         SessionOptionsBase config,
@@ -890,22 +897,38 @@ public static class CopilotAgentFactory
     internal static string QualifyCustomToolName(string name) => $"custom:{name}";
 
     /// <summary>
-    ///     Refuses a model choice that names the model twice or names another provider's model.
+    ///     Refuses a model choice that names the model twice, names another provider's model, or
+    ///     carries a setting the calling path cannot apply.
     /// </summary>
     /// <remarks>
+    ///     <para>
     ///     Shared by every public entry point that accepts a selection, so each refuses the same
     ///     mistakes with the same words. A model name beside a selection would leave which one backs
     ///     the session to a precedence rule nobody reads; refusing both makes the composition say one
     ///     thing. A selection of another provider's model was validated against that provider's
     ///     offering, not Copilot's.
+    ///     </para>
+    ///     <para>
+    ///     A setting a path cannot apply is refused rather than dropped. The runtime takes no output
+    ///     limit, so <see cref="Core.ModelSettings.MaxOutputTokens"/> is refused on every path; the
+    ///     catalog never offers it, so only a hand-built model description can carry one. A context
+    ///     window is applied only as the ceiling a provider-session engine accounts against, so it is
+    ///     refused where AgentKit accounts against no window: the plain agent and the summarizer.
+    ///     </para>
     /// </remarks>
     /// <param name="model">The model name the caller passed, if any.</param>
     /// <param name="selection">The selection the caller passed, if any.</param>
+    /// <param name="windowAccounted">
+    ///     <see langword="true"/> when the caller accounts its sessions against a window the
+    ///     selection's context window can lower; <see langword="false"/> when it accounts against none.
+    /// </param>
     /// <exception cref="ArgumentException">
-    ///     Both a non-blank <paramref name="model"/> and a <paramref name="selection"/> were passed, or
-    ///     the selection names a model from a provider other than Copilot.
+    ///     Both a non-blank <paramref name="model"/> and a <paramref name="selection"/> were passed;
+    ///     the selection names a model from a provider other than Copilot; it carries an output limit;
+    ///     or it carries a context window and <paramref name="windowAccounted"/> is
+    ///     <see langword="false"/>.
     /// </exception>
-    internal static void ValidateSelection(string? model, ModelSelection? selection)
+    internal static void ValidateSelection(string? model, ModelSelection? selection, bool windowAccounted)
     {
         if (selection is null)
         {
@@ -921,6 +944,24 @@ public static class CopilotAgentFactory
         {
             throw new ArgumentException(
                 $"The selection names a model from provider '{selection.Model.Provider}', not '{CopilotModelCatalog.ProviderId}'.",
+                nameof(selection));
+        }
+
+        if (selection.Settings.MaxOutputTokens is not null)
+        {
+            throw new ArgumentException(
+                "The selection's MaxOutputTokens cannot be applied on Copilot: the runtime takes no output limit. "
+                + "Select without one.",
+                nameof(selection));
+        }
+
+        if (!windowAccounted && selection.Settings.ContextWindowTokens is not null)
+        {
+            throw new ArgumentException(
+                "The selection's ContextWindowTokens cannot be applied here: AgentKit accounts this Copilot "
+                + "session against no window, so there is nothing for a ceiling to lower. Use "
+                + "CopilotProviderSessionFactory to cap the window a conversation accounts against, or select "
+                + "without a window.",
                 nameof(selection));
         }
     }

@@ -193,8 +193,10 @@ public sealed class CommandLineOptions
     ///     provider. Set by <c>--context-window</c>.
     /// </summary>
     /// <remarks>
-    ///     On Ollama this is the exact length the server is asked to run the model at, and it may not
-    ///     exceed the length the model was trained for. On Copilot it is a ceiling only.
+    ///     Ollama only: the exact length the server is asked to run the model at, which may not
+    ///     exceed the length the model was trained for. The Copilot agent this sample builds is
+    ///     accounted against no window, so there is nothing for a stated window to cap, and the
+    ///     flag is a usage error with <c>--provider copilot</c>.
     /// </remarks>
     public int? ContextWindow { get; init; }
 
@@ -237,7 +239,8 @@ public sealed class CommandLineOptions
     /// <exception cref="ArgumentNullException"><paramref name="args"/> is <see langword="null"/>.</exception>
     /// <exception cref="CommandLineException">
     ///     An argument is unknown, a flag is missing its value, <c>--provider</c> names something
-    ///     other than <c>copilot</c> or <c>ollama</c>, or the required <c>--workspace</c> is absent.
+    ///     other than <c>copilot</c> or <c>ollama</c>, <c>--context-window</c> is given for the
+    ///     Copilot provider, or the required <c>--workspace</c> is absent.
     /// </exception>
     public static CommandLineOptions Parse(string[] args)
     {
@@ -336,6 +339,15 @@ public sealed class CommandLineOptions
             throw new CommandLineException(
                 "The --workspace <path> argument is required; it is the folder relative paths are "
                 + "anchored to and the folder the agent is granted access to.");
+        }
+
+        // The Copilot agent the sample builds accounts against no window and refuses a selection
+        // that states one; refusing the flag here reports the mistake where the user typed it.
+        if (window is not null && provider == AgentProvider.Copilot)
+        {
+            throw new CommandLineException(
+                "--context-window applies to --provider ollama only: the Copilot agent this sample builds is "
+                + "accounted against no window, so there is nothing for it to cap.");
         }
 
         return new CommandLineOptions
@@ -445,8 +457,8 @@ public sealed class CommandLineOptions
                                      --no-vision), grouped by category, and exit. No --workspace needed.
            --reasoning-effort <id>   Reasoning effort, from the model's list (see --list-models).
            --context-tier <id>       Context tier, from the model's list (copilot only).
-           --context-window <n>      Context window in tokens: the exact num_ctx on ollama (at most
-                                     the trained length), a ceiling on copilot.
+           --context-window <n>      Context window in tokens: the exact num_ctx (ollama only; at
+                                     most the trained length).
            --prompt "<text>"         Run a single prompt and exit (otherwise start an interactive chat).
            --help                    Show this help and exit.
 

@@ -77,8 +77,8 @@ any seeded record rendered in the wrong order or with an entry lost, any record 
 empty history, any session created without the event handler registered, any session opened for a
 creation that was already canceled, any opened session left unreleased when the creation failed,
 any session created without a selection's model, effort or tier, any window not capped at the
-selection's ceiling, or any model named twice or ceiling stated twice that is accepted
-constitutes a failure.
+selection's ceiling, or any model named twice, ceiling stated twice or selection carrying an output
+limit that is accepted constitutes a failure.
 
 ### Test Scenarios
 
@@ -220,3 +220,10 @@ figure as a ceiling.
 
 Error paths. A model name beside a selection is refused with `ArgumentException`, and so is a
 `maxWindowTokens` beside a selection carrying a window, with a message saying "not both".
+
+**Test**: `CopilotProviderSessionFactory_Constructor_SelectionWithAnOutputLimit_Throws`
+
+Error path. A selection of a hand-built Copilot model description carrying an output limit — which
+the Copilot catalog never grants — is refused with `ArgumentException` naming `selection`, whose
+message says `MaxOutputTokens` cannot be applied on Copilot. A selection's window is still accepted
+here, as the ceiling; see the scenario above.

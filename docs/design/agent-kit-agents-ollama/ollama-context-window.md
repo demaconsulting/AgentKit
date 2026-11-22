@@ -98,6 +98,11 @@ against the length the model was trained for when the selection was made. With n
 precedence is unchanged: the loaded instance, then the assumed default. The trained length the
 catalog reported is never the answer.
 
+Only the window is read; nothing in the selection is applied here. The model, the effort and the
+output limit are applied by a `ModelSettingsChatClient`, which also confirms that a selection's
+window is the one the context-sizing client beneath it asks for; see *ModelSettingsChatClient Unit
+Design*.
+
 **Preconditions:** `client` and `selection` are not null; the selection names an Ollama model.
 
 **Postconditions:** As the string overload.

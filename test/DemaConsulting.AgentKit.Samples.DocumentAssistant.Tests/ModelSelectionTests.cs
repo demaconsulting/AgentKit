@@ -23,7 +23,7 @@ public class ModelSelectionTests
         // Arrange / Act
         var options = CommandLineOptions.Parse(
         [
-            "--workspace", "ws", "--model", "gemma4:e4b", "--reasoning-effort", "none",
+            "--workspace", "ws", "--provider", "ollama", "--model", "gemma4:e4b", "--reasoning-effort", "none",
             "--context-tier", "default", "--context-window", "8192",
         ]);
 
@@ -46,7 +46,26 @@ public class ModelSelectionTests
     {
         // Arrange / Act / Assert
         Assert.Throws<CommandLineException>(
-            () => CommandLineOptions.Parse(["--workspace", "ws", "--context-window", value]));
+            () => CommandLineOptions.Parse(["--workspace", "ws", "--provider", "ollama", "--context-window", value]));
+    }
+
+    /// <summary>
+    ///     Proves a context window with the Copilot provider — named, or by default — is a usage
+    ///     error, because the Copilot agent the sample builds is accounted against no window and
+    ///     would not apply it.
+    /// </summary>
+    [Fact]
+    public void CommandLineOptions_Parse_ContextWindowOnCopilot_IsAUsageError()
+    {
+        // Arrange / Act
+        var named = Assert.Throws<CommandLineException>(
+            () => CommandLineOptions.Parse(["--workspace", "ws", "--provider", "copilot", "--context-window", "8192"]));
+        var byDefault = Assert.Throws<CommandLineException>(
+            () => CommandLineOptions.Parse(["--workspace", "ws", "--context-window", "8192"]));
+
+        // Assert: the message says which provider the flag belongs to
+        Assert.Contains("--provider ollama only", named.Message, StringComparison.Ordinal);
+        Assert.Equal(named.Message, byDefault.Message);
     }
 
     /// <summary>

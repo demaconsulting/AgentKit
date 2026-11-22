@@ -125,8 +125,10 @@ session starts:
 
 - `--reasoning-effort <id>` — an effort from the model's list.
 - `--context-tier <id>` — a context tier from the model's list. Copilot only.
-- `--context-window <n>` — on Ollama, the exact `num_ctx` the server is asked for, at most the length
-  the model was trained for; on Copilot, a ceiling on the window the session accounts against.
+- `--context-window <n>` — Ollama only: the exact `num_ctx` the server is asked for, at most the
+  length the model was trained for. The Copilot agent the sample builds is accounted against no
+  window, so there is nothing for the flag to cap, and `--provider copilot` with `--context-window`
+  is a usage error.
 
 ```bash
 dotnet run --project samples/document-assistant -- \
@@ -140,8 +142,8 @@ A model that cannot see, an effort the model does not offer, or a window larger 
 trained for is refused with every reason at once, before any conversation starts. With vision on, the
 Ollama `--model` — including the default, `qwen3.5:9b` — must be a model the server reports as
 vision-capable, or the run is refused. On Copilot with no `--model`, the runtime chooses the model and
-nothing describes its choice, so the sample declares vision itself; the effort, tier and window flags
-need `--model` there.
+nothing describes its choice, so the sample declares vision itself; the effort and tier flags need
+`--model` there.
 
 ## Demonstrating Capability Gating
 

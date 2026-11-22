@@ -82,3 +82,15 @@ sections:
               later request whose failure would name a server rather than the composition.
             tests:
               - OllamaContextSizingChatClient_Constructor_NonPositiveContextLength_Throws
+
+          - id: AgentKitAgentsOllama-OllamaContextSizingChatClient-ReportsItsWindow
+            title: >-
+              The unit shall report the context length it asks for as an IContextWindowChatClient,
+              discoverable from any delegating client above it.
+            justification: |
+              A model-settings decorator above this one cannot state a window itself, so it confirms
+              a selection's window by asking the pipeline beneath which window is applied. Reporting
+              the figure is what lets a selection's window be accepted when this decorator applies it
+              and refused when nothing does.
+            tests:
+              - OllamaContextSizingChatClient_GetService_ReportsItsContextWindow

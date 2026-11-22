@@ -47,7 +47,7 @@ Unit tests reside in `CopilotAgentFactoryTests.cs` within the
 
 ### Acceptance Criteria
 
-A unit test run passes when all eighteen scenarios below pass without error or exception beyond those
+A unit test run passes when all twenty scenarios below pass without error or exception beyond those
 explicitly asserted. Any allow-list that diverges from the published tools or carries an unqualified
 entry, any request approved that names no supplied tool, any invalid argument that is accepted, any
 tool named like a runtime built-in that is accepted on any path, any host handler that is not
@@ -57,8 +57,9 @@ is invented when the host named none — any channel of runtime-injected capabil
 session that diverts a large tool result, any resumed session confined differently from the created
 one, any agent session built without streaming or engine session built with it, any engine session
 left at the runtime's default compaction threshold, any session built on a selection without its
-model or chosen effort and tier, any inference option set that was not chosen, or any model named
-twice or foreign selection accepted constitutes a failure.
+model or chosen effort and tier, any inference option set that was not chosen, any model named
+twice or foreign selection accepted, or any selection carrying a context window or an output limit
+accepted by `Create` constitutes a failure.
 
 ### Test Scenarios
 
@@ -320,3 +321,21 @@ and on every engine session.
 Error paths. `Create` with both a model name and a selection throws `ArgumentException` whose message
 says "not both"; `Create` with a selection of an Ollama model throws `ArgumentException` naming
 provider 'ollama'.
+
+#### AgentKitAgentsCopilot-CopilotAgentFactory-RefusesWhatItCannotApply: A Window Is Refused
+
+**Test**: `CopilotAgentFactory_Create_SelectionWithAWindow_Throws`
+
+Error path. A selection of the Haiku fixture carrying a 4,000-token window — valid for the model, so
+only this path can refuse it — is refused by `Create` with `ArgumentException` naming `selection`,
+whose message says `ContextWindowTokens` cannot be applied here and names
+`CopilotProviderSessionFactory` as the path that applies a window ceiling.
+
+#### AgentKitAgentsCopilot-CopilotAgentFactory-RefusesWhatItCannotApply: An Output Limit Is Refused
+
+**Test**: `CopilotAgentFactory_Create_SelectionWithAnOutputLimit_Throws`
+
+Error path. A selection of a hand-built Copilot model description that grants an output limit —
+which the Copilot catalog never does — carrying 1,000 tokens is refused by `Create` with
+`ArgumentException` naming `selection`, whose message says `MaxOutputTokens` cannot be applied on
+Copilot.

@@ -179,8 +179,10 @@ the list an application's model picker would show:
 dotnet run --project samples/document-assistant -- --provider ollama --host http://your-ollama-host:11434 --list-models
 ```
 
-`--reasoning-effort`, `--context-tier` (Copilot only) and `--context-window` choose how the model
-runs. The choice is checked against the provider's catalog before the session starts, so a model that
+`--reasoning-effort`, `--context-tier` (Copilot only) and `--context-window` (Ollama only) choose how
+the model runs. The Copilot agent the sample builds is accounted against no window, so there is
+nothing for `--context-window` to cap there, and it is a usage error with `--provider copilot`. The
+choice is checked against the provider's catalog before the session starts, so a model that
 cannot see, an effort the model does not offer, or a window larger than an Ollama model was trained
 for is refused with every reason at once rather than failing part-way through a conversation:
 
@@ -219,7 +221,7 @@ to standard error and exits with code 1; Ctrl-C still ends the run cleanly with 
 | `--list-models` | List the models that can run the sample, grouped by category, and exit. No `--workspace` needed. |
 | `--reasoning-effort <id>` | Reasoning effort, from the model's list. Validated before the session starts. |
 | `--context-tier <id>` | Context tier, from the model's list. Copilot only. |
-| `--context-window <n>` | Tokens: the exact `num_ctx` on Ollama (at most the trained length); a ceiling on Copilot. |
+| `--context-window <n>` | Tokens: the exact `num_ctx` (at most the trained length). Ollama only. |
 | `--prompt "<text>"` | Run a single prompt and exit. Otherwise start an interactive chat. |
 | `--help` | Show help and exit. |
 

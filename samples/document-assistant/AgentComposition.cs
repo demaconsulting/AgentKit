@@ -477,18 +477,18 @@ public static class AgentComposition
 
         try
         {
-            // A named model is selected through the catalog, which validates the effort, tier and
-            // window and tells the host whether the model can see. With no model named the runtime
-            // chooses, nothing describes its choice, and the host declares vision explicitly - the
-            // override a catalog never takes away.
+            // A named model is selected through the catalog, which validates the effort and tier and
+            // tells the host whether the model can see. With no model named the runtime chooses,
+            // nothing describes its choice, and the host declares vision explicitly - the override a
+            // catalog never takes away. A stated window was refused when the arguments were parsed.
             ModelSelection? selection = null;
             if (options.Model is { } model)
             {
                 selection = await SelectAsync(new CopilotModelCatalog(runtime), options, model, cancellationToken);
             }
-            else if (options.ReasoningEffort is not null || options.ContextTier is not null || options.ContextWindow is not null)
+            else if (options.ReasoningEffort is not null || options.ContextTier is not null)
             {
-                throw new CommandLineException("--reasoning-effort, --context-tier and --context-window need --model on copilot.");
+                throw new CommandLineException("--reasoning-effort and --context-tier need --model on copilot.");
             }
 
             var host = selection?.HostCapabilities ?? HostCapabilities.Vision;
@@ -578,8 +578,9 @@ public static class AgentComposition
             options.WorkspaceReadOnly,
             options.VisionEnabled ? selection.HostCapabilities : HostCapabilities.None);
 
-        // A stated window is asked of the server on every request; with none stated the server keeps
-        // its own, rather than the sample guessing one.
+        // A stated window is asked of the server on every request, and the agent factory confirms the
+        // selection's window is the one asked for; with none stated the server keeps its own, rather
+        // than the sample guessing one.
         IChatClient chatClient = options.ContextWindow is { } window
             ? new OllamaContextSizingChatClient(ollama, window)
             : ollama;

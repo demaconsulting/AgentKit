@@ -42,8 +42,9 @@ namespace DemaConsulting.AgentKit.Agents.Ollama;
 ///     is a hint the model interprets; Ollama does not validate it.
 ///     </para>
 ///     <para>
-///     <b>Identifiers.</b> Models are identified by the name the server lists, tagged, and sorted
-///     by it. A lookup by a bare name finds the <c>latest</c> tag, as the server itself resolves it.
+///     <b>Identifiers and order.</b> Models are identified by the name the server lists, tagged,
+///     and listed in the order the server lists them. A lookup by a bare name finds the
+///     <c>latest</c> tag, as the server itself resolves it.
 ///     </para>
 ///     <para>
 ///     <b>Additional properties</b> written: <c>family</c>, <c>parameter_size</c>,
@@ -197,7 +198,8 @@ public sealed class OllamaModelCatalog : CachingModelCatalog
     /// <inheritdoc/>
     /// <remarks>
     ///     Lists the installed models, then describes each one, a few at a time. A failure to list
-    ///     fails the read; a failure to describe one model costs only that model. Performs network
+    ///     fails the read; a failure to describe one model costs only that model. The models are
+    ///     returned in the order the server lists them; nothing here reorders them. Performs network
     ///     I/O.
     /// </remarks>
     protected override async Task<IReadOnlyList<ModelInfo>> FetchAsync(CancellationToken cancellationToken)
@@ -216,7 +218,8 @@ public sealed class OllamaModelCatalog : CachingModelCatalog
                 described[index] = Map(listed[index], shown);
             }).ConfigureAwait(false);
 
-        return [.. described.OrderBy(model => model.Id, StringComparer.OrdinalIgnoreCase)];
+        // Each description was written to its listed position, so the server's order is kept.
+        return described;
     }
 
     /// <inheritdoc/>

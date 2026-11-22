@@ -3,7 +3,7 @@ package AgentKitAgentsOllama_OllamaModelCatalog {
     private import AgentKitAgentsOllama_OllamaContextWindow::*;
 
     part def OllamaModelCatalog {
-        doc /* Describes the models an Ollama server holds as a provider-neutral model catalog: what each can do as the server reports it (inferred from projector or vision metadata for a server too old to say), whether an agent can run on it, the reasoning efforts a thinking model honors, and the length it was trained for, which is reported only as the ceiling a stated window is refused above and never as a window to account against. A model the server will not describe is listed as unusable rather than failing the listing, and a bare name finds its latest tag. */
+        doc /* Describes the models an Ollama server holds as a provider-neutral model catalog: what each can do as the server reports it (inferred from projector or vision metadata for a server too old to say), whether an agent can run on it, the reasoning efforts a thinking model honors, and the length it was trained for, which is reported only as the ceiling a stated window is refused above and never as a window to account against. Models are listed in the order the server lists them, a model the server will not describe is listed as unusable rather than failing the listing, and a bare name finds its latest tag. */
 
         metadata info : SoftwareInfo {
             sourceFiles = ("src/DemaConsulting.AgentKit.Agents.Ollama/OllamaModelCatalog.cs");

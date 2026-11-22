@@ -54,7 +54,10 @@ public static class ChatClientAgentFactory
     ///     client is wrapped in a <see cref="ModelSettingsChatClient"/> beneath the image-promoting
     ///     decorator, so the model, the reasoning effort and the output limit ride on every request.
     ///     A selection carrying a context tier, or an effort with no provider-neutral equivalent, is
-    ///     refused, because an <see cref="IChatClient"/> cannot apply either.
+    ///     refused, because an <see cref="IChatClient"/> cannot apply either. A selection carrying a
+    ///     context window is accepted only when <paramref name="client"/> applies that window — that
+    ///     is, an <see cref="IContextWindowChatClient"/> at or beneath it reports the same size, such
+    ///     as an Ollama context-sizing client — and is refused otherwise.
     /// </param>
     /// <returns>An agent that talks to the supplied client through the image-promoting decorator.</returns>
     /// <exception cref="ArgumentNullException">
@@ -63,7 +66,8 @@ public static class ChatClientAgentFactory
     /// </exception>
     /// <exception cref="ArgumentException">
     ///     <paramref name="tools"/> is empty, or two tools carry the same name, or
-    ///     <paramref name="selection"/> carries a setting an <see cref="IChatClient"/> cannot apply.
+    ///     <paramref name="selection"/> carries a setting an <see cref="IChatClient"/> cannot apply,
+    ///     or a context window <paramref name="client"/> does not apply at the same size.
     /// </exception>
     /// <example>
     ///     <para>
@@ -240,9 +244,13 @@ public static class ChatClientAgentFactory
     /// <remarks>
     ///     <para>
     ///     <see cref="Create"/> installs the decorator itself when handed a selection; this extension
-    ///     is for a pipeline the host assembles. Its position is not critical — a value already set on
-    ///     a request wins over the selection wherever the decorator sits — but placing it last, nearest
-    ///     the provider, keeps every request the pipeline makes under the selection.
+    ///     is for a pipeline the host assembles. A value already set on a request wins over the
+    ///     selection wherever the decorator sits, and placing it last — nearest the provider, but above
+    ///     any client added to apply a context window — keeps every request the pipeline makes under
+    ///     the selection. A selection carrying a context window
+    ///     needs one more thing: the client that applies the window — an
+    ///     <see cref="IContextWindowChatClient"/> such as an Ollama context-sizing client — must sit
+    ///     beneath this decorator, or the selection is refused when the pipeline is built.
     ///     </para>
     ///     <para>
     ///     A host that takes no dependency on this package installs the same decorator with
@@ -258,7 +266,7 @@ public static class ChatClientAgentFactory
     /// <exception cref="ArgumentException">
     ///     Thrown when the pipeline is built if <paramref name="selection"/> carries a context tier or
     ///     an effort with no provider-neutral equivalent, which an <see cref="IChatClient"/> cannot
-    ///     apply.
+    ///     apply, or a context window no client beneath the decorator applies at the same size.
     /// </exception>
     /// <example>
     ///     <code>

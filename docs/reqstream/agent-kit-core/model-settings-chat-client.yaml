@@ -46,3 +46,19 @@ sections:
               names the mistake instead.
             tests:
               - ModelSettingsChatClient_Construct_InapplicableSelection_Throws
+
+          - id: AgentKitCore-ModelSettingsChatClient-RequiresTheWindowAppliedBeneath
+            title: >-
+              The unit shall accept a selection carrying a context window only when a client beneath
+              it reports applying that same window, and shall otherwise refuse it when constructed,
+              naming the setting.
+            justification: |
+              An IChatClient has no provider-neutral context window, so the decorator cannot state
+              one itself. Accepting the window anyway would drop the user's choice with nothing
+              reporting it. A provider client that applies a window reports it as an
+              IContextWindowChatClient, so the decorator can confirm the window is in effect, and
+              refuse a missing or different one where the pipeline is composed.
+            tests:
+              - ModelSettingsChatClient_Construct_WindowNotAppliedBeneath_Throws
+              - ModelSettingsChatClient_Construct_WindowAppliedAtAnotherSize_Throws
+              - ModelSettingsChatClient_Construct_WindowAppliedBeneath_IsAccepted

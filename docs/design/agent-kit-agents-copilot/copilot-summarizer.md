@@ -60,8 +60,9 @@ and the model name.
 **Purpose:** Hold what every consolidation needs, and nothing else.
 
 **Algorithm:** Reject a null runtime, check it is not disposed (`CopilotRuntime.ThrowIfDisposed`),
-refuse an ambiguous or foreign selection through `CopilotAgentFactory.ValidateSelection`, and
-build the production channel opener over the runtime — one that deletes each session when it is
+refuse an ambiguous or foreign selection, and one carrying a context window or an output limit,
+through `CopilotAgentFactory.ValidateSelection` with `windowAccounted: false`, and build
+the production channel opener over the runtime — one that deletes each session when it is
 released, because a consolidation session is finished with once it has answered. The opener is handed
 the runtime, not its client, and reads the client at each open and release: the SDK restarts a
 disposed client on demand, so a summarizer that held the client would bring a runtime the host had
@@ -76,9 +77,12 @@ A `selection` may be given instead of a model name. It is a model the host's use
 `CopilotModelCatalog`, validated; it names the model each consolidation runs on, and its reasoning
 effort and context tier, each only when chosen, are set on each consolidation session. The same rules
 as the agent factory's apply: a cheaper model is chosen and validated the same way, and a model named
-both ways is refused.
+both ways is refused. A consolidation session is accounted against no window, so a selection's
+context window has nothing to lower and is refused; the runtime takes no output limit, so a
+selection's `MaxOutputTokens` is refused too, rather than either being dropped silently.
 
-**Preconditions:** `runtime` is not null and not disposed; a model is named at most once.
+**Preconditions:** `runtime` is not null and not disposed; a model is named at most once; a
+selection carries no context window and no output limit.
 
 **Postconditions:** A summarizer ready to consolidate, owning nothing disposable.
 
@@ -86,7 +90,7 @@ both ways is refused.
 
 **Purpose:** The test seam, for the reason *CopilotTurnChannel Unit Design* gives.
 
-**Algorithm:** Reject a null opener, refuse an ambiguous selection as the public constructor does,
+**Algorithm:** Reject a null opener, refuse a selection as the public constructor does,
 and record the opener, the model and the selection.
 
 **Preconditions:** `opener` is not null.
@@ -125,6 +129,7 @@ for.
 | Null `runtime` or `opener` | `ArgumentNullException` propagates |
 | Disposed `runtime` | `ObjectDisposedException` propagates |
 | Both a model name and a selection, or a foreign selection | `ArgumentException` naming `selection` propagates |
+| A selection carrying a context window or an output limit | `ArgumentException` naming `selection` propagates |
 | `runtime` disposed after construction | `ObjectDisposedException` from the next consolidation; nothing started |
 | Null `request` | `ArgumentNullException` propagates |
 | Cancellation before opening | `OperationCanceledException`; nothing is opened |

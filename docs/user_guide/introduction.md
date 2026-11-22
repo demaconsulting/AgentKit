@@ -793,11 +793,14 @@ tier, a context window and an output limit. It is plain data, so an application 
   tiers through billing. A tier's `WindowTokens` is its **total** window. A live session reports the
   smaller prompt budget it enforces — for example 100,000 for a Standard tier described as 228,000 —
   and the session accounts against what the runtime reports.
-- **Context window on Copilot.** A window you state is a ceiling only. It lowers the window a session
-  accounts against and is never sent to the runtime.
+- **Context window on Copilot.** A window you state is a ceiling only, applied by
+  `CopilotProviderSessionFactory`. It lowers the window a session accounts against and is never sent
+  to the runtime. The plain Copilot agent and the summarizer account against no window, so there is
+  nothing for a ceiling to lower; they refuse a selection carrying one.
 - **Context window on Ollama.** A window you state is the exact `num_ctx` the server is asked to load
-  the model at. It must not exceed the length the model was trained for, and a larger value is
-  refused. A reasonable choice is the smaller of the trained length and 32,768 — a long window costs
+  the model at, by an `OllamaContextSizingChatClient` you compose at that size. It must not exceed the
+  length the model was trained for, and a larger value is refused.
+  A reasonable choice is the smaller of the trained length and 32,768 — a long window costs
   memory on the server. AgentKit sets no default: with none stated, the server's own choice is read
   back, as *Where the Window Comes From* describes.
 
@@ -838,7 +841,9 @@ rather than as a provider error part-way through a conversation. For example:
 
 The result is a `ModelSelection`. Only validation creates one, so holding one shows the check ran.
 The factories take model settings as a `ModelSelection` rather than as raw settings, and apply it once
-when a session starts; the settings do not change for the life of that session.
+when a session starts; the settings do not change for the life of that session. A factory that cannot
+apply a setting the selection carries refuses it with an `ArgumentException` naming the setting,
+rather than dropping it.
 
 ## A Vision-Only Application
 
@@ -896,22 +901,37 @@ IChatClient pipeline = sized.AsBuilder()
 ```
 
 An `IChatClient` cannot apply a context tier, or an effort with no provider-neutral equivalent, so a
-selection carrying either is refused with an `ArgumentException` rather than dropped.
+selection carrying either is refused with an `ArgumentException` rather than dropped. It has no
+provider-neutral context window either, so a selection carrying `ContextWindowTokens` is accepted
+only when a client beneath the settings decorator applies that same window — here
+`OllamaContextSizingChatClient`, which reports it as an `IContextWindowChatClient` — and refused
+otherwise with an `ArgumentException` naming `ContextWindowTokens`. In a pipeline you build, keep
+`UseModelSettings` above the client that applies the window. `ChatClientProviderSessionFactory` also
+refuses a selection whose window differs from its `windowTokens`, so a session accounts against the
+window the provider runs at.
 
 On Copilot, from a `CopilotModelCatalog`:
 
 ```csharp
 using DemaConsulting.AgentKit.Agents.Copilot;
 
+// The plain agent and the summarizer: model, effort and tier, with no window.
 var copilotAgent = CopilotAgentFactory.Create(runtime, tools, selection: selection);
-var copilotSessions = new CopilotProviderSessionFactory(runtime, selection: selection);
 var summarizer = new CopilotSummarizer(runtime, selection: summarizerSelection);
+
+// A compacting session: the selection may also carry a window, applied as a ceiling.
+var copilotSessions = new CopilotProviderSessionFactory(runtime, selection: windowedSelection);
 ```
 
 The effort and tier are set on every session the agent creates or resumes, and only when chosen. A
 summarizer may run on a cheaper model, chosen and validated the same way. Pass either a model name or
 a selection, never both; each factory refuses both with an `ArgumentException`, and also refuses a
-selection made from another provider's catalog.
+selection made from another provider's catalog. A window is applied only by
+`CopilotProviderSessionFactory`, as a ceiling on the window a session accounts against; the agent
+and the summarizer account against no window and refuse a selection carrying one, naming
+`ContextWindowTokens`. The runtime takes no output limit, so every Copilot factory refuses a
+selection carrying `MaxOutputTokens` — the Copilot catalog never offers one, so only a model
+description you built yourself can carry it.
 
 # Building an Agent
 

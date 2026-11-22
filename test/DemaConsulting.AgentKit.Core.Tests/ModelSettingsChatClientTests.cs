@@ -126,6 +126,94 @@ public class ModelSettingsChatClientTests
     }
 
     /// <summary>
+    ///     Proves a selection carrying a context window is refused when nothing beneath applies it,
+    ///     rather than the window being dropped.
+    /// </summary>
+    [Fact]
+    public void ModelSettingsChatClient_Construct_WindowNotAppliedBeneath_Throws()
+    {
+        // Arrange: a window, over a client that applies none
+        var selection = new ModelSettings("vision-large") { ContextWindowTokens = 8192 }
+            .Bind(ModelTestData.VisionModel());
+        using var inner = new OptionsRecordingChatClient();
+
+        // Act
+        var failure = Assert.Throws<ArgumentException>(() => new ModelSettingsChatClient(inner, selection));
+
+        // Assert: the setting is named, with the figure and the remedy
+        Assert.Equal("selection", failure.ParamName);
+        Assert.Contains(
+            "ContextWindowTokens (8,192) is not applied by any client beneath",
+            failure.Message,
+            StringComparison.Ordinal);
+        Assert.Contains("OllamaContextSizingChatClient", failure.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves a selection whose window differs from the one applied beneath is refused, because
+    ///     the provider would run at a figure the selection did not choose.
+    /// </summary>
+    [Fact]
+    public void ModelSettingsChatClient_Construct_WindowAppliedAtAnotherSize_Throws()
+    {
+        // Arrange: the client beneath applies 4,096 tokens; the selection chose 8,192
+        var selection = new ModelSettings("vision-large") { ContextWindowTokens = 8192 }
+            .Bind(ModelTestData.VisionModel());
+        using var inner = new WindowApplyingChatClient(new OptionsRecordingChatClient(), 4096);
+
+        // Act
+        var failure = Assert.Throws<ArgumentException>(() => new ModelSettingsChatClient(inner, selection));
+
+        // Assert
+        Assert.Equal("selection", failure.ParamName);
+        Assert.Contains(
+            "ContextWindowTokens (8,192) differs from the 4,096 tokens",
+            failure.Message,
+            StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves a selection's window is accepted when a client beneath — found through delegating
+    ///     clients between — applies the same window, and the rest of the selection still rides on
+    ///     every request.
+    /// </summary>
+    [Fact]
+    public async Task ModelSettingsChatClient_Construct_WindowAppliedBeneath_IsAccepted()
+    {
+        // Arrange: the window-applying client sits two layers down
+        var recording = new OptionsRecordingChatClient();
+        var selection = new ModelSettings("vision-large") { ContextWindowTokens = 8192, MaxOutputTokens = 100 }
+            .Bind(ModelTestData.VisionModel());
+        using var client = new ModelSettingsChatClient(
+            new PassThroughChatClient(new WindowApplyingChatClient(recording, 8192)),
+            selection);
+
+        // Act
+        await client.GetResponseAsync("hi", cancellationToken: TestContext.Current.CancellationToken);
+
+        // Assert
+        var options = Assert.Single(recording.Received);
+        Assert.Equal("vision-large", options.ModelId);
+        Assert.Equal(100, options.MaxOutputTokens);
+    }
+
+    /// <summary>
+    ///     A delegating client that reports it applies a context window, standing in for a
+    ///     provider's sizing client.
+    /// </summary>
+    private sealed class WindowApplyingChatClient(IChatClient inner, int window)
+        : DelegatingChatClient(inner), IContextWindowChatClient
+    {
+        /// <inheritdoc/>
+        public int ContextWindowTokens { get; } = window;
+    }
+
+    /// <summary>
+    ///     A delegating client that adds nothing, so a service is found only by asking beneath it.
+    /// </summary>
+    private sealed class PassThroughChatClient(IChatClient inner) : DelegatingChatClient(inner);
+
+    /// <summary>
     ///     A chat client that records the options of every request and answers with a fixed reply.
     /// </summary>
     private sealed class OptionsRecordingChatClient : IChatClient

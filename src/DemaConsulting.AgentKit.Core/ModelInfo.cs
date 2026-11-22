@@ -84,9 +84,12 @@ public enum ModelAdjustments
     ///     A context window in tokens can be stated.
     /// </summary>
     /// <remarks>
-    ///     What the figure means is the provider's: on Ollama it is the exact length the server is
-    ///     asked to load the model at, and on Copilot it is a ceiling that only lowers the window a
-    ///     session accounts against and is never sent to the runtime.
+    ///     What the figure means depends on the provider and the path. On Ollama it is the exact
+    ///     length the server is asked to load the model at; over an <c>IChatClient</c> a client
+    ///     beneath must apply it, reporting so as an <see cref="IContextWindowChatClient"/>. On
+    ///     Copilot it is a ceiling that only lowers the window a session accounts against, applied by
+    ///     the provider-session factory and never sent to the runtime; the plain Copilot agent and
+    ///     the summarizer refuse it.
     /// </remarks>
     ContextWindow = 4,
 

@@ -697,6 +697,64 @@ public class CopilotAgentFactoryTests
     }
 
     /// <summary>
+    ///     Proves a selection carrying a context window is refused by the plain agent, which accounts
+    ///     its sessions against no window, rather than the window being silently dropped.
+    /// </summary>
+    [Fact]
+    public void CopilotAgentFactory_Create_SelectionWithAWindow_Throws()
+    {
+        // Arrange: a window the catalog validated, so only this path can refuse it
+        var runtime = RuntimeThatCannotStart();
+        var selection = CopilotModelCatalogTests.Selection(window: 4000);
+        var tools = new List<AIFunction> { MakeTool("doc_read") };
+
+        // Act
+        var failure = Assert.Throws<ArgumentException>(
+            () => CopilotAgentFactory.Create(runtime, tools, selection: selection));
+
+        // Assert: the setting is named, with the reason and the path that applies it
+        Assert.Equal("selection", failure.ParamName);
+        Assert.Contains("ContextWindowTokens cannot be applied here", failure.Message, StringComparison.Ordinal);
+        Assert.Contains("CopilotProviderSessionFactory", failure.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves a selection carrying an output limit — which only a hand-built Copilot model
+    ///     description can grant — is refused, because the runtime takes no output limit.
+    /// </summary>
+    [Fact]
+    public void CopilotAgentFactory_Create_SelectionWithAnOutputLimit_Throws()
+    {
+        // Arrange
+        var runtime = RuntimeThatCannotStart();
+        var selection = HandBuiltSelectionWithAnOutputLimit();
+        var tools = new List<AIFunction> { MakeTool("doc_read") };
+
+        // Act
+        var failure = Assert.Throws<ArgumentException>(
+            () => CopilotAgentFactory.Create(runtime, tools, selection: selection));
+
+        // Assert
+        Assert.Equal("selection", failure.ParamName);
+        Assert.Contains("MaxOutputTokens cannot be applied on Copilot", failure.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Builds a selection of a hand-built Copilot model description that grants an output limit,
+    ///     which the Copilot catalog never does.
+    /// </summary>
+    /// <returns>The validated selection, carrying a 1,000-token output limit.</returns>
+    internal static Core.ModelSelection HandBuiltSelectionWithAnOutputLimit() =>
+        new Core.ModelSettings("hand-built") { MaxOutputTokens = 1000 }.Bind(new Core.ModelInfo
+        {
+            Provider = CopilotModelCatalog.ProviderId,
+            Id = "hand-built",
+            DisplayName = "Hand built",
+            Capabilities = Core.ModelCapabilities.ToolCalls,
+            Adjustments = Core.ModelAdjustments.MaxOutputTokens,
+        });
+
+    /// <summary>
     ///     Proves an agent never starts its runtime again once the host has disposed it. The SDK
     ///     restarts a disposed client on demand, so a run that reached the client would bring a
     ///     runtime the host had stopped back to life. A run without a conversation, the first run of a

@@ -43,6 +43,7 @@ public class PublicSurfaceTests
             "GuardedToolFactory",
             "HostCapabilities",
             "IAgentSession",
+            "IContextWindowChatClient",
             "IModelCatalog",
             "IProviderSession",
             "IProviderSessionFactory",

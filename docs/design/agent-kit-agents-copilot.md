@@ -171,8 +171,10 @@ tokenizer.
 So this system takes **no** window from the application as the figure to account against. Asking
 for a figure the provider already knows would create a second source of truth for one fact, which is
 exactly what the engine's single-reading design retired. The application may state a **ceiling**
-only — directly, or as the window of a model selection — and a ceiling only ever lowers the
-runtime's figure. A live session reports the tier's prompt budget, which is smaller than the tier's
+only — directly, or as the window of a model selection given to the provider-session factory — and
+a ceiling only ever lowers the runtime's figure. The plain agent and the summarizer account against
+no window, so they refuse a selection that carries one rather than dropping it.
+A live session reports the tier's prompt budget, which is smaller than the tier's
 total window the catalog describes; see *CopilotModelCatalog Unit Design*, "Context Tiers and the
 Reported Limit". The conversation's share is passed through rather than inferred,
 which keeps every threshold comparison downstream in Copilot's own tokens. Nothing is estimated, and

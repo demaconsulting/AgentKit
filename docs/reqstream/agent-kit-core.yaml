@@ -876,6 +876,7 @@ sections:
           - AgentKitCore-ModelSettingsChatClient-AppliesToEveryRequest
           - AgentKitCore-ModelSettingsChatClient-PreservesTheCallersRequest
           - AgentKitCore-ModelSettingsChatClient-RefusesWhatItCannotApply
+          - AgentKitCore-ModelSettingsChatClient-RequiresTheWindowAppliedBeneath
           - AgentKit-OTS-MicrosoftExtensionsAIAbstractions-ReasoningOptions
         tests:
           - AgentKitCore_SystemModelSelection_SettingsReachTheProviderOnEveryRequest

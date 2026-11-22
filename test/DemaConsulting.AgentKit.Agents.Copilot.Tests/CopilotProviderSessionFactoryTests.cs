@@ -361,6 +361,26 @@ public class CopilotProviderSessionFactoryTests
     }
 
     /// <summary>
+    ///     Proves a selection carrying an output limit — which only a hand-built Copilot model
+    ///     description can grant — is refused, because the runtime takes no output limit.
+    /// </summary>
+    [Fact]
+    public void CopilotProviderSessionFactory_Constructor_SelectionWithAnOutputLimit_Throws()
+    {
+        // Arrange
+        var runtime = new FakeCopilotRuntime();
+        var selection = CopilotAgentFactoryTests.HandBuiltSelectionWithAnOutputLimit();
+
+        // Act
+        var failure = Assert.Throws<ArgumentException>(
+            () => new CopilotProviderSessionFactory(runtime.Opener, model: null, selection: selection));
+
+        // Assert
+        Assert.Equal("selection", failure.ParamName);
+        Assert.Contains("MaxOutputTokens cannot be applied on Copilot", failure.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     ///     Proves a missing seed is refused before any session is opened.
     /// </summary>
     [Fact]

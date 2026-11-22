@@ -192,6 +192,11 @@ public sealed record OllamaContextWindow(int Tokens, OllamaContextWindowSource S
     ///     <see cref="OllamaContextSizingChatClient"/> over the returned <see cref="Tokens"/> — so the
     ///     server is asked to run at the window the session accounts against.
     ///     </para>
+    ///     <para>
+    ///     Only the window is read here; nothing is applied. The model, the effort and the output
+    ///     limit are applied by a <see cref="ModelSettingsChatClient"/>, which also confirms that a
+    ///     selection's window is the one the sizing client beneath it asks for.
+    ///     </para>
     /// </remarks>
     /// <param name="client">The Ollama client to ask. Must not be <see langword="null"/>.</param>
     /// <param name="selection">

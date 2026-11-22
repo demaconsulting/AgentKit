@@ -184,6 +184,32 @@ public class ChatClientAgentFactoryTests
     }
 
     /// <summary>
+    ///     Proves a selection carrying a context window is refused when the client does not apply
+    ///     that window, rather than the window being dropped, and accepted when it does.
+    /// </summary>
+    [Fact]
+    public void ChatClientAgentFactory_Create_SelectionWithAnUnappliedWindow_Throws()
+    {
+        // Arrange
+        var selection = new ModelSettings("vision-large") { ContextWindowTokens = 8192 }.Bind(SelectableModel());
+
+        // Act
+        var failure = Assert.Throws<ArgumentException>(
+            () => ChatClientAgentFactory.Create(
+                new ScriptedChatClient(),
+                [MakeTool("tool_one")],
+                selection: selection));
+        var agent = ChatClientAgentFactory.Create(
+            new WindowApplyingChatClient(new ScriptedChatClient(), 8192),
+            [MakeTool("tool_one")],
+            selection: selection);
+
+        // Assert: the refusal names the setting; the same selection over a client applying it builds
+        Assert.Contains("ContextWindowTokens", failure.Message, StringComparison.Ordinal);
+        Assert.NotNull(agent);
+    }
+
+    /// <summary>
     ///     Proves the builder extension installs the selection in a host-built pipeline.
     /// </summary>
     [Fact]
@@ -201,6 +227,29 @@ public class ChatClientAgentFactoryTests
         var options = Assert.Single(client.Requests).Options;
         Assert.Equal("vision-large", options?.ModelId);
         Assert.Equal(ReasoningEffort.Low, options?.Reasoning?.Effort);
+    }
+
+    /// <summary>
+    ///     Proves a host-built pipeline given a selection carrying a context window is refused when it
+    ///     is built if no client beneath applies that window, and builds when one does.
+    /// </summary>
+    [Fact]
+    public void ChatClientAgentFactory_UseModelSettings_SelectionWithAWindow_NeedsItAppliedBeneath()
+    {
+        // Arrange
+        var selection = new ModelSettings("vision-large") { ContextWindowTokens = 8192 }.Bind(SelectableModel());
+
+        // Act
+        var failure = Assert.Throws<ArgumentException>(
+            () => new ScriptedChatClient().AsBuilder().UseModelSettings(selection).Build());
+        using var pipeline = new WindowApplyingChatClient(new ScriptedChatClient(), 8192)
+            .AsBuilder()
+            .UseModelSettings(selection)
+            .Build();
+
+        // Assert: the refusal names the setting; the pipeline over a window-applying client builds
+        Assert.Contains("ContextWindowTokens", failure.Message, StringComparison.Ordinal);
+        Assert.NotNull(pipeline);
     }
 
     /// <summary>
@@ -227,10 +276,26 @@ public class ChatClientAgentFactoryTests
         Id = "vision-large",
         DisplayName = "Vision Large",
         Capabilities = ModelCapabilities.ToolCalls | ModelCapabilities.Vision,
-        Adjustments = ModelAdjustments.ReasoningEffort | ModelAdjustments.ContextTier | ModelAdjustments.MaxOutputTokens,
+        Adjustments = ModelAdjustments.ReasoningEffort
+            | ModelAdjustments.ContextTier
+            | ModelAdjustments.ContextWindow
+            | ModelAdjustments.MaxOutputTokens,
         ReasoningEfforts = [new ModelReasoningEffort("low", "Low", ReasoningEffort.Low)],
         ContextTiers = [new ModelContextTier("default", "Standard", null)],
     };
+
+    /// <summary>
+    ///     A delegating client that reports it applies a context window, standing in for a
+    ///     provider's sizing client such as Ollama's.
+    /// </summary>
+    /// <param name="inner">The client requests are forwarded to.</param>
+    /// <param name="window">The window this client reports it applies.</param>
+    internal sealed class WindowApplyingChatClient(IChatClient inner, int window)
+        : DelegatingChatClient(inner), IContextWindowChatClient
+    {
+        /// <inheritdoc/>
+        public int ContextWindowTokens { get; } = window;
+    }
 
     /// <summary>
     ///     Builds a no-op tool carrying the given name.

@@ -13,7 +13,11 @@ options object the decorator forwarded, rather than inferred from a response.
 Selections are obtained the only way a caller can obtain one — by binding settings to the shared
 vision model from `ModelTestData` — so each scenario exercises a selection that validation would
 really produce. That model offers an effort with no provider-neutral equivalent (`max`) and two
-tiers, which is what lets the construction refusals be reached.
+tiers, which is what lets the construction refusals be reached. The window scenarios compose a
+hand-written `WindowApplyingChatClient` — a delegating client implementing
+`IContextWindowChatClient` — beneath the decorator, standing in for a provider's sizing client, and
+in one scenario a pass-through delegating client between them, so the window is found through more
+than one layer.
 
 **Both request paths are exercised.** The streamed path is drained in full, so the request is made,
 and asserted against the same options as the whole-response path; a host that streams would
@@ -38,12 +42,14 @@ Unit tests reside in `ModelSettingsChatClientTests.cs`, with the shared descript
 
 ### Acceptance Criteria
 
-A unit test run passes when all five scenarios below pass without error or exception beyond those
+A unit test run passes when all eight scenarios below pass without error or exception beyond those
 explicitly asserted. Any request, streamed or not, that does not carry the selected model, the
 chosen neutral effort and the chosen output limit; any value the caller set that is overwritten;
 any write to the caller's options object; any reasoning option sent when no effort was chosen; or
 any selection carrying a context tier or an effort with no neutral equivalent that is accepted at
-construction each constitute a failure.
+construction; any selection carrying a context window that is accepted when nothing beneath applies
+it, or applies another size; or any such selection refused when a client beneath applies the same
+window each constitute a failure.
 
 ### Test Scenarios
 
@@ -82,3 +88,26 @@ so the model's own defaults stay in force, and the caller's options object still
 Error path, both branches. A selection naming a context tier and one naming the `max` effort are
 each refused with `ArgumentException` at construction, with messages naming the missing context
 tiers and the effort with no provider-neutral equivalent.
+
+#### AgentKitCore-ModelSettingsChatClient-RequiresTheWindowAppliedBeneath: A Window Nothing Applies Is Refused
+
+**Test**: `ModelSettingsChatClient_Construct_WindowNotAppliedBeneath_Throws`
+
+Error path. A selection carrying an 8,192-token window, over a client that applies no window, is
+refused with `ArgumentException` naming `selection`, whose message names `ContextWindowTokens`, the
+figure and `OllamaContextSizingChatClient` as a remedy.
+
+#### AgentKitCore-ModelSettingsChatClient-RequiresTheWindowAppliedBeneath: A Window Applied at Another Size Is Refused
+
+**Test**: `ModelSettingsChatClient_Construct_WindowAppliedAtAnotherSize_Throws`
+
+Error path. The same selection over a client applying 4,096 tokens is refused with
+`ArgumentException` naming `selection`, whose message names both figures.
+
+#### AgentKitCore-ModelSettingsChatClient-RequiresTheWindowAppliedBeneath: A Window Applied Beneath Is Accepted
+
+**Test**: `ModelSettingsChatClient_Construct_WindowAppliedBeneath_IsAccepted`
+
+Normal operation. A selection carrying an 8,192-token window and an output limit, over a
+pass-through client wrapping a client applying 8,192 tokens, is accepted, and a request reaches the
+recording client carrying the model and the output limit.

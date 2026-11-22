@@ -152,8 +152,9 @@ client the host built, because none of the runtime's guarantees could hold on on
 **Algorithm:**
 
 1. Reject a null `runtime`; check it is not disposed (`CopilotRuntime.ThrowIfDisposed`), which throws
-   `ObjectDisposedException` when it has been. Refuse an ambiguous or foreign selection through
-   `ValidateSelection`.
+   `ObjectDisposedException` when it has been. Refuse an ambiguous or foreign selection, and one
+   carrying a context window or an output limit, through `ValidateSelection` with
+   `windowAccounted: false`.
 2. Hand the arguments to `CreateAgent` with the production channels over that runtime: an opener that
    creates a session and **keeps** it on release, a resumer that resumes a recorded session and keeps
    it too, and an opener for a run made without a conversation that **deletes** the session on
@@ -168,7 +169,8 @@ client the host built, because none of the runtime's guarantees could hold on on
 **Throws:** `ArgumentNullException` when `runtime` or `tools` is null, or a tool is null;
 `ObjectDisposedException` when `runtime` has been disposed;
 `ArgumentException` when `tools` is empty, two tools share a name, a tool carries a reserved
-built-in name, or `selection` is ambiguous or names another provider's model.
+built-in name, or `selection` is ambiguous, names another provider's model, or carries a context
+window or an output limit.
 
 **The selection** is a `ModelSelection` the host validated against a `CopilotModelCatalog`. It names
 the model in place of `model`, and its reasoning effort and context tier, each only when chosen, are
@@ -311,9 +313,10 @@ when chosen, as `config.Inference.ContextTier`, creating `config.Inference` only
 set. Each is sent with the catalog's own spelling of the identifier (`CanonicalEffort` and
 `CanonicalTier` match the chosen value against the model's list, ignoring case). An effort or tier
 not chosen leaves `Inference` untouched, so the runtime's own default applies. The selection's window
-is not sent: on Copilot it is a ceiling the provider-session factory applies, not a runtime option.
+is not sent: on Copilot it is a ceiling the provider-session factory applies, not a runtime option,
+and every other caller has already refused it in `ValidateSelection`.
 
-#### ValidateSelection(string? model, ModelSelection? selection)
+#### ValidateSelection(string? model, ModelSelection? selection, bool windowAccounted)
 
 Internal helper shared by every public entry point that accepts a selection — this factory's
 `Create`, the provider-session factory's constructors and the summarizer's — so each refuses the same
@@ -324,7 +327,22 @@ mistakes with the same words. With no selection it does nothing. Otherwise it th
   a model named twice would leave which one backs the session to a precedence rule nobody reads;
 - "The selection names a model from provider '{provider}', not 'copilot'." when the selection's
   `Model.Provider` is not `CopilotModelCatalog.ProviderId`, because a selection validated against
-  another provider's offering proves nothing about Copilot's.
+  another provider's offering proves nothing about Copilot's;
+- "The selection's MaxOutputTokens cannot be applied on Copilot: the runtime takes no output limit.
+  Select without one." when the settings carry `MaxOutputTokens`. The catalog never offers the
+  adjustment, so only a hand-built model description reaches this; refusing it keeps the setting from
+  being dropped silently;
+- "The selection's ContextWindowTokens cannot be applied here: AgentKit accounts this Copilot session
+  against no window, so there is nothing for a ceiling to lower. Use CopilotProviderSessionFactory to
+  cap the window a conversation accounts against, or select without a window." when the settings
+  carry `ContextWindowTokens` and `windowAccounted` is false.
+
+`windowAccounted` says whether the caller accounts its sessions against a window the selection's
+context window can lower. Only the provider-session factory does, so it passes `true`; this factory's
+`Create` and the summarizer pass `false`. The plain agent leaves history and compaction to the
+runtime, and a consolidation session is one prompt and one answer, so neither has a window for a
+ceiling to lower. The SDK's per-session capability override could carry a window limit, but its
+effect on the runtime has not been measured, so a selection's window is never sent to the runtime.
 
 #### CreateDefaultPermissionHandler(IList&lt;AIFunction&gt; tools)
 
@@ -476,6 +494,8 @@ incentive to bypass it.
 | An MCP server stays enabled on a run's session | `InvalidOperationException` from the turn channel |
 | Both a model name and a selection | `ArgumentException` naming `selection` propagates |
 | A selection of another provider's model | `ArgumentException` naming `selection` propagates |
+| A selection carrying an output limit | `ArgumentException` naming `selection` propagates |
+| A selection carrying a window (agent or summarizer path) | `ArgumentException` naming `selection` propagates |
 
 ### Dependencies
 

@@ -48,9 +48,12 @@ decorator — over Core's `ModelSettingsChatClient` when a selection is supplied
 **Refusal of a selection:** `ModelSettingsChatClient` refuses a selection that carries a context
 tier, with "Context tier '{tier}' cannot be applied through an IChatClient, which has no context
 tiers.", and one whose effort has no provider-neutral equivalent, with "Effort '{effort}' has no
-provider-neutral equivalent and cannot be applied through an IChatClient." Both are
-`ArgumentException`s raised from `Create`, so a setting the client cannot apply is never dropped
-silently.
+provider-neutral equivalent and cannot be applied through an IChatClient." A selection carrying a
+context window is accepted only when `client` applies it — an `IContextWindowChatClient` at or
+beneath it, such as the Ollama context-sizing decorator, reports the same window — and is refused
+otherwise with a message naming `ContextWindowTokens`; see *ModelSettingsChatClient Unit Design*.
+Each refusal is an `ArgumentException` raised from `Create`, so a setting the client cannot apply is
+never dropped silently.
 
 **Ownership:** the caller retains ownership of the client it supplied. The factory wraps that
 client but constructs nothing else the caller must dispose; the returned agent's lifetime, and the
@@ -58,7 +61,7 @@ client beneath it, remain the host's to manage.
 
 **Throws:** `ArgumentNullException` when `client` or `tools` is null, or a tool is null;
 `ArgumentException` when `tools` is empty, two tools share a name, or `selection` carries a setting
-an `IChatClient` cannot apply.
+an `IChatClient` cannot apply or a window `client` does not apply at the same size.
 
 #### UseImagePromotion(this ChatClientBuilder builder)
 
@@ -95,14 +98,19 @@ model selection rides on every request.
 1. Reject a null `builder` and a null `selection`.
 2. Register `inner => new ModelSettingsChatClient(inner, selection)` with `builder.Use`.
 
-**Placement:** not critical, because a value already set on a request wins over the selection
-wherever the decorator sits. Placing it last, nearest the provider, keeps every request the pipeline
-makes under the selection: `.UseFunctionInvocation().UseImagePromotion().UseModelSettings(selection)`.
+**Placement:** a value already set on a request wins over the selection wherever the decorator sits,
+and placing it last — nearest the provider, but above any client added to apply a context window —
+keeps every request the pipeline makes under the
+selection: `.UseFunctionInvocation().UseImagePromotion().UseModelSettings(selection)`. A selection
+carrying a context window also needs the client that applies the window — an
+`IContextWindowChatClient` such as the Ollama context-sizing decorator — beneath this decorator, or
+the selection is refused when the pipeline is built.
 A host that references only Core installs the same decorator with
 `builder.Use(inner => new ModelSettingsChatClient(inner, selection))`.
 
 **Throws:** `ArgumentNullException` for a null `builder` or `selection`; `ArgumentException` from
-`Build()` for a selection carrying a context tier or an effort with no provider-neutral equivalent.
+`Build()` for a selection carrying a context tier or an effort with no provider-neutral equivalent,
+or a context window no client beneath the decorator applies at the same size.
 
 #### WrapWithImagePromotion(IChatClient client)
 
@@ -149,6 +157,7 @@ duplicate the framework it adapts.
 | Null `builder` to `UseImagePromotion` | `ArgumentNullException` propagates |
 | Decorator placed above function invocation | `InvalidOperationException` when the pipeline is built |
 | Selection with a tier, or an effort with no neutral equivalent | `ArgumentException` from `Create` |
+| Selection with a window `client` does not apply at the same size | `ArgumentException` from `Create` |
 | Null `builder` or `selection` to `UseModelSettings` | `ArgumentNullException` propagates |
 | Selection given to `UseModelSettings` that cannot be applied | `ArgumentException` when the pipeline is built |
 

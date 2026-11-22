@@ -309,3 +309,16 @@ sections:
               Copilot's.
             tests:
               - CopilotAgentFactory_Create_ConflictingOrForeignSelection_Throws
+
+          - id: AgentKitAgentsCopilot-CopilotAgentFactory-RefusesWhatItCannotApply
+            title: >-
+              The factory shall refuse, when the agent is built, a selection carrying a context
+              window or an output limit, naming the setting.
+            justification: |
+              The agent's sessions are accounted against no window, so there is nothing for a
+              ceiling to lower, and the runtime takes no output limit. Accepting either setting
+              would drop the user's choice with nothing reporting it; refusing it where the agent is
+              composed names the mistake and the path that does apply a window ceiling.
+            tests:
+              - CopilotAgentFactory_Create_SelectionWithAWindow_Throws
+              - CopilotAgentFactory_Create_SelectionWithAnOutputLimit_Throws

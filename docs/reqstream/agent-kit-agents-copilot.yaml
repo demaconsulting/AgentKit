@@ -478,19 +478,24 @@ sections:
         title: >-
           The library shall run every Copilot session an agent, a compacting session or a
           summarizer creates on the model, reasoning effort and context tier the user chose, locked
-          for the life of the session, and shall treat a chosen window as a ceiling on what the
-          session accounts against.
+          for the life of the session, shall treat a chosen window as a ceiling on what a compacting
+          session accounts against, and shall refuse a chosen setting a path cannot apply.
         justification: |
           The user's choice is made once, before the session starts, and must hold on every
           session the conversation runs on — created, resumed, rotated or consolidating. Copilot
           applies effort and tier per session, so the choice is applied where each session is
-          configured, and nothing is sent for what the user did not choose.
+          configured, and nothing is sent for what the user did not choose. Only a compacting
+          session accounts against a window, and the runtime takes no output limit, so a window
+          chosen for the agent or the summarizer, or an output limit chosen anywhere, is refused
+          rather than dropped.
         children:
           - AgentKitAgentsCopilot-CopilotAgentFactory-AppliesASelection
           - AgentKitAgentsCopilot-CopilotAgentFactory-RefusesAnAmbiguousSelection
+          - AgentKitAgentsCopilot-CopilotAgentFactory-RefusesWhatItCannotApply
           - AgentKitAgentsCopilot-CopilotProviderSessionFactory-AppliesASelection
           - AgentKitAgentsCopilot-CopilotProviderSessionFactory-RefusesAnAmbiguousSelection
           - AgentKitAgentsCopilot-CopilotSummarizer-AppliesASelection
+          - AgentKitAgentsCopilot-CopilotSummarizer-RefusesWhatItCannotApply
           - AgentKit-OTS-MicrosoftCopilotSDK-InferenceOptions
         tests:
           - AgentKitAgentsCopilot_ModelSelection_AgentRunsOnTheSelectedModelAndSettings

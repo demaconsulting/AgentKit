@@ -99,3 +99,13 @@ sections:
               chosen and validated the same way.
             tests:
               - CopilotSummarizer_Consolidate_Selection_RunsOnTheSelectedModel
+
+          - id: AgentKitAgentsCopilot-CopilotSummarizer-RefusesWhatItCannotApply
+            title: >-
+              The summarizer shall refuse, when constructed, a selection carrying a context window or
+              an output limit, naming the setting.
+            justification: |
+              A consolidation session is accounted against no window and the runtime takes no output
+              limit, so either setting would be dropped with nothing reporting it.
+            tests:
+              - CopilotSummarizer_Constructor_SelectionWithAWindowOrOutputLimit_Throws

@@ -169,10 +169,13 @@ sections:
 
           - id: AgentKitAgentsCopilot-CopilotProviderSessionFactory-RefusesAnAmbiguousSelection
             title: >-
-              The factory shall refuse a model named both by name and by selection, and a window
-              ceiling stated both directly and in the selection.
+              The factory shall refuse a model named both by name and by selection, a window
+              ceiling stated both directly and in the selection, and a selection carrying an output
+              limit.
             justification: |
               Each pair states one choice twice, and which one applied would be left to a rule
-              nobody reads.
+              nobody reads. The runtime takes no output limit, so one would be dropped with nothing
+              reporting it.
             tests:
               - CopilotProviderSessionFactory_Constructor_ConflictingSelection_Throws
+              - CopilotProviderSessionFactory_Constructor_SelectionWithAnOutputLimit_Throws

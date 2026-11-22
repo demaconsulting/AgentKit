@@ -103,9 +103,13 @@ public sealed record ModelSettings
     ///     provider.
     /// </summary>
     /// <remarks>
-    ///     What the figure does is the provider's: on Ollama it is the exact length the server is
-    ///     asked to run the model at, and on Copilot it is a ceiling that only lowers the window a
-    ///     session accounts against. Either way it may not exceed what the model provides.
+    ///     What the figure does depends on the path that receives it. On Ollama it is the exact length
+    ///     the server is asked to run the model at, applied by a client that asks for it on every
+    ///     request — a selection carrying a window over an <c>IChatClient</c> is refused unless such a
+    ///     client applies it. On Copilot it is a ceiling that only lowers the window a session
+    ///     accounts against, applied by the provider-session factory; the plain Copilot agent and
+    ///     the summarizer account against no window and refuse it. It may not exceed what the model
+    ///     provides.
     /// </remarks>
     public int? ContextWindowTokens { get; init; }
 
@@ -422,8 +426,9 @@ public sealed record ModelSettings
 ///     Created only by <see cref="ModelSettings.Bind"/> and
 ///     <see cref="ModelCatalogExtensions.SelectAsync"/>, so holding one shows the settings were
 ///     valid for the model, and the model reported every capability the application required, when
-///     it was made. A factory that receives one applies it once, when a session starts; the settings
-///     do not change for the life of that session.
+///     it was made. A factory that receives one applies it once, when a session starts, and refuses
+///     with an <see cref="ArgumentException"/> naming the setting any setting it cannot apply; the
+///     settings do not change for the life of that session.
 ///     </para>
 ///     <para>
 ///     Instances are immutable and safe for concurrent use.

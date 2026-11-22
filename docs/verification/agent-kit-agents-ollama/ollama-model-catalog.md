@@ -69,15 +69,15 @@ within the `DemaConsulting.AgentKit.Agents.Ollama.Tests` project.
 
 ### Acceptance Criteria
 
-A unit test run passes when all thirteen scenarios below pass without error or exception beyond
+A unit test run passes when all fifteen scenarios below pass without error or exception beyond
 those explicitly asserted. Any capability reported that the server did not report, or omitted that
 it did; any vision model hidden because it has no projector; any model reported usable without both
 completion and tools, or unusable without its reason; any older server's model reported usable or
 with vision not inferred from its metadata; any trained length misreported, any ceiling invented
 where the metadata carries none, or any window above the trained length accepted or sent to the
 server; any effort set other than the documented one, or any default effort published; any listing
-that fails because one model could not be described; or any bare name that does not find its
-`latest` tag each constitute a failure.
+that fails because one model could not be described; any bare name that does not find its
+`latest` tag; or any listing in an order other than the server's each constitute a failure.
 
 ### Test Scenarios
 
@@ -86,7 +86,7 @@ that fails because one model could not be described; or any bare name that does 
 **Test**: `OllamaModelCatalog_ListAsync_CapturedServer_DescribesTheVisionModels`
 
 Normal operation over the captured server. A vision-and-tools listing returns exactly the three
-vision models, sorted by name, each usable, carrying the provider name, reporting vision, tool
+vision models, in the server's order, each usable, carrying the provider name, reporting vision, tool
 calling and reasoning, and publishing no default effort.
 
 #### AgentKitAgentsOllama-OllamaModelCatalog-ReportsTheServersCapabilities: Vision Without a Projector
@@ -129,7 +129,7 @@ with neither does not, so the inference does not mark every model as vision.
 **Test**: `OllamaModelCatalog_ListAsync_CapturedServer_DescribesTheVisionModels`
 
 The same listing as above, asserted for its ceilings: the three vision models report trained lengths
-of 262,144, 131,072 and 262,144 tokens, read from each architecture's context-length metadata.
+of 262,144, 262,144 and 131,072 tokens, read from each architecture's context-length metadata.
 
 #### AgentKitAgentsOllama-OllamaModelCatalog-ReportsTrainedLengthAsCeiling: No Length, No Ceiling
 
@@ -172,3 +172,19 @@ yields a listing of five, each unusable with "Ollama did not describe this model
 **Test**: `OllamaModelCatalog_GetAsync_BareName_FindsTheLatestTag`
 
 A lookup of `nomic-embed-text` finds the model the server lists as `nomic-embed-text:latest`.
+
+#### AgentKitAgentsOllama-OllamaModelCatalog-KeepsTheServersOrder: Listed in the Server's Order
+
+**Test**: `OllamaModelCatalog_ListAsync_KeepsTheServersOrder`
+
+Normal operation over the captured server, whose listing is not in name order. A listing that
+includes unusable models returns all five installed models exactly in the order `/api/tags` lists
+them: `gemma4:26b`, `mxbai-embed-large:latest`, `nomic-embed-text:latest`, `qwen3.8:27b`,
+`gemma4:e4b`.
+
+#### AgentKitAgentsOllama-OllamaModelCatalog-KeepsTheServersOrder: Filtered Listing Keeps the Order
+
+**Test**: `OllamaModelCatalog_ListAsync_CapturedServer_DescribesTheVisionModels`
+
+The vision-and-tools listing above returns `gemma4:26b`, `qwen3.8:27b`, `gemma4:e4b` — the server's
+order with the other models filtered out, not re-sorted.

@@ -26,13 +26,13 @@ Unit tests reside in `ChatClientAgentFactoryTests.cs`, with the scripted client 
 
 ### Acceptance Criteria
 
-A unit test run passes when all thirteen tests below pass without error or exception beyond those
+A unit test run passes when all fifteen tests below pass without error or exception beyond those
 explicitly asserted. Any wrapped client that is not an `ImagePromotingChatClient`, any invalid
 argument that is accepted rather than refused, any host-built pipeline in which a tool-returned image
 does not reach the inner client on a user message, any misplaced decorator that is built rather
 than refused, any request that reaches the client without the selected model, effort or output
-limit, or any selection an `IChatClient` cannot apply that is accepted rather than refused,
-constitutes a failure.
+limit, or any selection an `IChatClient` cannot apply — including a context window the client does
+not apply — that is accepted rather than refused, constitutes a failure.
 
 ### Test Scenarios
 
@@ -96,12 +96,25 @@ to `Create` over a recording client. The request the agent sends carries the mod
 Error path: a selection carrying a context tier, which an `IChatClient` cannot apply, is refused with
 `ArgumentException` when the agent is built rather than dropped.
 
+**Test**: `ChatClientAgentFactory_Create_SelectionWithAnUnappliedWindow_Throws`
+
+Error path and its counterpart: a selection carrying an 8,192-token window, over a scripted client
+that applies no window, is refused with `ArgumentException` whose message names
+`ContextWindowTokens`; the same selection over a delegating client reporting, as an
+`IContextWindowChatClient`, that it applies 8,192 tokens builds an agent.
+
 #### AgentKitAgentsChatClient-ChatClientAgentFactory-UseModelSettings: The Builder Extension Applies the Selection
 
 **Test**: `ChatClientAgentFactory_UseModelSettings_HostPipeline_RequestsCarryTheSelection`
 
 A host-built pipeline over a recording client with `UseModelSettings(selection)` sends a request
 carrying the selected model identifier and `ReasoningEffort.Low`.
+
+**Test**: `ChatClientAgentFactory_UseModelSettings_SelectionWithAWindow_NeedsItAppliedBeneath`
+
+A selection carrying an 8,192-token window is refused with `ArgumentException` naming
+`ContextWindowTokens` when a pipeline over a plain scripted client is built, and the same selection
+builds over a client that reports, as an `IContextWindowChatClient`, that it applies 8,192 tokens.
 
 **Test**: `ChatClientAgentFactory_UseModelSettings_NullArguments_Throw`
 
