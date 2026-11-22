@@ -90,8 +90,10 @@ follow:
 - **`AutoModelId`** (`const string`, `auto`) — the automatic choice, which is skipped.
 - **`DefaultTier`** and **`LongContextTier`** (`const string`, `default` and `long_context`) — the
   two tiers derived from billing.
-- **`SignInMessage`** (`const string`) — "The Copilot runtime could not list models; sign in to
-  GitHub Copilot (the CLI must be installed and authenticated)."
+- **`SignInMessage`** (`const string`) — "The Copilot runtime could not list models: it is not
+  connected or not signed in to GitHub. Sign it in with a GitHub token (CopilotRuntimeOptions'
+  gitHubToken, COPILOT_GITHUB_TOKEN, GH_TOKEN or GITHUB_TOKEN) or 'gh auth login'; the Copilot CLI's
+  own sign-in is not used."
 - **`_read`** (`Func<CancellationToken, Task<IList<Rpc.Model>>>`) — reads the service's listing.
   Built over the runtime in production, and supplied directly by the test seam.
 
@@ -167,8 +169,9 @@ Design* for the lifetime and the clock.
 and build the production read: at each read, check the runtime again, read its `Client`, call
 `Rpc.Models.ListAsync` and return its `Models`, or an empty list when there are none. An
 `InvalidOperationException` from the client — other than `ObjectDisposedException` — is wrapped in
-an `InvalidOperationException` carrying `SignInMessage`, keeping the SDK's failure as its cause,
-because the commonest reason is a user who is not signed in.
+an `InvalidOperationException` carrying `SignInMessage`, keeping the SDK's failure as its cause:
+the SDK raises it for a client that is not connected or not authenticated, and a runtime AgentKit
+started was already refused at start if it was not signed in.
 
 **Preconditions:** `runtime` is not null and not disposed; `lifetime`, when supplied, is positive.
 
@@ -206,7 +209,7 @@ additional properties — each as the tables above give.
 | Null `runtime` or `read` | `ArgumentNullException` propagates |
 | Runtime disposed before construction | `ObjectDisposedException` propagates |
 | Runtime disposed after construction | `ObjectDisposedException` from the next read; nothing restarted |
-| The client cannot list models | `InvalidOperationException` with `SignInMessage`; not cached |
+| Client not connected or not signed in | `InvalidOperationException` with `SignInMessage`; not cached |
 | Any other failure, including a cancellation no caller requested | Propagates unchanged; not cached |
 | Zero or negative lifetime | `ArgumentOutOfRangeException` propagates |
 | A null or unnamed entry in the listing | Skipped |

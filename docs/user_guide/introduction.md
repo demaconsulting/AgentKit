@@ -733,10 +733,13 @@ var visionModels = await catalog.ListAsync(new ModelQuery
 });
 ```
 
-On Copilot, `new CopilotModelCatalog(runtime)` takes the `CopilotRuntime` AgentKit started, and lists
-the models the service offers the signed-in user. When the runtime's client cannot list models — for
-example because you are not signed in — the catalog fails with an `InvalidOperationException` that says
-to sign in to GitHub Copilot. Other failures propagate as they occur. An Ollama catalog that cannot
+On Copilot, `new CopilotModelCatalog(runtime)` takes the `CopilotRuntime` AgentKit started (see
+*Creating the Agent*; it runs the installed Copilot CLI by default), and lists the models the service
+offers the user the runtime is signed in as. A runtime that is not signed in never gets this far:
+`CopilotRuntime.StartAsync` refuses it. If the client later cannot list models — its connection was
+lost or its sign-in lapsed — the catalog fails with an `InvalidOperationException` that says so and
+names the ways to sign the runtime in; a runtime disposed by its host fails with
+`ObjectDisposedException`. Other failures propagate as they occur. An Ollama catalog that cannot
 reach its server fails with the client's `HttpRequestException`, or with an `OperationCanceledException`
 when the client times out even though your token was not canceled.
 
@@ -1336,6 +1339,8 @@ for answer quality across a long conversation, not to save money.
 - **`InvalidOperationException`: the runtime "started but is not signed in".** Supply a token, set
   `COPILOT_GITHUB_TOKEN`, `GH_TOKEN` or `GITHUB_TOKEN`, or sign in with `gh auth login` and keep `gh`
   on `PATH`; a Copilot CLI sign-in is not used.
+- **`InvalidOperationException`: the runtime "could not list models".** The runtime's connection was
+  lost or its sign-in lapsed; start a new runtime, signed in as above.
 - **The runtime fails to start.** `CopilotRuntime.StartAsync` raises an `InvalidOperationException`
   carrying the runtime's own error. On the installed CLI the message names the CLI and its version.
   On the bundled runtime the runtime is most often missing from the application's output: the host

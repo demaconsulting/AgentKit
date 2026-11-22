@@ -110,10 +110,13 @@ public sealed class CopilotModelCatalog : CachingModelCatalog
     internal const string LongContextTier = "long_context";
 
     /// <summary>
-    ///     The message a read that could not reach the service fails with.
+    ///     The message a read that could not reach the service fails with: the runtime is not connected
+    ///     or not signed in, and the ways to sign it in are the ones the runtime's own refusal names.
     /// </summary>
     internal const string SignInMessage =
-        "The Copilot runtime could not list models; sign in to GitHub Copilot (the CLI must be installed and authenticated).";
+        "The Copilot runtime could not list models: it is not connected or not signed in to GitHub. "
+        + "Sign it in with a GitHub token (CopilotRuntimeOptions' gitHubToken, COPILOT_GITHUB_TOKEN, GH_TOKEN "
+        + "or GITHUB_TOKEN) or 'gh auth login'; the Copilot CLI's own sign-in is not used.";
 
     /// <summary>
     ///     Reads the service's listing.

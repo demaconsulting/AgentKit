@@ -3,13 +3,13 @@ package AgentKitAgentsCopilot {
     private import AgentKitAgentsCopilot_CopilotAgent::*;
     private import AgentKitAgentsCopilot_CopilotAgentFactory::*;
     private import AgentKitAgentsCopilot_CopilotCli::*;
+    private import AgentKitAgentsCopilot_CopilotModelCatalog::*;
     private import AgentKitAgentsCopilot_CopilotProviderSession::*;
     private import AgentKitAgentsCopilot_CopilotProviderSessionFactory::*;
     private import AgentKitAgentsCopilot_CopilotRuntime::*;
     private import AgentKitAgentsCopilot_CopilotSessionObserver::*;
     private import AgentKitAgentsCopilot_CopilotSummarizer::*;
     private import AgentKitAgentsCopilot_CopilotTurnChannel::*;
-    private import AgentKitAgentsCopilot_CopilotModelCatalog::*;
 
     doc
     /*
@@ -52,12 +52,12 @@ package AgentKitAgentsCopilot {
         part copilotAgent : CopilotAgent;
         part copilotAgentFactory : CopilotAgentFactory;
         part copilotCli : CopilotCli;
+        part copilotModelCatalog : CopilotModelCatalog;
         part copilotProviderSession : CopilotProviderSession;
         part copilotProviderSessionFactory : CopilotProviderSessionFactory;
         part copilotRuntime : CopilotRuntime;
         part copilotSessionObserver : CopilotSessionObserver;
         part copilotSummarizer : CopilotSummarizer;
         part copilotTurnChannel : CopilotTurnChannel;
-        part copilotModelCatalog : CopilotModelCatalog;
     }
 }

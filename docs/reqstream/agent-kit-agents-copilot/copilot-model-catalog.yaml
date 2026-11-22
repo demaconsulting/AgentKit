@@ -14,14 +14,17 @@ sections:
             title: >-
               The unit shall read the service's model listing through a runtime AgentKit started, at
               every read and uncached by the client, shall refuse a disposed runtime rather than
-              restart it, and shall fail a read the client cannot make with a message telling the
-              user to sign in.
+              restart it, and shall fail a read the client cannot make with a message saying the
+              runtime is not connected or not signed in and naming the ways to sign it in.
             justification: |
               The listing depends on who is signed in, so only the runtime AgentKit owns can read
               it. Reading the client at every read is what keeps a runtime the host disposed from
               being started again behind its back, and reading past the client's own per-connection
-              cache is what lets a refresh show a model the user was just granted. The commonest
-              failure is a user who is not signed in, so the message says what to do.
+              cache is what lets a refresh show a model the user was just granted. A runtime AgentKit
+              started was refused at start if it was not signed in, so a read fails only when the
+              connection was lost or the sign-in lapsed; the SDK reports both with the same
+              exception, so the message names both and the same ways to sign in that the runtime's
+              own refusal names, not the Copilot CLI's sign-in, which the runtime does not use.
             tests:
               - CopilotModelCatalog_ListAsync_ClientNotConnected_FailsWithTheSignInMessage
               - CopilotModelCatalog_Construct_DisposedRuntime_Throws

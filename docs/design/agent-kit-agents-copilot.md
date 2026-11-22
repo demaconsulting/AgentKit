@@ -532,12 +532,13 @@ reads occupancy through the observer and deletes each rotated session.
 
 ## External Interfaces
 
-The system's public API is ten types. `CopilotRuntime`, `CopilotRuntimeOptions` and
+The system's public API is eleven types. `CopilotRuntime`, `CopilotRuntimeOptions` and
 `CopilotRuntimeSource` start the runtime, and `CopilotCli` with `CopilotCliSearchResult` reports which
 installed CLI it would run and the minimum version; the factory, the provider-session factory, the
-summarizer and `CopilotModelCatalog` take that runtime, which the host started and will dispose; and
-`CopilotAgentSession` is what the agent hands back for a conversation. Everything else in the package
-is internal, including the runtime's client.
+summarizer and `CopilotModelCatalog` take that runtime, which the host started and will dispose;
+`CopilotAgentSession` is what the agent hands back for a conversation; and `CopilotProviderSession`
+is what the provider-session factory hands to a `CompactingAgentSession`. Everything else in the
+package is internal, including the runtime's client.
 
 | Interface | Direction | Format | Constraints |
 | --- | --- | --- | --- |
@@ -716,6 +717,7 @@ src/DemaConsulting.AgentKit.Agents.Copilot/
 ├── CopilotAgentFactory.cs            — builds a Copilot agent, and every session's options
 ├── CopilotAgentSession.cs            — one agent conversation: its runtime session and state bag
 ├── CopilotCli.cs                     — finds the installed Copilot CLI and checks its version
+├── CopilotCliProcessTree.cs          — stops what a timed-out or canceled version probe started
 ├── CopilotCliSearchResult.cs         — what discovery found, searched and passed over
 ├── CopilotModelCatalog.cs            — describes the service's models for the signed-in user
 ├── CopilotProviderSession.cs         — an AgentKit session over one Copilot session

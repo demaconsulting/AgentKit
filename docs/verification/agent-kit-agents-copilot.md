@@ -555,9 +555,9 @@ four, and the MCP-source scenario, L14, is six. L16 to L18 are in `CopilotModelC
 | L14e | `OwnedRuntime_WorkspaceMcpServer_IsNeverExecuted` | Pass (no marker) |
 | L14f | `OwnedRuntime_WorkspaceMcpServerWithConfigDiscovery_IsExecuted` | Pass (marker written) |
 | L15 | `OwnedRuntime_AmbientChannels_AreAbsent` | Pass |
-| L16 | `Catalog_ListsFiltersAndRefreshes` | Pass (24 entries; `auto` skipped) |
-| L17 | `Selection_SessionRunsOnTheChosenEffortAndTier` | Pass (limit 100,000 default; 872,000 long context) |
-| L18 | `Selection_UnofferedEffort_IsRefusedBeforeAnySession` | Pass |
+| L16 | `Catalog_ListsFiltersAndRefreshes` | Pass (installed and bundled; 24 entries; `auto` skipped) |
+| L17 | `Selection_SessionRunsOnTheChosenEffortAndTier` | Pass (installed and bundled; limits 100,000 and 872,000) |
+| L18 | `Selection_UnofferedEffort_IsRefusedBeforeAnySession` | Pass (installed and bundled) |
 
 What each asserts. Assertions are made on the runtime's events and metadata wherever possible; the
 few that rest on the model's prose are marked.
@@ -823,16 +823,27 @@ machine's `copilot --version` and `copilot --no-auto-update --version` still rep
 package cache held the same versions as before the runs. Later runs of the CI job record their results
 in the `live-copilot-suite-<variant>` artifacts of each workflow run.
 
-When the model catalog was added, its three tests, L16 to L18, were run on 2026-11-21 on the same
-machine, with the model `claude-haiku-5.5` and SDK 2.0.1; only those three were run that day, and all
-three passed. The uncached query and the client's cached listing both returned 24 entries, including
-the automatic choice, which the catalog skipped. The catalog described `claude-haiku-5.5` with tier
-windows of 228,000 (`default`) and 1,000,000 (`long_context`). Sessions created at the effort `low`
-reported a usage limit of 100,000 in `default` and 872,000 in `long_context`: the prompt budget the
-runtime enforces, which is smaller than the tier's total window. This is the observation recorded
-under "Context Tiers and the Reported Limit" in *CopilotModelCatalog Unit Design*. The effort
-`not-an-effort` was refused with "Model 'claude-haiku-5.5' does not support reasoning effort
-'not-an-effort'. Supported: low, medium, high, xhigh, max."
+When the model catalog was added, before the installed CLI became the default, its three tests, L16 to L18, were run on
+2026-11-21 on the same machine, on the bundled runtime, the only source then, with the model `claude-haiku-5.5` and SDK
+2.0.1; only those three were run that day, and all three passed. The uncached query and the client's cached listing both
+returned 24 entries, including the automatic choice, which the catalog skipped. The catalog described `claude-haiku-5.5`
+with tier windows of 228,000 (`default`) and 1,000,000 (`long_context`). Sessions created at the effort `low` reported a
+usage limit of 100,000 in `default` and 872,000 in `long_context`: the prompt budget the runtime enforces, which is
+smaller than the tier's total window. This is the observation recorded under "Context Tiers and the Reported Limit" in
+*CopilotModelCatalog Unit Design*. The effort `not-an-effort` was refused with "Model 'claude-haiku-5.5' does not
+support reasoning effort 'not-an-effort'. Supported: low, medium, high, xhigh, max."
+
+After the branch was rebased onto the installed CLI default, L16 to L18 were run again on 2026-11-22,
+on the same machine and model, on the installed CLI found by discovery: built with
+`CopilotSkipCliDownload` set, run with `AGENTKIT_COPILOT_LIVE_RUNTIME` set to `installed`, no CLI path
+and `COPILOT_CLI_PATH` removed from the shell first, and filtered to `CopilotModelCatalogLiveTests`.
+The fixture started the WinGet `copilot.exe`, version 1.0.114 and protocol 4. All three tests passed,
+in 36 seconds. The uncached query and the client's cached listing again both returned 24 entries,
+and the catalog skipped the automatic choice. It described `claude-haiku-5.5` as usable, with tool
+calls, vision and reasoning, tier windows of 228,000 (`default`) and 1,000,000 (`long_context`), and
+the efforts `low`, `medium`, `high`, `xhigh` and `max`. Sessions created at the effort `low` reported
+a usage limit of 100,000 in `default` and 872,000 in `long_context`, as on the bundled runtime, and
+`not-an-effort` was refused with the same message before any session existed.
 
 **Platform coverage.** Every recorded live run of the owned runtime ran on Windows; the spawned
 runtime has not yet run live on Linux, and discovery's macOS and Linux locations are verified only by

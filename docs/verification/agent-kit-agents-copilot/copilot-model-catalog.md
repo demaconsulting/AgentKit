@@ -21,8 +21,9 @@ hand-built models and counts its calls.
 **The runtime path is verified on a runtime that cannot start.** The disposal and sign-in scenarios
 build a real `CopilotRuntime` over a real `CopilotClient` configured with a runtime executable that
 does not exist, so the production read is exercised through the real SDK without any process being
-started or any credential being used. A client that was never connected is what a user who is not
-signed in presents, which is why the sign-in message is reached this way.
+started or any credential being used. A client that was never connected raises the
+`InvalidOperationException` the SDK documents for a client that is not connected or not
+authenticated, which is why the sign-in message is reached this way.
 
 **What remains outside automated scope.** No scenario reads the live service, so a change in what
 the service reports would not be detected here; the fixture records what it sent when it was
@@ -33,8 +34,9 @@ captured.
 The opt-in live suite `CopilotModelCatalogLiveTests`, in the
 `DemaConsulting.AgentKit.Agents.Copilot.LiveTests` project, runs the catalog against the real
 service when `AGENTKIT_COPILOT_LIVE_MODEL` names a vision model offering both context tiers. It is
-supplementary evidence rather than a linked scenario, because it needs a signed-in account the CI
-pipeline does not have. It observed:
+supplementary evidence rather than a linked scenario, because it needs a signed-in account the
+pipeline that builds the trace matrix does not have; the weekly `live-copilot-suite` job runs it on
+each runtime variant. It observed:
 
 - the uncached query returning 24 entries through AgentKit's own runtime, the same count as the
   client's cached listing, so no fallback to the cached listing was needed; the automatic choice
@@ -80,8 +82,9 @@ choice or changes the service's order each constitute a failure.
 **Test**: `CopilotModelCatalog_ListAsync_ClientNotConnected_FailsWithTheSignInMessage`
 
 Error path through the real SDK. A runtime whose client was never connected fails the listing with
-`InvalidOperationException` carrying exactly the sign-in message, with the SDK's own
-`InvalidOperationException` kept as the inner exception.
+`InvalidOperationException` carrying exactly the sign-in message, which names `gh auth login` and
+says the Copilot CLI's own sign-in is not used, with the SDK's own `InvalidOperationException` kept
+as the inner exception.
 
 #### AgentKitAgentsCopilot-CopilotModelCatalog-ReadsTheServiceThroughTheRuntime: Disposed Runtime Refused
 

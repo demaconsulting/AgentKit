@@ -11,6 +11,8 @@ namespace DemaConsulting.AgentKit.Agents.Copilot.LiveTests;
 ///     Supplementary verification evidence for model selection on Copilot: the catalog reads the
 ///     service through the runtime AgentKit started, skips the automatic choice, filters by vision,
 ///     refreshes, and a session created from a selection runs on the chosen model, effort and tier.
+///     Every scenario runs on the suite's shared runtime, on the run's runtime source — the installed
+///     CLI by default, or the bundled runtime — as every scenario does; none starts a runtime of its own.
 ///     The service's raw limits, tiers and billing are logged so the meaning of its largest-window
 ///     figure can be checked against the limit a session actually reports per tier.
 ///     </para>
