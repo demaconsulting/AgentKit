@@ -99,8 +99,10 @@ Private helper returning the options to forward.
 2. Set `ModelId` to the selected model's identifier when it is unset.
 3. Set `MaxOutputTokens` to the chosen output limit when it is unset; when none was chosen it stays
    unset.
-4. When `Reasoning` is unset and the selection carries a provider-neutral effort, set `Reasoning` to
-   that effort. When no effort was chosen nothing is set, so the model's own default stays in force.
+4. When the selection carries a provider-neutral effort: if `Reasoning` is unset, set it to that
+   effort; if the caller set `Reasoning` without an effort, replace it with a copy carrying the
+   caller's `Output` and the selected effort, so the caller's instance is never written to. When no
+   effort was chosen nothing is set, so the model's own default stays in force.
 
 **Postconditions:** A new options object, never null and never the caller's.
 

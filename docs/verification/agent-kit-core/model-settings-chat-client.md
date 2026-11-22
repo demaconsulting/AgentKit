@@ -42,7 +42,7 @@ Unit tests reside in `ModelSettingsChatClientTests.cs`, with the shared descript
 
 ### Acceptance Criteria
 
-A unit test run passes when all eight scenarios below pass without error or exception beyond those
+A unit test run passes when all nine scenarios below pass without error or exception beyond those
 explicitly asserted. Any request, streamed or not, that does not carry the selected model, the
 chosen neutral effort and the chosen output limit; any value the caller set that is overwritten;
 any write to the caller's options object; any reasoning option sent when no effort was chosen; or
@@ -73,6 +73,14 @@ effort.
 
 A caller that set its own model, output limit and effort sees those values reach the provider in
 place of the selection's, and the options forwarded are a different object from the caller's.
+
+#### AgentKitCore-ModelSettingsChatClient-PreservesTheCallersRequest: Caller Reasoning Without an Effort Gets the Selected One
+
+**Test**: `ModelSettingsChatClient_GetResponseAsync_CallerReasoningWithoutEffort_GetsTheSelectedEffort`
+
+Boundary condition. A caller that sets reasoning options with a summary output but no effort sees the
+selected `High` effort reach the provider together with its summary output, on a copy: the caller's
+reasoning options are a different object and still carry no effort.
 
 #### AgentKitCore-ModelSettingsChatClient-PreservesTheCallersRequest: No Effort Chosen Sends No Reasoning
 

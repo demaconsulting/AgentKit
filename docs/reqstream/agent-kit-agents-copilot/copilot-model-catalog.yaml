@@ -70,6 +70,7 @@ sections:
               is capped. The largest window itself is reported as the service gives it.
             tests:
               - CopilotModelCatalog_Map_BillingTiers_AreDerivedLabeledAndCapped
+              - CopilotModelCatalog_Map_HugePromptBudget_SaturatesInsteadOfOverflowing
               - CopilotModelCatalog_Map_DeclaredTiers_AreAddedOnce
 
           - id: AgentKitAgentsCopilot-CopilotModelCatalog-KeepsTheServicesEfforts

@@ -34,6 +34,7 @@ sections:
               the model's own default in force.
             tests:
               - ModelSettingsChatClient_GetResponseAsync_CallerValuesWinAndAreNotMutated
+              - ModelSettingsChatClient_GetResponseAsync_CallerReasoningWithoutEffort_GetsTheSelectedEffort
               - ModelSettingsChatClient_GetResponseAsync_NoEffortChosen_SendsNoReasoning
 
           - id: AgentKitCore-ModelSettingsChatClient-RefusesWhatItCannotApply

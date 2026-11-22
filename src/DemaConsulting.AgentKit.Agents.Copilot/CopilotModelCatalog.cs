@@ -373,7 +373,10 @@ public sealed class CopilotModelCatalog : CachingModelCatalog
             return null;
         }
 
-        var window = Math.Min(prompt.Value + maxOutput.Value, int.MaxValue);
+        // The prompt budget is provider-supplied and may be any long: cap it before adding, so the
+        // sum cannot overflow before the cap is applied.
+        var window = Math.Min(prompt.Value, int.MaxValue) + maxOutput.Value;
+        window = Math.Min(window, int.MaxValue);
         if (maxWindow is { } cap)
         {
             window = Math.Min(window, cap);

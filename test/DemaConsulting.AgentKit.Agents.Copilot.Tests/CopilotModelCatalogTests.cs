@@ -44,6 +44,24 @@ public sealed class CopilotModelCatalogTests
     }
 
     /// <summary>
+    ///     Proves a prompt budget near the largest long the service could send does not overflow the
+    ///     tier window: it saturates and is then capped at the model's largest window.
+    /// </summary>
+    [Fact]
+    public void CopilotModelCatalog_Map_HugePromptBudget_SaturatesInsteadOfOverflowing()
+    {
+        // Arrange
+        var source = Haiku();
+        source.Billing!.TokenPrices!.MaxPromptTokens = long.MaxValue - 1;
+
+        // Act
+        var model = CopilotModelCatalog.Map(source);
+
+        // Assert: capped at the model's largest window, not wrapped to a negative number
+        Assert.Equal(1_000_000, model.ContextTiers[0].WindowTokens);
+    }
+
+    /// <summary>
     ///     Proves a tier the model declares directly is added, with no window, and none is duplicated.
     /// </summary>
     [Fact]

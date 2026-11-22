@@ -64,7 +64,7 @@ Unit tests reside in `CopilotModelCatalogTests.cs` within the
 
 ### Acceptance Criteria
 
-A unit test run passes when all sixteen scenarios below pass without error or exception beyond those
+A unit test run passes when all seventeen scenarios below pass without error or exception beyond those
 explicitly asserted. Any read of a disposed runtime that does not throw, any failure to list that
 does not carry the sign-in message, any refresh that does not read again, any model the service
 does not report on treated as unable to call tools, any model reported unable to call tools treated
@@ -136,6 +136,13 @@ Normal operation. The fixture yields `default` ("Standard", 100,000 + 128,000 = 
 `long_context` ("Long context", 936,000 + 128,000 capped at 1,000,000), `default` as the default
 tier, the largest window and output limit as reported, and the effort, tier and window adjustments —
 with no output-limit adjustment.
+
+#### AgentKitAgentsCopilot-CopilotModelCatalog-DerivesTiersFromBilling: A Huge Prompt Budget Saturates
+
+**Test**: `CopilotModelCatalog_Map_HugePromptBudget_SaturatesInsteadOfOverflowing`
+
+Boundary condition. A standard-tier prompt budget one below the largest long the service could send
+yields a tier window capped at the model's 1,000,000-token window rather than an overflowed value.
 
 #### AgentKitAgentsCopilot-CopilotModelCatalog-DerivesTiersFromBilling: Declared Tiers Are Added Once
 

@@ -86,6 +86,31 @@ public class ModelSettingsChatClientTests
     }
 
     /// <summary>
+    ///     Proves a caller that sets reasoning options without an effort still gets the selected
+    ///     effort, on a copy that keeps the caller's other reasoning fields and leaves its instance alone.
+    /// </summary>
+    [Fact]
+    public async Task ModelSettingsChatClient_GetResponseAsync_CallerReasoningWithoutEffort_GetsTheSelectedEffort()
+    {
+        // Arrange
+        var inner = new OptionsRecordingChatClient();
+        var selection = new ModelSettings("vision-large") { ReasoningEffort = "high" }.Bind(ModelTestData.VisionModel());
+        using var client = new ModelSettingsChatClient(inner, selection);
+        var callersReasoning = new ReasoningOptions { Output = ReasoningOutput.Summary };
+        var callers = new ChatOptions { Reasoning = callersReasoning };
+
+        // Act
+        await client.GetResponseAsync("hi", callers, TestContext.Current.CancellationToken);
+
+        // Assert: the selected effort is sent with the caller's output choice; the caller's instance is unchanged
+        var options = Assert.Single(inner.Received);
+        Assert.Equal(ReasoningEffort.High, options.Reasoning?.Effort);
+        Assert.Equal(ReasoningOutput.Summary, options.Reasoning?.Output);
+        Assert.NotSame(callersReasoning, options.Reasoning);
+        Assert.Null(callersReasoning.Effort);
+    }
+
+    /// <summary>
     ///     Proves no effort is sent when none was chosen, so the model's own default applies.
     /// </summary>
     [Fact]

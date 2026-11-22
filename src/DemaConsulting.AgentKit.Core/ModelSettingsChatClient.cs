@@ -139,9 +139,19 @@ public sealed class ModelSettingsChatClient : DelegatingChatClient
         applied.ModelId ??= _selection.Model.Id;
         applied.MaxOutputTokens ??= _selection.Settings.MaxOutputTokens;
 
-        if (applied.Reasoning is null && _selection.StandardReasoningEffort is { } effort)
+        if (_selection.StandardReasoningEffort is { } effort)
         {
-            applied.Reasoning = new ReasoningOptions { Effort = effort };
+            if (applied.Reasoning is null)
+            {
+                applied.Reasoning = new ReasoningOptions { Effort = effort };
+            }
+            else if (applied.Reasoning.Effort is null)
+            {
+                // The caller set other reasoning options but no effort: fill the effort on a copy, so
+                // the caller's instance is never changed and its other fields are kept. The type's own
+                // Clone is internal, so its public fields are copied here.
+                applied.Reasoning = new ReasoningOptions { Effort = effort, Output = applied.Reasoning.Output };
+            }
         }
 
         return applied;
