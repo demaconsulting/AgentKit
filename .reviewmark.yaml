@@ -939,98 +939,6 @@ reviews:
       - "src/DemaConsulting.AgentKit.Tools/Markdown/MarkdownPack.cs"        # unit source
       - "test/DemaConsulting.AgentKit.Tools.Tests/Markdown/MarkdownPackTests.cs"  # unit tests
 
-  # AgentKitTools-Image Review (one per subsystem)
-  - id: AgentKitTools-Image
-    title: Review that AgentKitTools Image Satisfies Subsystem Requirements
-    context:
-      - "docs/design/agent-kit-tools.md"
-      - "docs/reqstream/agent-kit-tools.yaml"
-    paths:
-      - "docs/reqstream/agent-kit-tools/image.yaml"                # subsystem requirements
-      - "docs/design/agent-kit-tools/image.md"                     # subsystem design
-      - "docs/verification/agent-kit-tools/image.md"               # subsystem verification
-      - "test/DemaConsulting.AgentKit.Tools.Tests/Image/ImageTests.cs"         # subsystem tests
-      - "test/DemaConsulting.AgentKit.Tools.Tests/Image/RecordingToolPack.cs"  # capability-gate decorator
-      - "src/DemaConsulting.AgentKit.Tools/Image/ImageProbe.cs"                # shared header-probe helper
-      - "src/DemaConsulting.AgentKit.Tools/Image/ImageAdmission.cs"            # shared admission helper
-      - "src/DemaConsulting.AgentKit.Tools/Image/ImageDestination.cs"          # shared destination helper
-      - "test/DemaConsulting.AgentKit.Tools.Tests/Image/ImageTestImages.cs"    # shared fixture builder
-
-  # AgentKitTools-Image-ImageMediaTypes Review (one per unit)
-  - id: AgentKitTools-Image-ImageMediaTypes
-    title: Review that AgentKitTools Image ImageMediaTypes Implementation is Correct
-    context:
-      - "docs/design/agent-kit-tools.md"
-      - "docs/reqstream/agent-kit-tools.yaml"
-      - "docs/design/agent-kit-tools/image.md"
-      - "docs/reqstream/agent-kit-tools/image.yaml"
-    paths:
-      - "docs/reqstream/agent-kit-tools/image/image-media-types.yaml"    # unit requirements
-      - "docs/design/agent-kit-tools/image/image-media-types.md"         # unit design
-      - "docs/verification/agent-kit-tools/image/image-media-types.md"   # unit verification
-      - "src/DemaConsulting.AgentKit.Tools/Image/ImageMediaTypes.cs"      # unit source
-      - "test/DemaConsulting.AgentKit.Tools.Tests/Image/ImageMediaTypesTests.cs"  # unit tests
-
-  # AgentKitTools-Image-ImageReadTool Review (one per unit)
-  - id: AgentKitTools-Image-ImageReadTool
-    title: Review that AgentKitTools Image ImageReadTool Implementation is Correct
-    context:
-      - "docs/design/agent-kit-tools.md"
-      - "docs/reqstream/agent-kit-tools.yaml"
-      - "docs/design/agent-kit-tools/image.md"
-      - "docs/reqstream/agent-kit-tools/image.yaml"
-    paths:
-      - "docs/reqstream/agent-kit-tools/image/image-read-tool.yaml"    # unit requirements
-      - "docs/design/agent-kit-tools/image/image-read-tool.md"         # unit design
-      - "docs/verification/agent-kit-tools/image/image-read-tool.md"   # unit verification
-      - "src/DemaConsulting.AgentKit.Tools/Image/ImageReadTool.cs"      # unit source
-      - "test/DemaConsulting.AgentKit.Tools.Tests/Image/ImageReadToolTests.cs"  # unit tests
-
-  # AgentKitTools-Image-ImageCropTool Review (one per unit)
-  - id: AgentKitTools-Image-ImageCropTool
-    title: Review that AgentKitTools Image ImageCropTool Implementation is Correct
-    context:
-      - "docs/design/agent-kit-tools.md"
-      - "docs/reqstream/agent-kit-tools.yaml"
-      - "docs/design/agent-kit-tools/image.md"
-      - "docs/reqstream/agent-kit-tools/image.yaml"
-    paths:
-      - "docs/reqstream/agent-kit-tools/image/image-crop-tool.yaml"    # unit requirements
-      - "docs/design/agent-kit-tools/image/image-crop-tool.md"         # unit design
-      - "docs/verification/agent-kit-tools/image/image-crop-tool.md"   # unit verification
-      - "src/DemaConsulting.AgentKit.Tools/Image/ImageCropTool.cs"      # unit source
-      - "test/DemaConsulting.AgentKit.Tools.Tests/Image/ImageCropToolTests.cs"  # unit tests
-
-  # AgentKitTools-Image-ImageAutoCropTool Review (one per unit)
-  - id: AgentKitTools-Image-ImageAutoCropTool
-    title: Review that AgentKitTools Image ImageAutoCropTool Implementation is Correct
-    context:
-      - "docs/design/agent-kit-tools.md"
-      - "docs/reqstream/agent-kit-tools.yaml"
-      - "docs/design/agent-kit-tools/image.md"
-      - "docs/reqstream/agent-kit-tools/image.yaml"
-    paths:
-      - "docs/reqstream/agent-kit-tools/image/image-auto-crop-tool.yaml"    # unit requirements
-      - "docs/design/agent-kit-tools/image/image-auto-crop-tool.md"         # unit design
-      - "docs/verification/agent-kit-tools/image/image-auto-crop-tool.md"   # unit verification
-      - "src/DemaConsulting.AgentKit.Tools/Image/ImageAutoCropTool.cs"      # unit source
-      - "test/DemaConsulting.AgentKit.Tools.Tests/Image/ImageAutoCropToolTests.cs"  # unit tests
-
-  # AgentKitTools-Image-ImagePack Review (one per unit)
-  - id: AgentKitTools-Image-ImagePack
-    title: Review that AgentKitTools Image ImagePack Implementation is Correct
-    context:
-      - "docs/design/agent-kit-tools.md"
-      - "docs/reqstream/agent-kit-tools.yaml"
-      - "docs/design/agent-kit-tools/image.md"
-      - "docs/reqstream/agent-kit-tools/image.yaml"
-    paths:
-      - "docs/reqstream/agent-kit-tools/image/image-pack.yaml"         # unit requirements
-      - "docs/design/agent-kit-tools/image/image-pack.md"              # unit design
-      - "docs/verification/agent-kit-tools/image/image-pack.md"        # unit verification
-      - "src/DemaConsulting.AgentKit.Tools/Image/ImagePack.cs"          # unit source
-      - "test/DemaConsulting.AgentKit.Tools.Tests/Image/ImagePackTests.cs"  # unit tests
-
   # AgentKitTools-Todo Review (one per subsystem)
   - id: AgentKitTools-Todo
     title: Review that AgentKitTools Todo Satisfies Subsystem Requirements
@@ -1311,6 +1219,145 @@ reviews:
       - "docs/verification/agent-kit-tools/agent/agent-pack.md"        # unit verification
       - "src/DemaConsulting.AgentKit.Tools/Agent/AgentPack.cs"         # unit source
       - "test/DemaConsulting.AgentKit.Tools.Tests/Agent/AgentPackTests.cs"  # unit tests
+
+  # AgentKitToolsVisual-Architecture Review (one per system)
+  - id: AgentKitToolsVisual-Architecture
+    title: Review that AgentKitToolsVisual Architecture Satisfies Requirements
+    context:
+      - "README.md"
+      - "docs/user_guide/**/*.md"
+    paths:
+      - "docs/reqstream/agent-kit-tools-visual.yaml"               # system requirements
+      - "docs/design/introduction.md"                              # design introduction
+      - "docs/design/agent-kit-tools-visual.md"                    # system design
+      - "docs/verification/introduction.md"                        # verification introduction
+      - "docs/verification/agent-kit-tools-visual.md"              # system verification
+      - "test/DemaConsulting.AgentKit.Tools.Visual.Tests/AgentKitToolsVisualTests.cs"  # integration tests
+      - "test/DemaConsulting.AgentKit.Tools.Visual.Tests/XmlDocExampleTests.cs"  # documented-example compile tests
+      - "test/DemaConsulting.AgentKit.Tools.Visual.Tests/TempDirectoryFixture.cs"  # temporary-directory test fixture
+
+  # AgentKitToolsVisual-Design Review (one per system)
+  - id: AgentKitToolsVisual-Design
+    title: Review that AgentKitToolsVisual Design is Consistent and Complete
+    context:
+      - "docs/reqstream/agent-kit-tools-visual.yaml"
+    paths:
+      - "docs/reqstream/agent-kit-tools-visual/platform-requirements.yaml"  # platform requirements
+      - "docs/design/introduction.md"                              # design introduction
+      - "docs/design/agent-kit-tools-visual.md"                    # system design
+      - "docs/design/agent-kit-tools-visual/**/*.md"               # all system design documents
+      - "docs/design/ots.md"                                       # OTS overview
+
+  # AgentKitToolsVisual-Verification Review (one per system)
+  - id: AgentKitToolsVisual-Verification
+    title: Review that AgentKitToolsVisual Verification is Consistent and Complete
+    context:
+      - "docs/reqstream/agent-kit-tools-visual.yaml"
+    paths:
+      - "docs/verification/introduction.md"                        # verification introduction
+      - "docs/verification/agent-kit-tools-visual.md"              # system verification
+      - "docs/verification/agent-kit-tools-visual/**/*.md"         # all verification documents
+      - "docs/verification/ots.md"                                 # OTS overview
+
+  # AgentKitToolsVisual-AllRequirements Review (one per system)
+  - id: AgentKitToolsVisual-AllRequirements
+    title: Review that All AgentKitToolsVisual Requirements are Complete
+    context:
+      - "docs/design/agent-kit-tools-visual.md"
+      - "docs/reqstream/agent-kit-tools-visual.yaml"
+    paths:
+      - "docs/reqstream/agent-kit-tools-visual/**/*.yaml"          # all Tools Visual requirements files
+  # AgentKitToolsVisual-Image Review (one per subsystem)
+  - id: AgentKitToolsVisual-Image
+    title: Review that AgentKitToolsVisual Image Satisfies Subsystem Requirements
+    context:
+      - "docs/design/agent-kit-tools-visual.md"
+      - "docs/reqstream/agent-kit-tools-visual.yaml"
+    paths:
+      - "docs/reqstream/agent-kit-tools-visual/image.yaml"                # subsystem requirements
+      - "docs/design/agent-kit-tools-visual/image.md"                     # subsystem design
+      - "docs/verification/agent-kit-tools-visual/image.md"               # subsystem verification
+      - "test/DemaConsulting.AgentKit.Tools.Visual.Tests/Image/ImageTests.cs"         # subsystem tests
+      - "test/DemaConsulting.AgentKit.Tools.Visual.Tests/Image/RecordingToolPack.cs"  # capability-gate decorator
+      - "src/DemaConsulting.AgentKit.Tools.Visual/Image/ImageProbe.cs"                # shared header-probe helper
+      - "src/DemaConsulting.AgentKit.Tools.Visual/Image/ImageAdmission.cs"            # shared admission helper
+      - "src/DemaConsulting.AgentKit.Tools.Visual/Image/ImageDestination.cs"          # shared destination helper
+      - "test/DemaConsulting.AgentKit.Tools.Visual.Tests/Image/ImageTestImages.cs"    # shared fixture builder
+
+  # AgentKitToolsVisual-Image-ImageMediaTypes Review (one per unit)
+  - id: AgentKitToolsVisual-Image-ImageMediaTypes
+    title: Review that AgentKitToolsVisual Image ImageMediaTypes Implementation is Correct
+    context:
+      - "docs/design/agent-kit-tools-visual.md"
+      - "docs/reqstream/agent-kit-tools-visual.yaml"
+      - "docs/design/agent-kit-tools-visual/image.md"
+      - "docs/reqstream/agent-kit-tools-visual/image.yaml"
+    paths:
+      - "docs/reqstream/agent-kit-tools-visual/image/image-media-types.yaml"    # unit requirements
+      - "docs/design/agent-kit-tools-visual/image/image-media-types.md"         # unit design
+      - "docs/verification/agent-kit-tools-visual/image/image-media-types.md"   # unit verification
+      - "src/DemaConsulting.AgentKit.Tools.Visual/Image/ImageMediaTypes.cs"      # unit source
+      - "test/DemaConsulting.AgentKit.Tools.Visual.Tests/Image/ImageMediaTypesTests.cs"  # unit tests
+
+  # AgentKitToolsVisual-Image-ImageReadTool Review (one per unit)
+  - id: AgentKitToolsVisual-Image-ImageReadTool
+    title: Review that AgentKitToolsVisual Image ImageReadTool Implementation is Correct
+    context:
+      - "docs/design/agent-kit-tools-visual.md"
+      - "docs/reqstream/agent-kit-tools-visual.yaml"
+      - "docs/design/agent-kit-tools-visual/image.md"
+      - "docs/reqstream/agent-kit-tools-visual/image.yaml"
+    paths:
+      - "docs/reqstream/agent-kit-tools-visual/image/image-read-tool.yaml"    # unit requirements
+      - "docs/design/agent-kit-tools-visual/image/image-read-tool.md"         # unit design
+      - "docs/verification/agent-kit-tools-visual/image/image-read-tool.md"   # unit verification
+      - "src/DemaConsulting.AgentKit.Tools.Visual/Image/ImageReadTool.cs"      # unit source
+      - "test/DemaConsulting.AgentKit.Tools.Visual.Tests/Image/ImageReadToolTests.cs"  # unit tests
+
+  # AgentKitToolsVisual-Image-ImageCropTool Review (one per unit)
+  - id: AgentKitToolsVisual-Image-ImageCropTool
+    title: Review that AgentKitToolsVisual Image ImageCropTool Implementation is Correct
+    context:
+      - "docs/design/agent-kit-tools-visual.md"
+      - "docs/reqstream/agent-kit-tools-visual.yaml"
+      - "docs/design/agent-kit-tools-visual/image.md"
+      - "docs/reqstream/agent-kit-tools-visual/image.yaml"
+    paths:
+      - "docs/reqstream/agent-kit-tools-visual/image/image-crop-tool.yaml"    # unit requirements
+      - "docs/design/agent-kit-tools-visual/image/image-crop-tool.md"         # unit design
+      - "docs/verification/agent-kit-tools-visual/image/image-crop-tool.md"   # unit verification
+      - "src/DemaConsulting.AgentKit.Tools.Visual/Image/ImageCropTool.cs"      # unit source
+      - "test/DemaConsulting.AgentKit.Tools.Visual.Tests/Image/ImageCropToolTests.cs"  # unit tests
+
+  # AgentKitToolsVisual-Image-ImageAutoCropTool Review (one per unit)
+  - id: AgentKitToolsVisual-Image-ImageAutoCropTool
+    title: Review that AgentKitToolsVisual Image ImageAutoCropTool Implementation is Correct
+    context:
+      - "docs/design/agent-kit-tools-visual.md"
+      - "docs/reqstream/agent-kit-tools-visual.yaml"
+      - "docs/design/agent-kit-tools-visual/image.md"
+      - "docs/reqstream/agent-kit-tools-visual/image.yaml"
+    paths:
+      - "docs/reqstream/agent-kit-tools-visual/image/image-auto-crop-tool.yaml"    # unit requirements
+      - "docs/design/agent-kit-tools-visual/image/image-auto-crop-tool.md"         # unit design
+      - "docs/verification/agent-kit-tools-visual/image/image-auto-crop-tool.md"   # unit verification
+      - "src/DemaConsulting.AgentKit.Tools.Visual/Image/ImageAutoCropTool.cs"      # unit source
+      - "test/DemaConsulting.AgentKit.Tools.Visual.Tests/Image/ImageAutoCropToolTests.cs"  # unit tests
+
+  # AgentKitToolsVisual-Image-ImagePack Review (one per unit)
+  - id: AgentKitToolsVisual-Image-ImagePack
+    title: Review that AgentKitToolsVisual Image ImagePack Implementation is Correct
+    context:
+      - "docs/design/agent-kit-tools-visual.md"
+      - "docs/reqstream/agent-kit-tools-visual.yaml"
+      - "docs/design/agent-kit-tools-visual/image.md"
+      - "docs/reqstream/agent-kit-tools-visual/image.yaml"
+    paths:
+      - "docs/reqstream/agent-kit-tools-visual/image/image-pack.yaml"         # unit requirements
+      - "docs/design/agent-kit-tools-visual/image/image-pack.md"              # unit design
+      - "docs/verification/agent-kit-tools-visual/image/image-pack.md"        # unit verification
+      - "src/DemaConsulting.AgentKit.Tools.Visual/Image/ImagePack.cs"          # unit source
+      - "test/DemaConsulting.AgentKit.Tools.Visual.Tests/Image/ImagePackTests.cs"  # unit tests
 
   # AgentKitAgentsChatClient-Architecture Review (one per system)
   - id: AgentKitAgentsChatClient-Architecture

@@ -82,7 +82,8 @@ constructor removed so that the constructor reverted to being implicit, the Tool
 `ApiMark.Tool exited with code 1`, and restoring the constructor returned it to 0. The failing
 build also names the member it objected to — `[Undocumented] Method:
 DemaConsulting.AgentKit.Tools.Image.ImagePack.ImagePack()` — so a failure identifies its own cause
-without a re-run at higher verbosity. That transition is the load-bearing evidence: it is a change
+without a re-run at higher verbosity. (The pack has since moved to the AgentKitToolsVisual package,
+namespace `DemaConsulting.AgentKit.Tools.Visual.Image`.) That transition is the load-bearing evidence: it is a change
 from
 green to red and back, with the count tracking the change exactly, rather than a tool noticing a
 condition that was already present. No `CS1591` and no analyzer diagnostic appeared at any point

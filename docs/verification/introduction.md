@@ -123,15 +123,6 @@ constituent software items, specifically:
   heading structure, published as one capability-gated pack
 - **MarkdownOutlineTool (Unit)** — Publishes the `markdown_outline` tool
 - **MarkdownPack (Unit)** — Publishes the Markdown family as one pack
-- **Image (Subsystem)** — The image tool family: policy-governed reading of images and PDF
-  documents for a vision-capable agent, and extraction of a region of an image — either named in
-  pixels or found by trimming the image to its own content — published as one capability-gated pack
-- **ImageMediaTypes (Unit)** — Maps a file's extension to the media type the image family reads,
-  and composes the refusal for a file whose type it cannot read
-- **ImageReadTool (Unit)** — Publishes the `image_read` tool
-- **ImageCropTool (Unit)** — Publishes the `image_crop` tool
-- **ImageAutoCropTool (Unit)** — Publishes the `image_auto_crop` tool
-- **ImagePack (Unit)** — Publishes the image family as one pack
 - **Todo (Subsystem)** — The todo tool family: one flat, in-memory task list per agent that the
   agent writes down, advances and closes out, published as one pack
 - **TodoStore (Unit)** — Holds one agent's flat task list, allocated per composition so that a
@@ -163,6 +154,18 @@ constituent software items, specifically:
   state
 - **AgentPack (Unit)** — Publishes the agent family as one pack, and composes a child's tools from
   the registered packs rather than from the parent's tool list
+- **AgentKitToolsVisual (System)** — An optional capability package of guarded visual tool
+  families built on the AgentKitCore contract, carrying the imaging library those families need so
+  that AgentKitTools carries none
+- **Image (Subsystem)** — The image tool family: policy-governed reading of images and PDF
+  documents for a vision-capable agent, and extraction of a region of an image — either named in
+  pixels or found by trimming the image to its own content — published as one capability-gated pack
+- **ImageMediaTypes (Unit)** — Maps a file's extension to the media type the image family reads,
+  and composes the refusal for a file whose type it cannot read
+- **ImageReadTool (Unit)** — Publishes the `image_read` tool
+- **ImageCropTool (Unit)** — Publishes the `image_crop` tool
+- **ImageAutoCropTool (Unit)** — Publishes the `image_auto_crop` tool
+- **ImagePack (Unit)** — Publishes the image family as one pack
 - **AgentKitAgentsChatClient (System)** — Builds a Microsoft Agent Framework agent from any
   `IChatClient`, and carries a Core session over that same `IChatClient`, installing the
   image-promoting decorator unconditionally on both

@@ -31,7 +31,9 @@ bytes already in memory and never a path. The decoders that see hostile input re
 managed.
 
 It is one of the two runtime NuGet dependencies the AgentKit packages carry outside the
-provider-specific adapters, and the only one outside Core.
+provider-specific adapters, and the only one outside Core. It is carried by the optional
+`AgentKitToolsVisual` package, so an application that does not attach the visual tools does not
+receive it; `AgentKitTools` references no imaging library.
 
 ### Features Used
 
@@ -76,7 +78,7 @@ neither field is read anywhere in this package.
 
 ### Integration Pattern
 
-`DemaConsulting.CanvasNet` is consumed by `AgentKitTools` as a **direct** `PackageReference`,
+`DemaConsulting.CanvasNet` is consumed by `AgentKitToolsVisual` as a **direct** `PackageReference`,
 deliberately **without** `PrivateAssets`: it is a runtime dependency, so an application that
 attaches the image family needs it present at run time and must receive it transitively. It is
 reached from exactly four places in the subsystem — the shared header-probe helper, the shared
@@ -94,7 +96,7 @@ the library is never given a path, never opens a file and never touches the file
 
 **Release precondition.** The pinned version, 0.2.0-beta.13, is a prerelease. The library's last
 stable release, 0.1.0, is the one this package depended on before, and it is superseded here
-because it inflates PNG pixel data without bound. A non-prerelease release of `AgentKitTools`
+because it inflates PNG pixel data without bound. A non-prerelease release of `AgentKitToolsVisual`
 therefore requires a non-prerelease release of the 0.2.0 line first, because a stable package must
 not carry a prerelease transitive dependency. Falling back to 0.1.0 instead would reopen the
 unbounded inflation, which the requirement on bounded decompression and its test would then

@@ -54,6 +54,16 @@ names the `DemaConsulting.AgentKit.Tools` namespace.
 
 **Requirement coverage**: `AgentKit-OTS-ApiMark-Generate`.
 
+#### ApiMark_ToolsVisualApiIndex
+
+**Scenario**: ApiMark generates the API reference for the AgentKit Tools Visual package during the
+build.
+
+**Expected**: The index page `src/DemaConsulting.AgentKit.Tools.Visual/generated/api/api.md`
+exists and names the `DemaConsulting.AgentKit.Tools.Visual` namespace.
+
+**Requirement coverage**: `AgentKit-OTS-ApiMark-Generate`.
+
 #### ApiMark_CopilotApiIndex
 
 **Scenario**: ApiMark generates the API reference for the AgentKit Copilot adapter package during
@@ -100,8 +110,9 @@ constructor, is generated to the constructor's page.
 **Scenario**: Documentation-coverage enforcement is active for the shipped packages, and the
 constructors it requires to be documented are documented and reach the generated reference.
 
-**Expected**: The `TextFilePack` and `ImagePack` constructor pages each contain the summary prose
-"The pack carries no state".
+**Expected**: The `TextFilePack` constructor page in the Tools reference and the `ImagePack`
+constructor page in the Tools Visual reference each contain the summary prose "The pack carries no
+state".
 
 **Rationale**: Enforcement is verified by the build itself. With
 `ApiMarkEnforceDocsSeverity=Error`, a single undocumented public member fails the build, so a
@@ -117,7 +128,7 @@ precisely the case that would silently regress if enforcement were removed or be
 ### Requirements Coverage
 
 - **`AgentKit-OTS-ApiMark-Generate`**: ApiMark_CoreApiIndex, ApiMark_ToolsApiIndex,
-  ApiMark_CopilotApiIndex, ApiMark_ChatClientApiIndex
+  ApiMark_ToolsVisualApiIndex, ApiMark_CopilotApiIndex, ApiMark_ChatClientApiIndex
 - **`AgentKit-OTS-ApiMark-RenderExamples`**: ApiMark_ExampleCodeRendered,
   ApiMark_TransitionHazardDocumented
 - **`AgentKit-OTS-ApiMark-EnforceDocs`**: ApiMark_PackConstructorsDocumented

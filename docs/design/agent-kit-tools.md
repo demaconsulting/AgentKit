@@ -35,13 +35,10 @@ The system contains the **Markdown** subsystem: the markdown tool family, publis
 pack. It reports a Markdown file's heading structure as line ranges the text tools can then
 read or cut.
 
-The system also contains the **Image** subsystem: the image tool family, publishing `image_read`,
-`image_crop` and `image_auto_crop` under the `image` family prefix and attached to an application
-as one pack.
-Unlike the other families, it is gated on a host capability — it is registered only for a host
-that declares it can present visual content to a model — because its tools return image and PDF
-content that a non-vision host could not use. Each family this package provides is its own
-subsystem with its own units, requirements, design, verification and review set.
+Each family this package provides is its own subsystem with its own units, requirements, design,
+verification and review set. The image family, which needs an imaging library, ships in the
+separate AgentKitToolsVisual package so that this package carries no imaging dependency; see
+*AgentKitToolsVisual System Design*.
 
 The system contains the **Todo** subsystem: the todo tool family, publishing `todo_list`,
 `todo_set` and `todo_remove` under the `todo` family prefix and attached to an application as one
@@ -59,8 +56,9 @@ choose: an embedding generator, supplied through the standard `Microsoft.Extensi
 alongside optional controls and optional substitute persistence.
 
 The system also contains the **Agent** subsystem: the agent tool family, publishing `agent_run`
-under the `agent` family prefix and attached to an application as one pack. Like the image family
-it is gated on a host capability — it is registered only for a host that declares it can start a
+under the `agent` family prefix and attached to an application as one pack. Unlike the other
+families in this package, it is gated on a host capability — it is registered only for a host that
+declares it can start a
 further agent, because only the application knows its provider, model and credentials. It
 delegates a task to one of the agents the application registered by name, composing that agent's
 tools from the application's own packs against the child's own state rather than from the parent's
@@ -82,14 +80,12 @@ An application attaches a family by adding that family's pack: `TextFilePack` is
 application adds to give an agent the text file family, `FilePack` the type it adds for the
 type-agnostic file family, `MarkdownPack` the type it adds for the Markdown family, `TodoPack` the
 type it adds to give an agent a task list of its own, `MemoryPack` the type it adds to give an agent
-a searchable record of what it has learned, `AgentPack` the type it adds to let an agent
-delegate to another agent the application registered, and `ImagePack`
-is the type it adds to give a vision-capable agent the image family. A composition to which no
-family has been added remains
-well defined — an empty `ToolPackBuilder` built with a valid policy yields an empty tool list — and
-a family whose required capability the host has not declared, such as the image family on a
-non-vision host or the agent family on a host that will not delegate, contributes no tools because
-the composition never asks its pack for them.
+a searchable record of what it has learned, and `AgentPack` the type it adds to let an agent
+delegate to another agent the application registered. A composition to which no family has been
+added remains well defined — an empty `ToolPackBuilder` built with a valid policy yields an empty
+tool list — and a family whose required capability the host has not declared, such as the agent
+family on a host that will not delegate, contributes no tools because the composition does not ask
+its pack for them.
 
 | Interface | Direction | Format | Constraints |
 | --- | --- | --- | --- |
@@ -100,12 +96,11 @@ the composition never asks its pack for them.
 | `MarkdownPack` | Outbound | AgentKitCore pack contract | Prefix `markdown`; no capability |
 | `TodoPack` | Outbound | AgentKitCore pack contract | Prefix `todo`; no capability |
 | `MemoryPack` | Outbound | AgentKitCore pack contract | Prefix `memory`; needs a generator |
-| `ImagePack` | Outbound | AgentKitCore pack contract | Prefix `image`; requires Vision |
 | `AgentPack` | Outbound | AgentKitCore pack contract | Prefix `agent`; requires Delegation |
 
 ## Dependencies
 
-The AgentKit Tools takes exactly one project dependency, `DemaConsulting.AgentKit.Core`, and one
+The AgentKit Tools takes exactly one project dependency, `DemaConsulting.AgentKit.Core`, and no
 runtime NuGet dependency of its own. Core supplies the policy primitives, the guarded construction
 path, the result constructors and the pack contract every family in this package is built on.
 `Microsoft.Extensions.AI.Abstractions` — the package that defines the `AIFunction` a tool is —
@@ -116,13 +111,12 @@ Design* (`docs/design/ots.md`) and its dedicated
 *Microsoft.Extensions.AI.Abstractions Design*, where the transitive path through Core is
 documented.
 
-The one direct runtime NuGet dependency is `CanvasNet`, which the image family uses to read what
-an image declares about itself and to extract and re-encode a region of one. It is taken directly
-rather than through Core because it serves one family in this package and nothing in Core, and it
-is taken **without** `PrivateAssets` because it is needed at run time by any application that
-attaches that family. It was chosen on the property that its decoders are safe managed code and
-its package carries no native binaries, which is what makes parsing hostile image input consistent
-with this library's thesis; see *CanvasNet Design*.
+The package references no imaging library. The image family, which decodes and encodes pictures
+with `CanvasNet`, ships in the AgentKitToolsVisual package, so the imaging library reaches an
+application only when that application attaches the visual tools; see *AgentKitToolsVisual System
+Design* and *CanvasNet Design*. The `text_file_read` binary-content refusal still names `image_read`
+for a file whose extension the image family reads, holding that tool name and the extension set as
+literals rather than referencing the image family.
 
 The memory family consumes a second abstraction from that same package —
 `IEmbeddingGenerator<string, Embedding<float>>` — as a constructor argument the application
@@ -131,8 +125,8 @@ taking it as an argument is precisely what keeps the choice of embedding backend
 application rather than with this package.
 
 The dependency runs in exactly one direction: Tools depends on Core, never the reverse, and no
-other capability package depends on Tools. The package is a peer of the other packs an application
-attaches.
+other capability package depends on Tools — including AgentKitToolsVisual, which depends on Core
+alone. The package is a peer of the other packs an application attaches.
 
 The following OTS items are used for building and verifying this system and are not consumed at
 runtime; see *OTS Integration Design* (`docs/design/ots.md`) and each item's dedicated design
@@ -163,12 +157,7 @@ access policy the composing application supplies; the risk controls specific to 
 design when the family is introduced. For the TextFile family, that containment control is the `PathPolicy` decision
 applied to every read, every write and every enumeration it performs — the read decision for reads and listings, the
 write decision for writes — with enumeration going through the policy so a listing can never advertise a file a read
-would refuse. For the Image family, the containment control is that same `PathPolicy` read decision applied to every
-read and the same write decision applied to every destination a crop names, judged independently of one another exactly
-as in the TextFile family, and it adds a second control of its own: the Vision capability gate, which withholds the
-family from a host that has not declared it can present visual content — withholding it by never asking the pack for its
-tools — so a model that cannot see an image is never offered a tool that returns one it could only fabricate a
-description of.
+would refuse. The risk controls of the image family are described with the AgentKitToolsVisual package that ships it.
 
 ## Data Flow
 
@@ -219,8 +208,8 @@ disabled turns the tool list into a largely truthful statement of what the agent
 
 **The rule is narrower than "only the tools that could succeed", and deliberately so.** Only
 *writing* is gated. A policy holding **no grants at all** is a valid policy, and under it the read
-tools are published as usual — `text_file_search`, `text_file_read`, `text_file_copy_lines` and
-`image_read` — while every one of them refuses every path it is given, because no path resolves
+tools are published as usual — `text_file_search`, `text_file_read` and `text_file_copy_lines` —
+while every one of them refuses every path it is given, because no path resolves
 under a policy that grants nothing. A symmetric read-visibility check was considered and rejected
 as cost without benefit: `PathRule` offers only `ReadOnly` and `ReadWrite`, and `AccessLevel` has
 no write-only member, so **write access always implies read access**. A read tool is therefore
@@ -233,7 +222,6 @@ to every pack, every design document and every test that asserts a published set
 | --- | --- | ---: | ---: |
 | TextFile | Yes | 5 of 8 | 8 → **3** |
 | File | Yes | 6 of 7 | 7 → **1** |
-| Image | No | none | 3 → **3** |
 | Markdown | No | none | 1 → **1** |
 | Memory | No | none | 5 → **5** |
 | Todo | No | none | 3 → **3** |
@@ -247,17 +235,12 @@ that need one are `file_copy`, `file_move`, `file_delete`, `file_create_director
 every policy.
 
 Eleven tools in total need a write grant: five in the TextFile family and six in the File family.
-All seven families composed over a policy that permits no writing anywhere therefore publish
-3 + 1 + 3 + 1 + 5 + 3 + 1 = 17 tools, against 28 under a policy that permits writing somewhere.
+All six families composed over a policy that permits no writing anywhere therefore publish
+3 + 1 + 1 + 5 + 3 + 1 = 14 tools, against 25 under a policy that permits writing somewhere. The
+image family follows the same rule in its own package; see *AgentKitToolsVisual System Design*.
 
 Why each non-filtering family does not filter:
 
-- **Image** — all three tools succeed under a read-only policy. Reading an image is a read, and
-  taking a region without a destination returns image content rather than writing a file. The
-  optional `destination` that `image_crop` and `image_auto_crop` both carry does need a write
-  grant, but the rule gates a tool on the writes it can only perform, not on whether every
-  argument can be used;
-  see *Image Pack Design*, *Image Crop Tool Design* and *Image Auto Crop Tool Design*.
 - **Markdown** — `markdown_outline` consults only the read decision.
 - **Memory** and **Todo** — both families accept the policy and ignore it. Their state is the
   pack's own store, not a location the policy governs, so a read-only *path* policy narrows
@@ -273,9 +256,11 @@ skipped packs, and for the same reason; see *Tool Pack Builder Design*.
 
 ## Design Constraints
 
-- **Peer, not a layer**: The package depends on AgentKitCore, the Base Class Library and the one
-  runtime imaging dependency the image family takes, and no other capability package depends on
-  it; a family it provides is attached alongside other packs, never beneath them
+- **Peer, not a layer**: The package depends on AgentKitCore and the Base Class Library, and no
+  other capability package depends on it; a family it provides is attached alongside other packs,
+  never beneath them
+- **No imaging dependency**: The package references no imaging library; the image family ships in
+  AgentKitToolsVisual
 - **Composed through Core**: Every family is published through Core's `IToolPack` contract and
   composed through `ToolPackBuilder`, so an application attaches this package's families the same
   way it attaches any other AgentKit pack
@@ -302,10 +287,8 @@ The library is supported on the following operating systems:
 
 Portability is achieved by restricting the implementation to Base Class Library (BCL) APIs
 available across all target frameworks, to the provider-neutral
-`Microsoft.Extensions.AI.Abstractions` surface reached through AgentKitCore, and to one runtime
-imaging dependency whose package carries no native binaries, whose decoders are safe managed code
-and that targets every framework listed above; see *CanvasNet Design*. No platform-specific native
-interop, OS-specific APIs, or framework-version-specific features are used.
+`Microsoft.Extensions.AI.Abstractions` surface reached through AgentKitCore. No platform-specific
+native interop, OS-specific APIs, or framework-version-specific features are used.
 
 ### Integration Patterns
 

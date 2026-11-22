@@ -1,6 +1,6 @@
 using DemaConsulting.AgentKit.Core;
-using DemaConsulting.AgentKit.Tools.Image;
 using DemaConsulting.AgentKit.Tools.TextFile;
+using DemaConsulting.AgentKit.Tools.Visual.Image;
 using Microsoft.Copilot;
 using Microsoft.Extensions.AI;
 

@@ -55,8 +55,9 @@ behaviors this guide describes:
 - **Asymmetric grants.** With `--read-only-workspace` the documents are readable but unmodifiable
   while the session folder stays writable, and the refusal of a workspace write enumerates the
   writable location so the agent can recover.
-- **Capability gating.** The image tools appear only when the host declares the `Vision` capability,
-  and the sample takes that declaration from the **selected model's** vision.
+- **Capability gating.** The image tools, from the `DemaConsulting.AgentKit.Tools.Visual` package,
+  appear only when the host declares the `Vision` capability, and the sample takes that declaration
+  from the **selected model's** vision.
   Running the sample with `--no-vision` removes `image_read`, `image_crop` and `image_auto_crop`
   from the tools the model is offered — they are never presented, not merely refused.
 - **Model choice.** The sample lists only the models that can see, and validates the chosen effort,

@@ -141,6 +141,7 @@ sections:
         tests:
           - AgentKitCore_XmlDocExamplesCompile
           - AgentKitTools_XmlDocExamplesCompile
+          - AgentKitToolsVisual_XmlDocExamplesCompile
           - AgentKitAgentsCopilot_XmlDocExamplesCompile
           - AgentKitAgentsChatClient_XmlDocExamplesCompile
           - AgentKitAgentsOllama_XmlDocExamplesCompile

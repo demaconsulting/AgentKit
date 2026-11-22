@@ -46,9 +46,10 @@ namespace DemaConsulting.AgentKit.Core;
 ///     <para>
 ///     Composing a tool list: one policy governs every tool, the host declares what it can support,
 ///     and each pack is added in the order the model should see its tools. The shipped packs
-///     <c>TextFilePack</c> and <c>ImagePack</c> (from the <c>DemaConsulting.AgentKit.Tools</c>
-///     package) are the usual arguments; this snippet takes them as <see cref="IToolPack"/> so the
-///     shape is clear without Core depending on Tools. Declaring
+///     <c>TextFilePack</c> (from the <c>DemaConsulting.AgentKit.Tools</c> package) and
+///     <c>ImagePack</c> (from the <c>DemaConsulting.AgentKit.Tools.Visual</c> package) are the usual
+///     arguments; this snippet takes them as <see cref="IToolPack"/> so the shape is clear without
+///     Core depending on either package. Declaring
 ///     <see cref="HostCapabilities.Vision"/> is what allows a vision-requiring pack to contribute
 ///     its tools at all — withhold it and that pack is never even asked.
 ///     </para>

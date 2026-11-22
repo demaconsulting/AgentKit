@@ -1,8 +1,8 @@
 using System.Text.Json;
 using DemaConsulting.AgentKit.Core;
 using DemaConsulting.AgentKit.Tools.File;
-using DemaConsulting.AgentKit.Tools.Image;
 using DemaConsulting.AgentKit.Tools.TextFile;
+using DemaConsulting.AgentKit.Tools.Visual.Image;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
 

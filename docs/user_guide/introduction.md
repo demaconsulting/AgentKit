@@ -48,7 +48,12 @@ Install the libraries using the .NET CLI:
 ```bash
 dotnet add package DemaConsulting.AgentKit.Core
 dotnet add package DemaConsulting.AgentKit.Tools
+dotnet add package DemaConsulting.AgentKit.Tools.Visual   # optional: the image tools
 ```
+
+The image family ships in its own package, `DemaConsulting.AgentKit.Tools.Visual`, because it needs
+an imaging library; an application that does not attach the image tools leaves it out, and
+`DemaConsulting.AgentKit.Tools` then brings no imaging dependency.
 
 To build an agent from a provider, add the adapter for the provider you target:
 
@@ -115,8 +120,9 @@ Core also describes the models a provider offers in one shared form, and validat
 model's settings before a session starts; see *Choosing a Model* below.
 
 Ready-made guarded tool families ship in
-`DemaConsulting.AgentKit.Tools` — the text file, file, markdown, image, todo, memory and
-agent families described under *Tool Families* below — so a consumer can attach shipped tools
+`DemaConsulting.AgentKit.Tools` — the text file, file, markdown, todo, memory and agent families —
+and in `DemaConsulting.AgentKit.Tools.Visual` — the image family — all described under *Tool
+Families* below, so a consumer can attach shipped tools
 directly, or write its own tools against this contract. Capability packs that adapt other
 libraries, such as document extraction and speech, into guarded agent tools are planned.
 
@@ -466,7 +472,9 @@ of excluded tools is an invitation to add them back by another route.
 
 # Tool Families
 
-`DemaConsulting.AgentKit.Tools` ships seven ready-made guarded tool families. Each family is a pack
+AgentKit ships seven ready-made guarded tool families: six in `DemaConsulting.AgentKit.Tools`, and
+the image family in `DemaConsulting.AgentKit.Tools.Visual`, whose namespace is
+`DemaConsulting.AgentKit.Tools.Visual.Image`. Each family is a pack
 an application adds to a `ToolPackBuilder`; the builder gates each pack on the host capabilities it
 requires and returns the `AIFunction` list to hand to an agent framework. The table below is the
 single place in the user-facing documentation that names every shipped tool; `lint.ps1` reads the
@@ -660,7 +668,7 @@ using DemaConsulting.AgentKit.Core;
 using DemaConsulting.AgentKit.Tools.TextFile;
 using DemaConsulting.AgentKit.Tools.File;
 using DemaConsulting.AgentKit.Tools.Markdown;
-using DemaConsulting.AgentKit.Tools.Image;
+using DemaConsulting.AgentKit.Tools.Visual.Image;
 using Microsoft.Extensions.AI;
 
 var policy = new PathPolicy("/workspace", [PathRule.ReadWrite("/workspace")]);
@@ -860,8 +868,8 @@ An application that offers only models that can see follows four steps:
    catalog describes the model.
 
 ```csharp
-using DemaConsulting.AgentKit.Tools.Image;
 using DemaConsulting.AgentKit.Tools.TextFile;
+using DemaConsulting.AgentKit.Tools.Visual.Image;
 using Microsoft.Extensions.AI;
 
 var offered = await catalog.ListAsync(new ModelQuery { Require = required }, cancellationToken);

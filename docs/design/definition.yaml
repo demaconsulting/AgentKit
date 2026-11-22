@@ -39,12 +39,6 @@ input-files:
   - docs/design/agent-kit-core/model-settings-chat-client.md
   - docs/design/agent-kit-core/agent-kit-chat-reducer.md
   - docs/design/agent-kit-tools.md
-  - docs/design/agent-kit-tools/image.md
-  - docs/design/agent-kit-tools/image/image-auto-crop-tool.md
-  - docs/design/agent-kit-tools/image/image-crop-tool.md
-  - docs/design/agent-kit-tools/image/image-media-types.md
-  - docs/design/agent-kit-tools/image/image-pack.md
-  - docs/design/agent-kit-tools/image/image-read-tool.md
   - docs/design/agent-kit-tools/text-file.md
   - docs/design/agent-kit-tools/text-file/text-file-search-tool.md
   - docs/design/agent-kit-tools/text-file/text-file-read-tool.md
@@ -87,6 +81,13 @@ input-files:
   - docs/design/agent-kit-tools/agent/agent-run-tool.md
   - docs/design/agent-kit-tools/agent/agent-profile.md
   - docs/design/agent-kit-tools/agent/agent-pack.md
+  - docs/design/agent-kit-tools-visual.md
+  - docs/design/agent-kit-tools-visual/image.md
+  - docs/design/agent-kit-tools-visual/image/image-auto-crop-tool.md
+  - docs/design/agent-kit-tools-visual/image/image-crop-tool.md
+  - docs/design/agent-kit-tools-visual/image/image-media-types.md
+  - docs/design/agent-kit-tools-visual/image/image-pack.md
+  - docs/design/agent-kit-tools-visual/image/image-read-tool.md
   - docs/design/agent-kit-agents-chat-client.md
   - docs/design/agent-kit-agents-chat-client/chat-client-agent-factory.md
   - docs/design/agent-kit-agents-chat-client/chat-client-provider-session.md

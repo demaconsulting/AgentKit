@@ -25,7 +25,6 @@ public class XmlDocExampleTests
             "DemaConsulting.AgentKit.Core",
             "DemaConsulting.AgentKit.Tools.Agent",
             "DemaConsulting.AgentKit.Tools.File",
-            "DemaConsulting.AgentKit.Tools.Image",
             "DemaConsulting.AgentKit.Tools.Markdown",
             "DemaConsulting.AgentKit.Tools.Memory",
             "DemaConsulting.AgentKit.Tools.TextFile",

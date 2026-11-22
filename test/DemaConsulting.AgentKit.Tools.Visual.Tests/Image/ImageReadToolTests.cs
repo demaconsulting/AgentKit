@@ -1,0 +1,638 @@
+using System.Text.Json;
+using DemaConsulting.AgentKit.Core;
+using DemaConsulting.AgentKit.Tools.Visual.Image;
+using Microsoft.Extensions.AI;
+
+namespace DemaConsulting.AgentKit.Tools.Visual.Tests.Image;
+
+/// <summary>
+///     Unit tests for the <see cref="ImageReadTool"/> class.
+/// </summary>
+/// <remarks>
+///     Every scenario invokes the constructed tool exactly as a runtime would — through
+///     <see cref="AIFunction.InvokeAsync"/> with named arguments — rather than calling an
+///     internal method directly, because the delivery of the result through the guarded factory
+///     is the load-bearing property this unit exists to provide: without it the image content
+///     would be serialized into a <see cref="JsonElement"/> before a provider ever saw it.
+///     The containment scenario uses this test project's own temporary-directory fixture, an
+///     internal type in this same assembly.
+/// </remarks>
+public class ImageReadToolTests
+{
+    /// <summary>
+    ///     One byte sequence standing in for image content. It is deliberately not a well-formed
+    ///     header — the eight bytes open like a PNG signature and then diverge — so the header
+    ///     probe the tool now runs on them fails. That failure is what makes this the fixture for
+    ///     the scenarios proving the caption degrades rather than refusing when no size can be
+    ///     established, and the bytes' distinctness is what proves the real file was read.
+    /// </summary>
+    private static readonly byte[] SampleBytes = [0x89, 0x50, 0x4E, 0x47, 0x01, 0x02, 0x03, 0x04];
+
+    /// <summary>
+    ///     Proves the published tool name is the family-qualified name the pack claims.
+    /// </summary>
+    [Fact]
+    public void ImageReadTool_ToolName_Constant_IsTheFamilyQualifiedName()
+    {
+        // Arrange / Act: read the published constant
+        var name = ImageReadTool.ToolName;
+
+        // Assert: the name is qualified by the family prefix the pack claims
+        Assert.Equal("image_read", name);
+        Assert.StartsWith(ImagePack.FamilyPrefix + "_", name, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves the constructed tool carries the published name and a non-empty description.
+    /// </summary>
+    [Fact]
+    public void ImageReadTool_Create_ConstructedTool_CarriesTheToolNameAndADescription()
+    {
+        // Arrange: a policy governing an otherwise irrelevant location
+        var policy = new PathPolicy(Path.GetTempPath(), [PathRule.Unrestricted(AccessLevel.ReadWrite)]);
+
+        // Act: construct the tool
+        var tool = ImageReadTool.Create(policy);
+
+        // Assert: the model sees the published name and a description it can choose by
+        Assert.Equal(ImageReadTool.ToolName, tool.Name);
+        Assert.False(string.IsNullOrWhiteSpace(tool.Description));
+    }
+
+    /// <summary>
+    ///     Proves a missing policy is a programming error rather than a denial.
+    /// </summary>
+    [Fact]
+    public void ImageReadTool_Create_NullPolicy_ThrowsArgumentNullException()
+    {
+        // Arrange / Act / Assert: a tool with no policy cannot be constructed
+        Assert.Throws<ArgumentNullException>(() => ImageReadTool.Create(null!));
+    }
+
+    /// <summary>
+    ///     Proves an image result reaches the caller as real content and not as serialized JSON.
+    /// </summary>
+    /// <remarks>
+    ///     This is the proof the family exists to make. Without the guarded construction path the
+    ///     content would arrive as a <see cref="JsonElement"/> wrapping a <c>data:</c> URI, the
+    ///     provider would never receive the image, and the model would fabricate a description of
+    ///     content it never saw. The negative assertion names exactly that failure.
+    /// </remarks>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task ImageReadTool_Read_SupportedImage_ResultIsContentListNotJsonElement()
+    {
+        // Arrange: a permitted image file
+        using var fixture = new TempDirectoryFixture();
+        var file = WriteBytes(fixture.Root, "picture.png", SampleBytes);
+        var tool = ImageReadTool.Create(RootedPolicy(fixture.Root));
+
+        // Act: invoke the tool as the runtime would
+        var result = await InvokeAsync(tool, file);
+
+        // Assert: the guard delivered the content list unserialized
+        Assert.IsType<List<AIContent>>(result);
+        Assert.IsNotType<JsonElement>(result);
+    }
+
+    /// <summary>
+    ///     Proves a permitted image is returned as data content carrying its media type and bytes.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task ImageReadTool_Read_SupportedImage_ReturnsDataContentWithMediaType()
+    {
+        // Arrange: a permitted PNG whose bytes identify it unambiguously
+        using var fixture = new TempDirectoryFixture();
+        var file = WriteBytes(fixture.Root, "picture.png", SampleBytes);
+        var tool = ImageReadTool.Create(RootedPolicy(fixture.Root));
+
+        // Act: read the image
+        var result = await InvokeAsync(tool, file);
+
+        // Assert: a caption followed by the image, carrying the media type and the real bytes
+        var content = Assert.IsType<List<AIContent>>(result);
+        Assert.Equal(2, content.Count);
+        Assert.IsType<TextContent>(content[0]);
+        var data = Assert.IsType<DataContent>(content[1]);
+        Assert.Equal(ImageMediaTypes.Png, data.MediaType);
+        Assert.Equal(SampleBytes, data.Data.ToArray());
+    }
+
+    /// <summary>
+    ///     Proves a permitted PDF is returned as binary content carrying the PDF media type.
+    /// </summary>
+    /// <remarks>
+    ///     A PDF is not an <c>image/</c> media type, so it is dispatched through
+    ///     <see cref="ToolResult.Binary"/> rather than <see cref="ToolResult.Image"/>, which
+    ///     would throw. The result shape is identical, so the marshalling guard applies equally.
+    /// </remarks>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task ImageReadTool_Read_PermittedPdf_ReturnsBinaryContentWithPdfMediaType()
+    {
+        // Arrange: a permitted PDF whose bytes identify it unambiguously
+        using var fixture = new TempDirectoryFixture();
+        var file = WriteBytes(fixture.Root, "document.pdf", SampleBytes);
+        var tool = ImageReadTool.Create(RootedPolicy(fixture.Root));
+
+        // Act: read the document
+        var result = await InvokeAsync(tool, file);
+
+        // Assert: the caption-plus-content shape survives unserialized, carrying the PDF
+        // media type and bytes. The caption is asserted as well as the data, because a
+        // regression that preserved the bytes while dropping or reordering the caption would
+        // otherwise pass unnoticed.
+        var content = Assert.IsType<List<AIContent>>(result);
+        Assert.IsNotType<JsonElement>(result);
+        Assert.Equal(2, content.Count);
+        Assert.IsType<TextContent>(content[0]);
+        var data = Assert.IsType<DataContent>(content[1]);
+        Assert.Equal(ImageMediaTypes.Pdf, data.MediaType);
+        Assert.Equal(SampleBytes, data.Data.ToArray());
+    }
+
+    /// <summary>
+    ///     Proves a path outside the permitted read location is refused.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task ImageReadTool_Read_PathOutsideTheReadRoot_ReturnsDenial()
+    {
+        // Arrange: an image in a sibling directory no grant permits reading
+        using var fixture = new TempDirectoryFixture();
+        var outsideFile = WriteBytes(fixture.Outside, "secret.png", SampleBytes);
+        var tool = ImageReadTool.Create(RootedPolicy(fixture.Root));
+
+        // Act: request the file outside the permitted location
+        var result = await InvokeAsync(tool, outsideFile);
+
+        // Assert: refused before anything is learned about the file
+        var text = Assert.IsType<string>(result);
+        Assert.Contains("Denied (PathNotPermitted)", text, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves an unsupported type is refused with a redirect to the text file read tool.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task ImageReadTool_Read_UnsupportedType_ReturnsDenialRedirectingToTextFileRead()
+    {
+        // Arrange: a permitted but vector-text file this family cannot read
+        using var fixture = new TempDirectoryFixture();
+        var file = WriteBytes(fixture.Root, "diagram.svg", SampleBytes);
+        var tool = ImageReadTool.Create(RootedPolicy(fixture.Root));
+
+        // Act: request the .svg file
+        var result = await InvokeAsync(tool, file);
+
+        // Assert: refused as an unsupported type, stating what the file is; naming the reader for
+        // that kind of content is a classification, not a prescribed way around the refusal
+        var text = Assert.IsType<string>(result);
+        Assert.Contains("Denied (UnsupportedMediaType)", text, StringComparison.Ordinal);
+        Assert.Contains("is text and vector content", text, StringComparison.Ordinal);
+        Assert.Contains("text_file_read", text, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves a directory is refused as a malformed request.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task ImageReadTool_Read_DirectoryPath_ReturnsDenial()
+    {
+        // Arrange: a permitted directory rather than a file
+        using var fixture = new TempDirectoryFixture();
+        var tool = ImageReadTool.Create(RootedPolicy(fixture.Root));
+
+        // Act: request the directory itself
+        var result = await InvokeAsync(tool, fixture.Root);
+
+        // Assert: refused as malformed, stating the fact and prescribing nothing
+        var text = Assert.IsType<string>(result);
+        Assert.Contains("Denied (InvalidRequest)", text, StringComparison.Ordinal);
+        Assert.Contains("The requested path is a directory, not a file.", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("instead", text, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Name an image file", text, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves a missing file of a supported type is refused as not found.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task ImageReadTool_Read_MissingFile_ReturnsDenial()
+    {
+        // Arrange: a permitted location containing no such file
+        using var fixture = new TempDirectoryFixture();
+        var tool = ImageReadTool.Create(RootedPolicy(fixture.Root));
+
+        // Act: request a supported-type file that does not exist
+        var result = await InvokeAsync(tool, Path.Combine(fixture.Root, "absent.png"));
+
+        // Assert: refused as not found, stating the fact and prescribing nothing
+        var text = Assert.IsType<string>(result);
+        Assert.Contains("Denied (TargetNotFound)", text, StringComparison.Ordinal);
+        Assert.Contains("The requested file does not exist.", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("Check the file name", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("request it again", text, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves a file beyond the binary ceiling is refused with the ceiling named.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task ImageReadTool_Read_FileLargerThanTheBinaryCeiling_ReturnsDenialNamingTheCeiling()
+    {
+        // Arrange: a file larger than an eight-byte binary ceiling
+        using var fixture = new TempDirectoryFixture();
+        var file = WriteBytes(fixture.Root, "big.png", new byte[64]);
+        var tool = ImageReadTool.Create(RootedPolicy(fixture.Root, new ToolLimits(maxBinaryBytes: 8)));
+
+        // Act: read the oversized file
+        var result = await InvokeAsync(tool, file);
+
+        // Assert: a refusal naming the ceiling, never a truncated image
+        var text = Assert.IsType<string>(result);
+        Assert.Contains("Denied (ResourceTooLarge)", text, StringComparison.Ordinal);
+        Assert.Contains("8-byte", text, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves a file exactly at the binary ceiling is read rather than refused.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task ImageReadTool_Read_FileAtTheBinaryCeiling_IsRead()
+    {
+        // Arrange: an eight-byte file and an eight-byte binary ceiling
+        using var fixture = new TempDirectoryFixture();
+        var file = WriteBytes(fixture.Root, "exact.png", SampleBytes);
+        var tool = ImageReadTool.Create(RootedPolicy(fixture.Root, new ToolLimits(maxBinaryBytes: 8)));
+
+        // Act: read the file sitting exactly on the boundary
+        var result = await InvokeAsync(tool, file);
+
+        // Assert: the ceiling is inclusive, so the image is returned
+        var content = Assert.IsType<List<AIContent>>(result);
+        var data = Assert.IsType<DataContent>(content[1]);
+        Assert.Equal(SampleBytes, data.Data.ToArray());
+    }
+
+    /// <summary>
+    ///     Proves an empty path is refused rather than throwing at the model.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task ImageReadTool_Read_EmptyPath_ReturnsDenialWithoutThrowing()
+    {
+        // Arrange: a tool governed by an unrestricted policy, so only the request is at fault
+        var tool = ImageReadTool.Create(
+            new PathPolicy(Path.GetTempPath(), [PathRule.Unrestricted(AccessLevel.ReadWrite)]));
+
+        // Act: invoke with an empty path, as a confused model would
+        var result = await InvokeAsync(tool, string.Empty);
+
+        // Assert: a returned refusal, because an exception would end the agent's turn
+        var text = Assert.IsType<string>(result);
+        Assert.Contains("Denied (InvalidRequest)", text, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves a whitespace-only path is refused rather than throwing at the model.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task ImageReadTool_Read_WhitespacePath_ReturnsDenialWithoutThrowing()
+    {
+        // Arrange: a tool governed by an unrestricted policy
+        var tool = ImageReadTool.Create(
+            new PathPolicy(Path.GetTempPath(), [PathRule.Unrestricted(AccessLevel.ReadWrite)]));
+
+        // Act: invoke with a path consisting only of whitespace
+        var result = await InvokeAsync(tool, "   ");
+
+        // Assert: a returned refusal rather than an exception from the policy
+        var text = Assert.IsType<string>(result);
+        Assert.Contains("Denied (InvalidRequest)", text, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves a bare file name — the path a model actually writes — is read from the
+    ///     workspace.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task ImageReadTool_Read_BareFileName_ReturnsTheImageContent()
+    {
+        // Arrange: a workspace holding one image
+        using var fixture = new TempDirectoryFixture();
+        WriteBytes(fixture.Root, "picture.png", SampleBytes);
+        var tool = ImageReadTool.Create(RootedPolicy(fixture.Root));
+
+        // Act: ask for the image by name alone
+        var result = await InvokeAsync(tool, "picture.png");
+
+        // Assert: the caption and the real bytes, not a refusal
+        var content = Assert.IsType<List<AIContent>>(result);
+        var data = Assert.IsType<DataContent>(content[1]);
+        Assert.Equal(SampleBytes, data.Data.ToArray());
+    }
+
+    /// <summary>
+    ///     Proves that omitting the path argument produces a refusal rather than a framework
+    ///     error.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task ImageReadTool_Read_MissingPathArgument_ReturnsDenialWithoutThrowing()
+    {
+        // Arrange: a workspace-governed tool, so only the request is at fault
+        using var fixture = new TempDirectoryFixture();
+        var tool = ImageReadTool.Create(RootedPolicy(fixture.Root));
+
+        // Act: invoke with no arguments at all
+        var result = await tool.InvokeAsync(
+            new AIFunctionArguments(),
+            TestContext.Current.CancellationToken);
+
+        // Assert: a refusal composed by the tool, naming what to supply
+        var text = Assert.IsType<string>(result);
+        Assert.Contains("Denied (InvalidRequest)", text, StringComparison.Ordinal);
+        Assert.Contains("workspace root", text, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves a policy refusal discloses the permitted location so a confined model learns
+    ///     where it may look.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task ImageReadTool_Read_DeniedPath_DenialDisclosesPermittedLocation()
+    {
+        // Arrange: a file outside the permitted location
+        using var fixture = new TempDirectoryFixture();
+        var outsideFile = WriteBytes(fixture.Outside, "secret.png", SampleBytes);
+        var policy = RootedPolicy(fixture.Root);
+        var tool = ImageReadTool.Create(policy);
+
+        // Act: request the refused file
+        var result = await InvokeAsync(tool, outsideFile);
+
+        // Assert: the request is echoed and the permitted location is named with its level
+        var text = Assert.IsType<string>(result);
+        Assert.Contains(outsideFile, text, StringComparison.Ordinal);
+        Assert.Contains("  - . (read-write)", text, StringComparison.Ordinal);
+        Assert.DoesNotContain(policy.WorkingDirectory, text, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves the caption states the pixel dimensions of a PNG whose header can be read.
+    /// </summary>
+    /// <remarks>
+    ///     This is what lets a region request be aimed: a model can see a picture but cannot
+    ///     measure it, so without the size in the caption it has no coordinate space to name a
+    ///     region in.
+    /// </remarks>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task ImageReadTool_Read_SupportedPng_CaptionStatesThePixelDimensions()
+    {
+        // Arrange: a permitted PNG of a size no default could be mistaken for
+        using var fixture = new TempDirectoryFixture();
+        var file = WriteBytes(fixture.Root, "picture.png", ImageTestImages.Png(37, 19));
+        var tool = ImageReadTool.Create(RootedPolicy(fixture.Root));
+
+        // Act: read the image
+        var result = await InvokeAsync(tool, file);
+
+        // Assert: the caption names the media type and the real declared size
+        var content = Assert.IsType<List<AIContent>>(result);
+        var caption = Assert.IsType<TextContent>(content[0]);
+        Assert.Contains(ImageMediaTypes.Png, caption.Text, StringComparison.Ordinal);
+        Assert.Contains("37x19 pixels", caption.Text, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves the caption states the pixel dimensions of a JPEG whose header can be read.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task ImageReadTool_Read_SupportedJpeg_CaptionStatesThePixelDimensions()
+    {
+        // Arrange: a permitted JPEG, whose header is found by a bounded marker scan
+        using var fixture = new TempDirectoryFixture();
+        var file = WriteBytes(fixture.Root, "photo.jpg", ImageTestImages.Jpeg(24, 40));
+        var tool = ImageReadTool.Create(RootedPolicy(fixture.Root));
+
+        // Act: read the image
+        var result = await InvokeAsync(tool, file);
+
+        // Assert: the second of the two formats whose header is read reports its size too
+        var content = Assert.IsType<List<AIContent>>(result);
+        var caption = Assert.IsType<TextContent>(content[0]);
+        Assert.Contains(ImageMediaTypes.Jpeg, caption.Text, StringComparison.Ordinal);
+        Assert.Contains("24x40 pixels", caption.Text, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves a palette-indexed PNG reports its dimensions like any other.
+    /// </summary>
+    /// <remarks>
+    ///     A palette-indexed file stores one sample per pixel rather than three or four, so it is
+    ///     the format most likely to be mishandled by a reader that assumed a single encoding.
+    ///     Its size is declared in the same place as every other PNG's and must be reported the
+    ///     same way.
+    /// </remarks>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task ImageReadTool_Read_PalettizedPng_CaptionStatesThePixelDimensions()
+    {
+        // Arrange: a permitted palette-indexed PNG
+        using var fixture = new TempDirectoryFixture();
+        var file = WriteBytes(fixture.Root, "indexed.png", ImageTestImages.PalettizedPng(12, 8));
+        var tool = ImageReadTool.Create(RootedPolicy(fixture.Root));
+
+        // Act: read the image
+        var result = await InvokeAsync(tool, file);
+
+        // Assert: the declared size is reported regardless of how the pixels are stored
+        var content = Assert.IsType<List<AIContent>>(result);
+        var caption = Assert.IsType<TextContent>(content[0]);
+        Assert.Contains("12x8 pixels", caption.Text, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves an interlaced PNG still reports its dimensions.
+    /// </summary>
+    /// <remarks>
+    ///     Interlacing is the one thing a well-formed PNG can declare that this library will not
+    ///     decode. Reading is not decoding: the bytes go to the provider, whose own decoder is
+    ///     the authority on them, and the size is declared in a header that reads perfectly well.
+    ///     So this file loses nothing here, which is the counterpart to the crop tool refusing it.
+    /// </remarks>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task ImageReadTool_Read_Adam7InterlacedPng_CaptionStatesThePixelDimensions()
+    {
+        // Arrange: a permitted PNG declaring Adam7 interlacing
+        using var fixture = new TempDirectoryFixture();
+        var file = WriteBytes(fixture.Root, "woven.png", ImageTestImages.Adam7InterlacedPng(64, 32));
+        var tool = ImageReadTool.Create(RootedPolicy(fixture.Root));
+
+        // Act: read the image
+        var result = await InvokeAsync(tool, file);
+
+        // Assert: content, with the declared size stated
+        var content = Assert.IsType<List<AIContent>>(result);
+        var caption = Assert.IsType<TextContent>(content[0]);
+        Assert.Contains("64x32 pixels", caption.Text, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves a media type this library has no header probe for is captioned by type alone.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Theory]
+    [InlineData("animation.gif")]
+    [InlineData("picture.webp")]
+    public async Task ImageReadTool_Read_MediaTypeWithNoHeaderProbe_CaptionStatesOnlyTheMediaType(string fileName)
+    {
+        // Arrange: a permitted file of a type the family reads but does not decode
+        using var fixture = new TempDirectoryFixture();
+        var file = WriteBytes(fixture.Root, fileName, SampleBytes);
+        var tool = ImageReadTool.Create(RootedPolicy(fixture.Root));
+
+        // Act: read the file
+        var result = await InvokeAsync(tool, file);
+
+        // Assert: the content is returned, captioned by media type with no size claimed
+        var content = Assert.IsType<List<AIContent>>(result);
+        var caption = Assert.IsType<TextContent>(content[0]);
+        Assert.DoesNotContain(" pixels", caption.Text, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves a PDF is captioned by media type alone.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task ImageReadTool_Read_Pdf_CaptionStatesOnlyTheMediaType()
+    {
+        // Arrange: a permitted PDF, which is paginated rather than a single raster image
+        using var fixture = new TempDirectoryFixture();
+        var file = WriteBytes(fixture.Root, "document.pdf", SampleBytes);
+        var tool = ImageReadTool.Create(RootedPolicy(fixture.Root));
+
+        // Act: read the document
+        var result = await InvokeAsync(tool, file);
+
+        // Assert: the media type is named and no pixel size is invented for it
+        var content = Assert.IsType<List<AIContent>>(result);
+        var caption = Assert.IsType<TextContent>(content[0]);
+        Assert.Contains(ImageMediaTypes.Pdf, caption.Text, StringComparison.Ordinal);
+        Assert.DoesNotContain(" pixels", caption.Text, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves content whose header cannot be read is still returned.
+    /// </summary>
+    /// <remarks>
+    ///     The degrade guarantee. This tool's contract has never been to validate content: it
+    ///     hands a permitted file's bytes to a provider whose own decoder is the authority on
+    ///     them. Refusing a file because an optional enrichment failed would narrow the tool for
+    ///     no safety gain — the bytes were inside the ceiling and were going to be returned.
+    /// </remarks>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task ImageReadTool_Read_ContentWithAnUnreadableHeader_StillReturnsTheContent()
+    {
+        // Arrange: a .png whose bytes are a signature followed by junk, not a real image
+        using var fixture = new TempDirectoryFixture();
+        var file = WriteBytes(fixture.Root, "damaged.png", SampleBytes);
+        var tool = ImageReadTool.Create(RootedPolicy(fixture.Root));
+
+        // Act: read the file
+        var result = await InvokeAsync(tool, file);
+
+        // Assert: the real bytes come back, captioned without a size
+        var content = Assert.IsType<List<AIContent>>(result);
+        var caption = Assert.IsType<TextContent>(content[0]);
+        var data = Assert.IsType<DataContent>(content[1]);
+        Assert.Equal(SampleBytes, data.Data.ToArray());
+        Assert.Equal("File content of media type image/png.", caption.Text);
+    }
+
+    /// <summary>
+    ///     Proves the caption never states dimensions it did not read.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task ImageReadTool_Read_Caption_NeverStatesDimensionsItDidNotRead()
+    {
+        // Arrange: a type with no header probe at all
+        using var fixture = new TempDirectoryFixture();
+        var file = WriteBytes(fixture.Root, "animation.gif", SampleBytes);
+        var tool = ImageReadTool.Create(RootedPolicy(fixture.Root));
+
+        // Act: read the file
+        var result = await InvokeAsync(tool, file);
+
+        // Assert: nothing shaped like a pixel size appears anywhere in the caption
+        var content = Assert.IsType<List<AIContent>>(result);
+        var caption = Assert.IsType<TextContent>(content[0]);
+        Assert.DoesNotMatch(@"\d+x\d+", caption.Text);
+    }
+
+    /// <summary>
+    ///     Creates a policy permitting reads and writes only beneath one workspace, and
+    ///     interpreting relative requests against it.
+    /// </summary>
+    /// <remarks>
+    ///     Built through the workspace shorthand deliberately: it is the configuration the
+    ///     documentation recommends, so the tests exercise what a host actually builds.
+    /// </remarks>
+    /// <param name="root">The permitted location.</param>
+    /// <param name="limits">The ceilings to apply, or null for the published defaults.</param>
+    /// <returns>The constructed policy.</returns>
+    private static PathPolicy RootedPolicy(string root, ToolLimits? limits = null)
+    {
+        return new PathPolicy(root, [PathRule.ReadWrite(root)], limits ?? ToolLimits.Default);
+    }
+
+    /// <summary>
+    ///     Writes a file with known bytes into a directory of the temporary tree.
+    /// </summary>
+    /// <remarks>
+    ///     The tool returns content rather than text, so the fixture's text writer is not used;
+    ///     the tool does not parse the bytes, so any distinctive sequence proves the real file
+    ///     was reached.
+    /// </remarks>
+    /// <param name="directory">The directory to write into; created when it does not exist.</param>
+    /// <param name="fileName">The name of the file to write.</param>
+    /// <param name="content">The bytes to write.</param>
+    /// <returns>The full path of the written file.</returns>
+    private static string WriteBytes(string directory, string fileName, byte[] content)
+    {
+        Directory.CreateDirectory(directory);
+
+        var filePath = Path.Combine(directory, fileName);
+        System.IO.File.WriteAllBytes(filePath, content);
+        return filePath;
+    }
+
+    /// <summary>
+    ///     Invokes the read tool exactly as a runtime would.
+    /// </summary>
+    /// <param name="tool">The tool to invoke.</param>
+    /// <param name="path">The path argument to supply.</param>
+    /// <returns>The result the tool returned.</returns>
+    private static async Task<object?> InvokeAsync(AIFunction tool, string path)
+    {
+        return await tool.InvokeAsync(
+            new AIFunctionArguments { ["path"] = path },
+            TestContext.Current.CancellationToken);
+    }
+}

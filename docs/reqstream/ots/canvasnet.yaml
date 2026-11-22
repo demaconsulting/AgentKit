@@ -1,7 +1,8 @@
 ---
 # CanvasNet OTS Software Requirements
 #
-# Requirements for the CanvasNet raster imaging library functionality.
+# Requirements for the CanvasNet raster imaging library functionality, consumed by the image family
+# in the AgentKitToolsVisual package.
 
 sections:
   - title: OTS Software Requirements

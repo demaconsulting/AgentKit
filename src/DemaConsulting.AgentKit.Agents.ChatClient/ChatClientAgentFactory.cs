@@ -75,8 +75,8 @@ public static class ChatClientAgentFactory
     ///     where the tools may go, the builder composes the tool list, and this factory turns the
     ///     client plus that list into a runnable agent — the image-promoting decorator is installed
     ///     for you. In a real application <c>textFiles</c> and <c>images</c>
-    ///     are <c>new TextFilePack()</c> and <c>new ImagePack()</c> from the
-    ///     <c>DemaConsulting.AgentKit.Tools</c> package.
+    ///     are <c>new TextFilePack()</c> from the <c>DemaConsulting.AgentKit.Tools</c> package and
+    ///     <c>new ImagePack()</c> from the <c>DemaConsulting.AgentKit.Tools.Visual</c> package.
     ///     </para>
     ///     <code>
     ///     public AIAgent CreateAgent(

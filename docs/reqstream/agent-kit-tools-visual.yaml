@@ -1,0 +1,130 @@
+---
+# Software System Requirements for AgentKit Tools Visual
+#
+# These requirements describe the externally visible behavior of the library
+# from the perspective of its consumers, without specifying implementation details.
+
+sections:
+  - title: AgentKitToolsVisual Requirements
+    requirements:
+      - id: AgentKitToolsVisual-Composition-BuiltOnCoreContract
+        title: >-
+          The library shall present the visual tool families it provides to an application through
+          the AgentKitCore tool-pack composition contract, composed into one policy-governed tool
+          list, and shall contribute no tools where no family has been attached.
+        tags: [system]
+        justification: |
+          AgentKitToolsVisual is an optional capability package of guarded visual tool families;
+          an application attaches them the same way it attaches any other AgentKit pack — one
+          ToolPackBuilder, one access policy — not through a composition path this package
+          invents. Proving the empty composition is well defined and yields no tools fixes the
+          integration surface before any family is added, and keeps the package a peer of the
+          other capability packages rather than a layer they depend on.
+        tests:
+          - AgentKitToolsVisual_SystemComposition_EmptyBuilder_ContributesNoTools
+
+      - id: AgentKitToolsVisual-PolicyDerivedPublication
+        title: >-
+          The library shall publish each visual tool that can succeed under an access policy that
+          permits no writing anywhere, so that a read-only agent keeps the visual tools it can use.
+        tags: [system, security]
+        justification: |
+          The AgentKit packs withhold a tool whose only outcome under a read-only policy would be
+          a refusal, and publish the rest. Each image tool can succeed without writing — reading
+          an image is a read, and taking a region without a destination returns image content —
+          so the rule publishes every one of them under every policy, and an agent configured to
+          read keeps the ability to look at pictures and examine parts of them closely.
+        children:
+          - AgentKitToolsVisual-Image-Pack-PublishedUnderEveryPolicy
+        tests:
+          - AgentKitToolsVisual_SystemComposition_ReadOnlyPolicy_PublishesEveryImageTool
+
+      - id: AgentKitToolsVisual-ImageFamily-GuardedImageAccess
+        title: >-
+          The library shall provide an image family that reads images and PDF documents under the
+          access policy the composing application supplies, reporting the pixel dimensions of an
+          image it can establish them for, returning a rectangular region of one named in pixels
+          and refusing a region that is not wholly inside it, trimming an image to the region its
+          own content occupies when the caller names no region at all, writing that region to a
+          destination a read-write grant permits when the caller names one, interpreting the
+          paths a model states as relative to the workspace, offering each of its tools under
+          every policy including one that permits no writing, publishing each tool under one
+          family prefix, delivering the content to the caller rather than a serialized copy of
+          it, and registering the family only for a host that declares it can present visual
+          content to a model.
+        tags: [system, security]
+        justification: |
+          Handing a model an image is the capability a vision-enabled agent needs and the one that
+          fails most silently when it is done wrong: a tool whose content is serialized to JSON
+          delivers no image, and the model then confidently describes a picture it never received.
+          Providing it as one policy-governed family means an application grants image access in a
+          single, auditable step, with containment applied to each request and the content
+          delivered intact through the guarded construction path. A model states a path the way a
+          person does, and the name it holds is usually one a listing reported relatively, so the
+          family reads names the same way the other path-taking families do. Gating the family
+          behind the vision capability keeps a model that cannot see from being offered a tool
+          whose result it could only fabricate around, and the composition withholds the family by
+          not asking the pack for its tools rather than by offering them and refusing later. A
+          model can see a picture but cannot measure one, so the family states an image's pixel
+          dimensions alongside the content: without them the model has no coordinate space in
+          which to reason about any part of the image it is looking at. It also cannot examine
+          part of a picture closely — a detail occupying a hundredth of a large image is, at the
+          resolution a provider receives, effectively invisible — so the family returns the
+          region the model names at full resolution: inline when the model wants to examine it,
+          or written to a destination the model names when it wants an artifact it can reference.
+          The destination is admitted by the policy's write decision, independently of the read
+          that admitted the image, so one call exercises both grants an application configured
+          and a read-wide, write-narrow policy stays meaningful. Dimension reporting and region
+          extraction are one capability rather than two: a region request the model cannot aim is
+          a region request it will aim wrongly. A region that does not fit is refused rather than
+          quietly reduced, because a reduced region answers a different question while reporting
+          success and the model cannot detect the substitution. Deciding an image's decode cost
+          from what its header declares, before any pixel data exists, is what stops a model
+          provoking a quarter of a gigabyte of allocation from a file of a few hundred kilobytes.
+          The family also trims an image to the region its own content occupies, because the
+          region a model most often wants is the one it cannot name: it can see that a screenshot
+          or a slide export is mostly margin without being able to measure where the margin
+          stops, so any rectangle it stated would be a guess. That trim takes its background from
+          the image's own border rather than assuming one, so a dark, colored or transparent
+          margin works as well as a white one, and it refuses an image that is entirely
+          background rather than returning the whole picture — which would again answer a
+          different question while reporting success. The family ships in this package rather
+          than in AgentKitTools so that the imaging library it needs reaches only the
+          applications that choose it.
+        children:
+          - AgentKitToolsVisual-Image-FamilyComposition
+          - AgentKitToolsVisual-Image-CapabilityGated
+          - AgentKitToolsVisual-Image-GuardedConstruction
+          - AgentKitToolsVisual-Image-PolicyGoverned
+          - AgentKitToolsVisual-Image-DimensionReporting
+          - AgentKitToolsVisual-Image-RegionExtraction
+          - AgentKitToolsVisual-Image-ContentTrimming
+          - AgentKitToolsVisual-Image-RegionDestination
+          - AgentKitToolsVisual-Image-DecodeBounded
+          - AgentKitToolsVisual-Image-DenialsAreResults
+          - AgentKitToolsVisual-Image-ObservesPolicyLimits
+          - AgentKit-OTS-CanvasNet-HeaderProbe
+          - AgentKit-OTS-CanvasNet-Decode
+          - AgentKit-OTS-CanvasNet-BoundedInflate
+          - AgentKit-OTS-CanvasNet-Crop
+          - AgentKit-OTS-CanvasNet-Encode
+          - AgentKit-OTS-CanvasNet-DecodeFeasibility
+        tests:
+          - AgentKitToolsVisual_SystemComposition_ImagePack_ContributesTheImageFamily
+          - AgentKitToolsVisual_SystemComposition_ImagePackWithoutVision_ContributesNoTools
+
+      - id: AgentKitToolsVisual-PathDenials-NoHostAbsolutePath
+        title: >-
+          The library's path-taking tools shall refuse a location the access policy does not permit
+          with a result that names the permitted locations relative to the working directory and
+          discloses no host absolute path the model did not supply.
+        tags: [system, security]
+        justification: |
+          Each path-taking tool passes the access policy's denial to the model unchanged, and the
+          transcript the denial joins leaves the host. The denial must remain useful — a model
+          learns where it may work from it — without disclosing the host's directory layout or the
+          user name an absolute path carries. Proving it across the package's path-taking tools at
+          system level is the evidence that no tool adds an absolute location of its own to the
+          policy's refusal.
+        tests:
+          - AgentKitToolsVisual_PathDenials_DiscloseNoHostAbsolutePath
