@@ -1,7 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1600" height="640" viewBox="0 0 1600 640">
   <!-- The README hero banner. An agent's tool calls, the application's path grants and tool limits, and long
        conversations flow into the AgentKit library and come out as confined tool results, a guarded tool list,
-       a session compacted into tiered context, and agents on any provider.
+       a session compacted into tiered context, and agents on IChatClient or GitHub Copilot.
        The definitions and the left panel follow the shared DEMA Consulting hero (CanvasNet and BuildMark).
        This file is docs/images/hero.svg, beside its rendered docs/images/hero.png (matching base names, per the
        diagram documentation standard); the files it embeds are in docs/images/hero/. -->
@@ -9,7 +9,7 @@
     <style>
       .word { font: bold 92px sans-serif; fill: #ffffff; }
       .eyebrow { font: bold 25px sans-serif; fill: #a5b4fc; }
-      .tag { font: bold 40px sans-serif; fill: #f8fafc; }
+      .tag { font: bold 36px sans-serif; fill: #f8fafc; }
       .body { font: 25px sans-serif; fill: #cbd5e1; }
       .cmd { font: 25px monospace; fill: #e2e8f0; }
       .prompt { fill: #5eead4; }
@@ -116,17 +116,17 @@
   <text class="word" x="52" y="176">Agent</text>
   <text class="word brandText" x="312.6" y="176">Kit</text>
   <rect x="58" y="200" width="132" height="6" rx="3" fill="url(#brand)"/>
-  <text class="tag" x="56" y="266">Every tool, guarded.</text>
-  <text class="tag brandText" x="56" y="316">Every chat, compacted.</text>
-  <text class="body" x="58" y="368">Hardened, provider-neutral tools for</text>
-  <text class="body" x="58" y="402">.NET AI agents, and sessions that</text>
-  <text class="body" x="58" y="436">outlive the model's context window.</text>
+  <text class="tag" x="56" y="266">Safe agent tools</text>
+  <text class="tag" x="56" y="314" style="fill: #a5b4fc">for .NET.</text>
+  <text class="body" x="58" y="368">Builds AIFunction tools from path</text>
+  <text class="body" x="58" y="402">grants and limits, and agent sessions</text>
+  <text class="body" x="58" y="436">that compact long chats into tiers.</text>
   <rect x="56" y="468" width="480" height="90" rx="12" fill="#0a1022" fill-opacity="0.8" stroke="#a78bfa" stroke-opacity="0.45" stroke-width="1.5"/>
   <text class="cmd" x="78" y="503">new ToolPackBuilder(</text>
   <text class="cmd file" x="378" y="503">policy</text>
   <text class="cmd" x="468" y="503">)</text>
   <text class="cmd" x="108" y="539">.Add(new FilePack()).Build()</text>
-  <text class="note" x="58" y="604">Unsafe calls cannot be expressed.</text>
+  <text class="note" x="58" y="604">.NET 8, 9, 10 &#183; Windows, Linux, macOS</text>
 
   <!-- Input cards -->
   <g>
@@ -268,7 +268,7 @@
     <rect x="1239" y="514" width="22" height="20" rx="5" fill="#f472b6"/>
     <text class="label" x="1232" y="585">Tiered context</text>
 
-    <!-- Output four: agents on any provider -->
+    <!-- Output four: agents on an IChatClient or the GitHub Copilot runtime -->
     <rect class="card" x="1355" y="390" width="205" height="210" rx="16"/>
     <rect class="panel" x="1363" y="398" width="189" height="152" rx="10"/>
     <circle cx="1457" cy="430" r="22" fill="url(#brand)"/>
@@ -277,6 +277,6 @@
     <text class="miniMono" x="1457" y="486" fill="#e2e8f0" text-anchor="middle">IChatClient</text>
     <rect x="1374" y="504" width="166" height="34" rx="8" fill="#ffffff" fill-opacity="0.08" stroke="#5eead4" stroke-opacity="0.6" stroke-width="1.5"/>
     <text class="miniMono" x="1457" y="528" fill="#e2e8f0" text-anchor="middle">Copilot</text>
-    <text class="label" x="1457" y="585">Any provider</text>
+    <text class="label" x="1457" y="585">Agents</text>
   </g>
 </svg>
