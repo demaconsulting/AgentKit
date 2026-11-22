@@ -681,7 +681,7 @@ public static partial class CopilotCli
     /// <param name="entry">The <c>PATH</c> entry, unquoted.</param>
     /// <param name="platform">The platform searched.</param>
     /// <returns><see langword="true"/> when the entry is searched.</returns>
-    private static bool IsSearchableDirectory(string entry, CopilotCliPlatform platform)
+    internal static bool IsSearchableDirectory(string entry, CopilotCliPlatform platform)
     {
         if (entry.Length == 0)
         {
@@ -703,7 +703,7 @@ public static partial class CopilotCli
     /// <param name="context">The search context.</param>
     /// <param name="name">The executable's name without extension.</param>
     /// <returns>The first match's full path, or <see langword="null"/> when there is none.</returns>
-    private static string? FindOnPath(CopilotCliSearchContext context, string name) =>
+    internal static string? FindOnPath(CopilotCliSearchContext context, string name) =>
         PathDirectories(context)
             .Select(directory => Path.Combine(directory, context.ExecutableName(name)))
             .FirstOrDefault(candidate => IsRunnable(candidate, context));

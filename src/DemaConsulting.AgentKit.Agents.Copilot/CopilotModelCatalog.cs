@@ -115,8 +115,9 @@ public sealed class CopilotModelCatalog : CachingModelCatalog
     /// </summary>
     internal const string SignInMessage =
         "The Copilot runtime could not list models: it is not connected or not signed in to GitHub. "
-        + "Sign it in with a GitHub token (CopilotRuntimeOptions' gitHubToken, COPILOT_GITHUB_TOKEN, GH_TOKEN "
-        + "or GITHUB_TOKEN) or 'gh auth login'; the Copilot CLI's own sign-in is not used.";
+        + "Sign it in with a GitHub token (CopilotRuntimeOptions' gitHubToken or gitHubTokenProvider, "
+        + "COPILOT_GITHUB_TOKEN, GH_TOKEN or GITHUB_TOKEN), 'copilot login' or 'gh auth login', with "
+        + "CopilotRuntimeOptions' gitHubHost for a GitHub Enterprise Cloud account.";
 
     /// <summary>
     ///     Reads the service's listing.

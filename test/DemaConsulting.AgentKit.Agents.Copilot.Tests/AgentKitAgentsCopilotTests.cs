@@ -519,12 +519,83 @@ public class AgentKitAgentsCopilotTests
         var failure = await Assert.ThrowsAsync<InvalidOperationException>(() => CopilotRuntime.VerifyStartedAsync(
             _ => Task.FromResult(status),
             _ => Task.FromResult(authentication),
+            new CopilotSignInPlan(),
             TestContext.Current.CancellationToken));
 
         // Assert
         Assert.Contains("not signed in", failure.Message, StringComparison.Ordinal);
         Assert.Contains("gh auth login", failure.Message, StringComparison.Ordinal);
         Assert.Contains("GH_TOKEN", failure.Message, StringComparison.Ordinal);
+        Assert.Contains("copilot login", failure.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves the runtime signs in from the first source that applies — the host's token, then a
+    ///     token in the environment, then the user's Copilot CLI sign-in, then the runtime's own
+    ///     fallbacks — with the GitHub host that belongs to the source, and that from the Copilot CLI
+    ///     the confined runtime receives only the token and the account's host.
+    /// </summary>
+    [Fact]
+    public async Task AgentKitAgentsCopilot_Runtime_SignIn_FollowsTheSourceOrderWithTheSourcesHost()
+    {
+        // Arrange: a user signed in to the Copilot CLI on a GitHub Enterprise Cloud host
+        using var machine = new SignInMachine();
+        var none = new System.Collections.Hashtable { ["PATH"] = "/usr/bin" };
+        var environmentToken = new System.Collections.Hashtable { ["PATH"] = "/usr/bin", ["GH_TOKEN"] = "gho_environment" };
+
+        // Act
+        var explicitToken = await machine.ResolveAsync(new CopilotRuntimeOptions(machine.Data, gitHubToken: "gho_host", gitHubHost: "github.com"), environmentToken);
+        var environment = await machine.ResolveAsync(new CopilotRuntimeOptions(machine.Data), environmentToken);
+        var copilotCli = await machine.ResolveAsync(new CopilotRuntimeOptions(machine.Data), none);
+        var turnedOff = await machine.ResolveAsync(new CopilotRuntimeOptions(machine.Data, useCopilotCliSignIn: false), none);
+        var clientOptions = CopilotRuntime.BuildClientOptions(new CopilotRuntimeOptions(machine.Data), machine.Data, none, "/usr/bin/copilot", copilotCli);
+
+        // Assert: the order
+        Assert.Equal(CopilotSignInSource.GitHubToken, explicitToken.Source);
+        Assert.Equal("github.com", explicitToken.HostName);
+        Assert.Equal(CopilotSignInSource.EnvironmentVariable, environment.Source);
+        Assert.Null(environment.Token);
+        Assert.Equal(CopilotSignInSource.CopilotCli, copilotCli.Source);
+        Assert.Null(turnedOff.Source);
+        Assert.Equal(1, machine.HelpersCreated);
+
+        // Assert: the confined runtime gets the Copilot CLI's token and host, in Empty mode, nothing else
+        Assert.Equal(SignInMachine.Token, clientOptions.GitHub.Token);
+        Assert.Equal(CopilotClientMode.Empty, clientOptions.Mode);
+        var connection = Assert.IsType<SpawnedStdioRuntimeConnection>(clientOptions.Runtime);
+        Assert.Equal("example.ghe.com", connection.Environment!["COPILOT_GH_HOST"]);
+        Assert.Equal(machine.Data, connection.BaseDirectory);
+        Assert.Equal("""{"loggedInUsers":[{"host":"https://example.ghe.com","login":"octo_user"}],"lastLoggedInUser":{"host":"https://example.ghe.com","login":"octo_user"}}""", machine.HelperConfiguration);
+    }
+
+    /// <summary>
+    ///     Proves a runtime that no source signs in is refused with what each source found, in order,
+    ///     and without any token.
+    /// </summary>
+    [Fact]
+    public async Task AgentKitAgentsCopilot_Runtime_NoSourceSignsIn_RefusalListsWhatEachSourceFound()
+    {
+        // Arrange: the Copilot CLI sign-in turned off, no token anywhere, no gh on PATH
+        using var machine = new SignInMachine();
+        var plan = await machine.ResolveAsync(
+            new CopilotRuntimeOptions(machine.Data, useCopilotCliSignIn: false),
+            new System.Collections.Hashtable { ["PATH"] = "/usr/bin" });
+        var status = new GetStatusResponse { Version = "1.0.114", ProtocolVersion = 4 };
+        var authentication = new GetAuthStatusResponse { IsAuthenticated = false, StatusMessage = "Not authenticated" };
+
+        // Act
+        var failure = await Assert.ThrowsAsync<InvalidOperationException>(() => CopilotRuntime.VerifyStartedAsync(
+            _ => Task.FromResult(status),
+            _ => Task.FromResult(authentication),
+            plan,
+            TestContext.Current.CancellationToken));
+
+        // Assert
+        Assert.Contains("1. gitHubToken / gitHubTokenProvider: not supplied.", failure.Message, StringComparison.Ordinal);
+        Assert.Contains("2. COPILOT_GITHUB_TOKEN, GH_TOKEN, GITHUB_TOKEN: none set.", failure.Message, StringComparison.Ordinal);
+        Assert.Contains("3. Copilot CLI sign-in: turned off by the host", failure.Message, StringComparison.Ordinal);
+        Assert.Contains("was not found on PATH", failure.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain(SignInMachine.Token, failure.Message, StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -835,6 +906,132 @@ public class AgentKitAgentsCopilotTests
             ArgumentNullException.ThrowIfNull(request);
             Requests.Add(request);
             return Task.FromResult(Record);
+        }
+    }
+
+    /// <summary>
+    ///     A machine whose user signed in to the Copilot CLI on a GitHub Enterprise Cloud host, with a
+    ///     fake helper runtime that reports that account and its token. Its folders live under the system
+    ///     temporary folder and are deleted when disposed.
+    /// </summary>
+    private sealed class SignInMachine : IDisposable, ICopilotSignInHelper
+    {
+        /// <summary>
+        ///     The token the fake helper reports for the account.
+        /// </summary>
+        internal const string Token = "gho_SYSTEM_TEST_0123456789abcdef0123456";
+
+        /// <summary>
+        ///     The machine's root folder.
+        /// </summary>
+        private readonly string _root = Path.Combine(Path.GetTempPath(), "agentkit-copilot-system-tests", Guid.NewGuid().ToString("N"));
+
+        /// <summary>
+        ///     The home of the helper created last.
+        /// </summary>
+        private string? _helperHome;
+
+        /// <summary>
+        ///     Initializes a new instance of the <see cref="SignInMachine"/> class, writing the user's
+        ///     Copilot CLI configuration.
+        /// </summary>
+        public SignInMachine()
+        {
+            Directory.CreateDirectory(Path.Combine(Profile, ".copilot"));
+            Directory.CreateDirectory(Data);
+            File.WriteAllText(
+                Path.Combine(Profile, ".copilot", "config.json"),
+                """
+                {
+                  "mcpServers": { "probe": {} },
+                  "loggedInUsers": [ { "host": "https://example.ghe.com", "login": "octo_user" } ],
+                  "lastLoggedInUser": { "host": "https://example.ghe.com", "login": "octo_user" }
+                }
+                """);
+        }
+
+        /// <summary>
+        ///     Gets the AgentKit data directory.
+        /// </summary>
+        internal string Data => Path.Combine(_root, "data");
+
+        /// <summary>
+        ///     Gets how many helper runtimes were created.
+        /// </summary>
+        internal int HelpersCreated { get; private set; }
+
+        /// <summary>
+        ///     Gets the helper home's <c>config.json</c> as the last helper found it.
+        /// </summary>
+        internal string? HelperConfiguration { get; private set; }
+
+        /// <summary>
+        ///     Gets the user's profile folder.
+        /// </summary>
+        private string Profile => Path.Combine(_root, "profile");
+
+        /// <summary>
+        ///     Resolves the sign-in on this machine.
+        /// </summary>
+        /// <param name="options">The host's options.</param>
+        /// <param name="hostEnvironment">The host's environment.</param>
+        /// <returns>The plan.</returns>
+        internal Task<CopilotSignInPlan> ResolveAsync(CopilotRuntimeOptions options, System.Collections.IDictionary hostEnvironment)
+        {
+            var context = new CopilotSignInContext(
+                new FakeCopilotCliMachine().Context(CopilotCliPlatform.Linux, "/usr/bin"),
+                Profile,
+                () => Directory.CreateDirectory(Path.Combine(_root, "helper-" + Guid.NewGuid().ToString("N"))).FullName,
+                clientOptions =>
+                {
+                    HelpersCreated++;
+                    _helperHome = Assert.IsType<SpawnedStdioRuntimeConnection>(clientOptions.Runtime).BaseDirectory;
+                    return this;
+                },
+                CopilotSignIn.DeleteHelperHome,
+                TimeSpan.FromMinutes(1));
+            return CopilotSignIn.ResolveAsync(
+                options,
+                Data,
+                hostEnvironment,
+                new CopilotRuntimeLaunch(CopilotRuntimeSource.InstalledCli, "/usr/bin/copilot", null),
+                context,
+                TestContext.Current.CancellationToken);
+        }
+
+        /// <inheritdoc/>
+        public async Task StartAsync(CancellationToken cancellationToken) =>
+            HelperConfiguration = await File.ReadAllTextAsync(Path.Combine(_helperHome!, "config.json"), cancellationToken);
+
+        /// <inheritdoc/>
+        public Task<GetAuthStatusResponse> GetAuthStatusAsync(CancellationToken cancellationToken) =>
+            Task.FromResult(new GetAuthStatusResponse
+            {
+                IsAuthenticated = true,
+                AuthType = "user",
+                Host = "https://example.ghe.com",
+                Login = "octo_user",
+            });
+
+        /// <inheritdoc/>
+        public Task<IList<AccountAllUsers>> GetAllUsersAsync(CancellationToken cancellationToken) =>
+            Task.FromResult<IList<AccountAllUsers>>(
+            [
+                new AccountAllUsers { AuthInfo = new AuthInfoUser { Host = "https://example.ghe.com", Login = "octo_user" }, Token = Token },
+            ]);
+
+        /// <inheritdoc/>
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
+        /// <summary>
+        ///     Deletes the machine's folders.
+        /// </summary>
+        public void Dispose()
+        {
+            if (Directory.Exists(_root))
+            {
+                Directory.Delete(_root, recursive: true);
+            }
         }
     }
 }

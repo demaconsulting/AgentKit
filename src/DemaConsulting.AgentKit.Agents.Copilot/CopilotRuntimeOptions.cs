@@ -13,10 +13,20 @@ namespace DemaConsulting.AgentKit.Agents.Copilot;
 ///     mode, the environment its process receives, its plugin directories, extensions, installation
 ///     and model handlers and its session filesystem are all decided by <see cref="CopilotRuntime"/>,
 ///     because each could hand a confined agent capability its host never reviewed. What remains here
-///     is the data directory, a GitHub token, host-side diagnostics, and the choice of runtime
+///     is the data directory, how the runtime signs in to GitHub (a token or token provider, the GitHub
+///     host, and whether the user's Copilot CLI sign-in may be used), host-side diagnostics, and the
+///     choice of runtime
 ///     executable — the installed Copilot CLI (the default) or the runtime the SDK bundles. That choice
 ///     is the host's code, never the ambient environment: <c>COPILOT_CLI_PATH</c> is withheld from the
 ///     runtime and ignored by discovery, and either executable runs under the same confinement.
+///     </para>
+///     <para>
+///     <b>Signing in.</b> <see cref="CopilotRuntime.StartAsync"/> uses the first source that applies:
+///     the host's <see cref="GitHubToken"/> or <see cref="GitHubTokenProvider"/>; a token in
+///     <c>COPILOT_GITHUB_TOKEN</c>, <c>GH_TOKEN</c> or <c>GITHUB_TOKEN</c>; the user's Copilot CLI
+///     sign-in, unless <see cref="UseCopilotCliSignIn"/> is <see langword="false"/>; and finally the
+///     runtime's own fallbacks, a sign-in stored in the data directory and the GitHub CLI. The order
+///     matches the Copilot CLI's own, so the runtime signs in as <c>copilot</c> would in the same shell.
 ///     </para>
 ///     <para>
 ///     Instances are immutable after construction and are safe for concurrent use.
@@ -24,9 +34,9 @@ namespace DemaConsulting.AgentKit.Agents.Copilot;
 /// </remarks>
 /// <example>
 ///     <para>
-///     Options for a runtime that keeps its state under the application's local data and
-///     authenticates with a token from the environment, falling back to the signed-in GitHub CLI
-///     user when none is set. The runtime is the Copilot CLI installed on the machine.
+///     Options for a runtime that keeps its state under the application's local data and signs in
+///     with a token from the application's own setting, or, when none is set, as the user signed in to
+///     the Copilot CLI or the GitHub CLI. The runtime is the Copilot CLI installed on the machine.
 ///     </para>
 ///     <code>
 ///     var options = new CopilotRuntimeOptions(
@@ -48,6 +58,18 @@ namespace DemaConsulting.AgentKit.Agents.Copilot;
 ///     var pinned = new CopilotRuntimeOptions(dataDirectory, cliPath: @"C:\Tools\copilot\copilot.exe");
 ///     var bundled = new CopilotRuntimeOptions(dataDirectory, runtimeSource: CopilotRuntimeSource.Bundled);
 ///     </code>
+///     <para>
+///     Options for a GitHub Enterprise Cloud account whose tokens the application refreshes itself,
+///     through a token provider the runtime calls whenever it needs a token for the host.
+///     </para>
+///     <code>
+///     public CopilotRuntimeOptions CreateEnterpriseOptions(string dataDirectory, Func&lt;string, CancellationToken, Task&lt;string&gt;&gt; fetchToken) =>
+///         new(
+///             dataDirectory,
+///             gitHubHost: "example.ghe.com",
+///             gitHubTokenProvider: async (request, cancellationToken) =>
+///                 new CopilotGitHubToken(await fetchToken(request.Host, cancellationToken)));
+///     </code>
 /// </example>
 public sealed class CopilotRuntimeOptions
 {
@@ -63,11 +85,12 @@ public sealed class CopilotRuntimeOptions
     ///     each concurrently running runtime its own.
     /// </param>
     /// <param name="gitHubToken">
-    ///     A GitHub token to authenticate with. When <see langword="null"/>, empty or whitespace, the
-    ///     runtime authenticates as the signed-in user: from <c>COPILOT_GITHUB_TOKEN</c>,
-    ///     <c>GH_TOKEN</c> or <c>GITHUB_TOKEN</c>, credentials stored in the data directory, or the
-    ///     GitHub CLI. When supplied, only this token is used. The Copilot CLI's own sign-in is not
-    ///     used, whichever runtime source runs.
+    ///     A GitHub token to sign in with. When supplied, only this token is used. When
+    ///     <see langword="null"/>, empty or whitespace, the runtime signs in from the next source that
+    ///     applies: <c>COPILOT_GITHUB_TOKEN</c>, <c>GH_TOKEN</c> or <c>GITHUB_TOKEN</c> in the
+    ///     application's environment; the user's Copilot CLI sign-in (see
+    ///     <paramref name="useCopilotCliSignIn"/>); a sign-in stored in the data directory; or the GitHub
+    ///     CLI. Must not be combined with <paramref name="gitHubTokenProvider"/>.
     /// </param>
     /// <param name="logLevel">The runtime's log level, or <see langword="null"/> for the runtime's default.</param>
     /// <param name="logger">A logger for the SDK's diagnostic output, or <see langword="null"/> for none.</param>
@@ -84,11 +107,35 @@ public sealed class CopilotRuntimeOptions
     ///     ending in <c>.js</c> (the npm package's <c>npm-loader.js</c>) is run with <c>node</c> from
     ///     <c>PATH</c>.
     /// </param>
+    /// <param name="gitHubHost">
+    ///     The GitHub host to sign in to, for a GitHub Enterprise Cloud account: <c>example.ghe.com</c> or
+    ///     <c>https://example.ghe.com</c>. <see langword="null"/>, empty or whitespace leaves the host to
+    ///     the sign-in source: <c>COPILOT_GH_HOST</c> in the application's environment, the Copilot CLI
+    ///     account's host, or <c>github.com</c>. A token or token provider is used with this host; the
+    ///     Copilot CLI sign-in is used only when its account is on this host. Only an https host without
+    ///     a path, query, user name or port is accepted.
+    /// </param>
+    /// <param name="gitHubTokenProvider">
+    ///     A callback that supplies GitHub tokens, so a host that can refresh its token (an OAuth app, a
+    ///     secret store) never hands the runtime an expired one. AgentKit asks it once when the runtime
+    ///     starts, and the runtime asks again for each session and whenever a session's token is about
+    ///     to expire. <see langword="null"/> for none. Must not be combined with
+    ///     <paramref name="gitHubToken"/>. The callback may be called concurrently, from any thread.
+    /// </param>
+    /// <param name="useCopilotCliSignIn">
+    ///     Whether the user's Copilot CLI sign-in (<c>copilot login</c>) may be used when neither the host
+    ///     nor the environment supplies a token; <see langword="true"/> by default. AgentKit then reads
+    ///     only the signed-in account's host and login from the CLI's configuration, and obtains its token
+    ///     through the Copilot CLI itself; the runtime's data directory stays private. Pass
+    ///     <see langword="false"/> to sign in only from a token, the data directory or the GitHub CLI.
+    /// </param>
     /// <exception cref="ArgumentNullException"><paramref name="dataDirectory"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException">
     ///     <paramref name="dataDirectory"/> is empty or whitespace, or is not a valid path; or
     ///     <paramref name="cliPath"/> is given with <see cref="CopilotRuntimeSource.Bundled"/>, is not
-    ///     fully qualified, is not a valid path, or names a batch file.
+    ///     fully qualified, is not a valid path, or names a batch file; or <paramref name="gitHubHost"/> is
+    ///     not an https host name or URL without a path, query, fragment, user name or port; or both
+    ///     <paramref name="gitHubToken"/> and <paramref name="gitHubTokenProvider"/> are given.
     /// </exception>
     /// <exception cref="ArgumentOutOfRangeException">
     ///     <paramref name="runtimeSource"/> is not a defined <see cref="CopilotRuntimeSource"/> value.
@@ -99,7 +146,10 @@ public sealed class CopilotRuntimeOptions
         CopilotLogLevel? logLevel = null,
         ILogger? logger = null,
         CopilotRuntimeSource runtimeSource = CopilotRuntimeSource.InstalledCli,
-        string? cliPath = null)
+        string? cliPath = null,
+        string? gitHubHost = null,
+        Func<CopilotGitHubTokenRequest, CancellationToken, Task<CopilotGitHubToken>>? gitHubTokenProvider = null,
+        bool useCopilotCliSignIn = true)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(dataDirectory);
         if (!Enum.IsDefined(runtimeSource))
@@ -108,6 +158,14 @@ public sealed class CopilotRuntimeOptions
                 nameof(runtimeSource),
                 runtimeSource,
                 "The Copilot runtime source must be InstalledCli or Bundled.");
+        }
+
+        // One token source from the host: with both, one of them would be silently ignored
+        if (!string.IsNullOrWhiteSpace(gitHubToken) && gitHubTokenProvider is not null)
+        {
+            throw new ArgumentException(
+                "Pass either a GitHub token or a GitHub token provider, not both: the runtime signs in with one.",
+                nameof(gitHubTokenProvider));
         }
 
         // Resolved now, so the directory a runtime uses does not depend on the current directory at
@@ -129,6 +187,9 @@ public sealed class CopilotRuntimeOptions
         Logger = logger;
         RuntimeSource = runtimeSource;
         CliPath = NormalizeCliPath(cliPath, runtimeSource);
+        GitHubHost = CopilotSignIn.NormalizeHost(gitHubHost, nameof(gitHubHost));
+        GitHubTokenProvider = gitHubTokenProvider;
+        UseCopilotCliSignIn = useCopilotCliSignIn;
     }
 
     /// <summary>
@@ -163,6 +224,24 @@ public sealed class CopilotRuntimeOptions
     ///     <see cref="CopilotRuntimeSource.Bundled"/>).
     /// </summary>
     public string? CliPath { get; }
+
+    /// <summary>
+    ///     Gets the GitHub host to sign in to, as an https URL without a path such as
+    ///     <c>https://example.ghe.com</c>, or <see langword="null"/> to leave the host to the sign-in
+    ///     source.
+    /// </summary>
+    public string? GitHubHost { get; }
+
+    /// <summary>
+    ///     Gets the callback that supplies GitHub tokens, or <see langword="null"/> for none.
+    /// </summary>
+    public Func<CopilotGitHubTokenRequest, CancellationToken, Task<CopilotGitHubToken>>? GitHubTokenProvider { get; }
+
+    /// <summary>
+    ///     Gets a value indicating whether the user's Copilot CLI sign-in may be used when neither the host
+    ///     nor the environment supplies a token.
+    /// </summary>
+    public bool UseCopilotCliSignIn { get; }
 
     /// <summary>
     ///     Validates and normalizes the CLI path a host passed.

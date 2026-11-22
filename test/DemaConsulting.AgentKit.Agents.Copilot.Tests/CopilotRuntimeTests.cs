@@ -864,7 +864,7 @@ public class CopilotRuntimeTests
         Assert.Contains(cause.Message, failure.Message, StringComparison.Ordinal);
         Assert.Contains("PackageReference to Microsoft.Copilot.SDK", failure.Message, StringComparison.Ordinal);
         Assert.Contains(
-            "CopilotRuntimeOptions, COPILOT_GITHUB_TOKEN, GH_TOKEN, GITHUB_TOKEN or the signed-in GitHub CLI user",
+            "gitHubToken or gitHubTokenProvider, COPILOT_GITHUB_TOKEN, GH_TOKEN or GITHUB_TOKEN, the user's Copilot CLI sign-in",
             failure.Message,
             StringComparison.Ordinal);
         Assert.Same(nullMessage, nullFailure.InnerException);
@@ -1360,8 +1360,8 @@ public class CopilotRuntimeTests
     }
 
     /// <summary>
-    ///     Proves a runtime that started but is not signed in is refused, with the runtime's own status
-    ///     and every way to sign it in, and with the Copilot CLI's own sign-in named as not used.
+    ///     Proves a runtime that started but is not signed in is refused, with the runtime's own status,
+    ///     every sign-in source AgentKit tried with what it found, and every way to sign it in.
     /// </summary>
     [Fact]
     public async Task CopilotRuntime_VerifyStarted_Unauthenticated_IsRefusedWithSignInGuidance()
@@ -1369,20 +1369,30 @@ public class CopilotRuntimeTests
         // Arrange
         var status = new GetStatusResponse { Version = "1.0.113", ProtocolVersion = 4 };
         var authentication = new GetAuthStatusResponse { IsAuthenticated = false, StatusMessage = "Not authenticated" };
+        var plan = new CopilotSignInPlan
+        {
+            EnvironmentFinding = "none set.",
+            CopilotCliFinding = "no Copilot CLI configuration found.",
+            FallbackFinding = "left to the runtime.",
+        };
 
         // Act
         var failure = await Assert.ThrowsAsync<InvalidOperationException>(() => CopilotRuntime.VerifyStartedAsync(
             _ => Task.FromResult(status),
             _ => Task.FromResult(authentication),
+            plan,
             TestContext.Current.CancellationToken));
 
         // Assert
         Assert.Contains("Not authenticated", failure.Message, StringComparison.Ordinal);
-        Assert.Contains("Copilot CLI's own sign-in is not used", failure.Message, StringComparison.Ordinal);
-        Assert.Contains("gitHubToken", failure.Message, StringComparison.Ordinal);
-        Assert.Contains("COPILOT_GITHUB_TOKEN, GH_TOKEN or GITHUB_TOKEN", failure.Message, StringComparison.Ordinal);
+        Assert.Contains("1. gitHubToken / gitHubTokenProvider: not supplied.", failure.Message, StringComparison.Ordinal);
+        Assert.Contains("2. COPILOT_GITHUB_TOKEN, GH_TOKEN, GITHUB_TOKEN: none set.", failure.Message, StringComparison.Ordinal);
+        Assert.Contains("3. Copilot CLI sign-in: no Copilot CLI configuration found.", failure.Message, StringComparison.Ordinal);
+        Assert.Contains("4. Runtime fallbacks", failure.Message, StringComparison.Ordinal);
+        Assert.Contains("copilot login", failure.Message, StringComparison.Ordinal);
         Assert.Contains("gh auth login", failure.Message, StringComparison.Ordinal);
-        Assert.Contains("COPILOT_GH_HOST", failure.Message, StringComparison.Ordinal);
+        Assert.Contains("gitHubHost", failure.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("is not used", failure.Message, StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -1399,10 +1409,12 @@ public class CopilotRuntimeTests
         var verified = await CopilotRuntime.VerifyStartedAsync(
             _ => Task.FromResult(status),
             _ => Task.FromResult(authentication),
+            new CopilotSignInPlan(),
             TestContext.Current.CancellationToken);
 
         // Assert
-        Assert.Same(status, verified);
+        Assert.Same(status, verified.Status);
+        Assert.Same(authentication, verified.Authentication);
     }
 
     /// <summary>
@@ -1428,6 +1440,214 @@ public class CopilotRuntimeTests
         Assert.Null(bare.CliPath);
         Assert.Equal(string.Empty, bare.RuntimeVersion);
         Assert.Equal(0, bare.ProtocolVersion);
+    }
+
+    /// <summary>
+    ///     Proves the runtime reports how it signed in — the source classified from the runtime's own
+    ///     report, and the host and login it reported — and that a runtime built without a sign-in
+    ///     reports none.
+    /// </summary>
+    [Fact]
+    public async Task CopilotRuntime_Properties_ReportTheSignIn()
+    {
+        // Arrange
+        using var directory = new TemporaryDirectory();
+        var plan = new CopilotSignInPlan { Source = CopilotSignInSource.CopilotCli, Token = "gho_token", HostName = "example.ghe.com" };
+        var authentication = new GetAuthStatusResponse { IsAuthenticated = true, AuthType = "token", Host = "https://example.ghe.com", Login = "octo_user" };
+
+        // Act
+        await using var signedIn = new CopilotRuntime(NewClient(directory.Path), directory.Path, signIn: plan, authentication: authentication);
+        await using var bare = new CopilotRuntime(NewClient(directory.Path), directory.Path);
+
+        // Assert
+        Assert.Equal(CopilotSignInSource.CopilotCli, signedIn.SignInSource);
+        Assert.Equal("https://example.ghe.com", signedIn.GitHubHost);
+        Assert.Equal("octo_user", signedIn.GitHubLogin);
+        Assert.Equal(CopilotSignInSource.Unknown, bare.SignInSource);
+        Assert.Null(bare.GitHubHost);
+        Assert.Null(bare.GitHubLogin);
+    }
+
+    /// <summary>
+    ///     Proves the client options carry the resolved sign-in: its token, and its host as the
+    ///     runtime's <c>COPILOT_GH_HOST</c>, overriding the host environment's.
+    /// </summary>
+    [Fact]
+    public void CopilotRuntime_BuildClientOptions_SignInPlan_CarriesTheTokenAndHost()
+    {
+        // Arrange
+        using var directory = new TemporaryDirectory();
+        var plan = new CopilotSignInPlan { Source = CopilotSignInSource.CopilotCli, Token = "gho_cli", HostName = "example.ghe.com" };
+        var host = new Hashtable { ["COPILOT_GH_HOST"] = "other.ghe.com", ["PATH"] = "/usr/bin" };
+
+        // Act
+        var clientOptions = CopilotRuntime.BuildClientOptions(new CopilotRuntimeOptions(directory.Path), directory.Path, host, signIn: plan);
+
+        // Assert
+        Assert.Equal("gho_cli", clientOptions.GitHub.Token);
+        var environment = Assert.IsType<SpawnedStdioRuntimeConnection>(clientOptions.Runtime).Environment!;
+        Assert.Equal("example.ghe.com", environment["COPILOT_GH_HOST"]);
+        Assert.Equal(CopilotClientMode.Empty, clientOptions.Mode);
+    }
+
+    /// <summary>
+    ///     Proves a sign-in that hands over no token and names no host leaves the runtime's environment
+    ///     exactly as before and sets no token, so the runtime's own sources decide.
+    /// </summary>
+    [Fact]
+    public void CopilotRuntime_BuildClientOptions_NoTokenOrHost_LeavesTheEnvironmentUnchanged()
+    {
+        // Arrange
+        using var directory = new TemporaryDirectory();
+        var host = new Hashtable { ["COPILOT_GH_HOST"] = "other.ghe.com", ["GH_TOKEN"] = "gh", ["PATH"] = "/usr/bin" };
+
+        // Act
+        var clientOptions = CopilotRuntime.BuildClientOptions(
+            new CopilotRuntimeOptions(directory.Path),
+            directory.Path,
+            host,
+            signIn: new CopilotSignInPlan { Source = CopilotSignInSource.EnvironmentVariable });
+
+        // Assert
+        Assert.Null(clientOptions.GitHub.Token);
+        Assert.Equal(
+            CopilotRuntime.BuildRuntimeEnvironment(host).OrderBy(entry => entry.Key, StringComparer.Ordinal),
+            Assert.IsType<SpawnedStdioRuntimeConnection>(clientOptions.Runtime).Environment!.OrderBy(entry => entry.Key, StringComparer.Ordinal));
+    }
+
+    /// <summary>
+    ///     Proves the options' GitHub host is normalized from each accepted form, and that a blank host
+    ///     means none.
+    /// </summary>
+    /// <param name="host">The host as passed.</param>
+    /// <param name="expected">The normalized host, or <see langword="null"/>.</param>
+    [Theory]
+    [InlineData("example.ghe.com", "https://example.ghe.com")]
+    [InlineData("https://example.ghe.com", "https://example.ghe.com")]
+    [InlineData("https://example.ghe.com/", "https://example.ghe.com")]
+    [InlineData("  ", null)]
+    [InlineData(null, null)]
+    public void CopilotRuntimeOptions_GitHubHost_IsNormalized(string? host, string? expected)
+    {
+        // Act
+        var options = new CopilotRuntimeOptions("copilot-runtime", gitHubHost: host);
+
+        // Assert
+        Assert.Equal(expected, options.GitHubHost);
+    }
+
+    /// <summary>
+    ///     Proves a GitHub host that is not an https host without a path, query, user name or port is
+    ///     refused, naming the parameter.
+    /// </summary>
+    /// <param name="host">The host as passed.</param>
+    [Theory]
+    [InlineData("http://example.ghe.com")]
+    [InlineData("https://example.ghe.com/api")]
+    [InlineData("https://example.ghe.com:8443")]
+    [InlineData("https://user@example.ghe.com")]
+    public void CopilotRuntimeOptions_InvalidGitHubHost_Throws(string host)
+    {
+        // Act
+        var failure = Assert.Throws<ArgumentException>(() => new CopilotRuntimeOptions("copilot-runtime", gitHubHost: host));
+
+        // Assert
+        Assert.Equal("gitHubHost", failure.ParamName);
+    }
+
+    /// <summary>
+    ///     Proves a token and a token provider together are refused, since one of them would be ignored.
+    /// </summary>
+    [Fact]
+    public void CopilotRuntimeOptions_TokenAndProvider_Throws()
+    {
+        // Act
+        var failure = Assert.Throws<ArgumentException>(() => new CopilotRuntimeOptions(
+            "copilot-runtime",
+            gitHubToken: "gho_token",
+            gitHubTokenProvider: (_, _) => Task.FromResult(new CopilotGitHubToken("gho_token"))));
+
+        // Assert
+        Assert.Equal("gitHubTokenProvider", failure.ParamName);
+    }
+
+    /// <summary>
+    ///     Proves the sign-in options default to no host, no provider and the Copilot CLI sign-in
+    ///     allowed, and that each value passed is kept.
+    /// </summary>
+    [Fact]
+    public void CopilotRuntimeOptions_SignInOptions_DefaultAndKeepTheirValues()
+    {
+        // Arrange
+        Func<CopilotGitHubTokenRequest, CancellationToken, Task<CopilotGitHubToken>> provider =
+            (_, _) => Task.FromResult(new CopilotGitHubToken("gho_token"));
+
+        // Act
+        var defaults = new CopilotRuntimeOptions("copilot-runtime");
+        var chosen = new CopilotRuntimeOptions("copilot-runtime", gitHubTokenProvider: provider, useCopilotCliSignIn: false);
+
+        // Assert
+        Assert.Null(defaults.GitHubHost);
+        Assert.Null(defaults.GitHubTokenProvider);
+        Assert.True(defaults.UseCopilotCliSignIn);
+        Assert.Same(provider, chosen.GitHubTokenProvider);
+        Assert.False(chosen.UseCopilotCliSignIn);
+    }
+
+    /// <summary>
+    ///     Proves a session opened on a runtime started with a token provider gets a session provider,
+    ///     and one on a runtime without leaves the session's GitHub options untouched.
+    /// </summary>
+    [Fact]
+    public async Task CopilotRuntime_ApplySessionSignIn_SetsTheProviderOnlyWhenTheRuntimeHasOne()
+    {
+        // Arrange
+        using var directory = new TemporaryDirectory();
+        var plan = new CopilotSignInPlan
+        {
+            Source = CopilotSignInSource.GitHubTokenProvider,
+            Token = "gho_token",
+            Provider = (_, _) => Task.FromResult(new CopilotGitHubToken("gho_token")),
+        };
+        await using var withProvider = new CopilotRuntime(NewClient(directory.Path), directory.Path, signIn: plan);
+        await using var without = new CopilotRuntime(NewClient(directory.Path), directory.Path, signIn: new CopilotSignInPlan());
+        var create = new CreateSessionOptions();
+        var resume = new ResumeSessionOptions();
+        var untouched = new CreateSessionOptions();
+
+        // Act
+        withProvider.ApplySessionSignIn(create);
+        withProvider.ApplySessionSignIn(resume);
+        without.ApplySessionSignIn(untouched);
+
+        // Assert
+        Assert.NotNull(create.GitHub.TokenProvider);
+        Assert.NotNull(resume.GitHub.TokenProvider);
+        Assert.Null(create.GitHub.Token);
+        Assert.Null(untouched.GitHub.TokenProvider);
+        Assert.Null(untouched.GitHub.Token);
+    }
+
+    /// <summary>
+    ///     Proves a provider's token must not be blank and must report more than one hour of life, and
+    ///     that its string form never carries the token.
+    /// </summary>
+    [Fact]
+    public void CopilotGitHubToken_Constructor_ValidatesAndRedacts()
+    {
+        // Act
+        var token = new CopilotGitHubToken("gho_SECRET_VALUE", TimeSpan.FromHours(2));
+        var unknown = new CopilotGitHubToken("gho_SECRET_VALUE");
+
+        // Assert
+        Assert.Throws<ArgumentException>(() => new CopilotGitHubToken("  "));
+        Assert.Throws<ArgumentNullException>(() => new CopilotGitHubToken(null!));
+        Assert.Throws<ArgumentOutOfRangeException>(() => new CopilotGitHubToken("gho_x", TimeSpan.FromHours(1)));
+        Assert.Equal("gho_SECRET_VALUE", token.Token);
+        Assert.Equal(TimeSpan.FromHours(2), token.ExpiresIn);
+        Assert.Null(unknown.ExpiresIn);
+        Assert.DoesNotContain("SECRET_VALUE", token.ToString(), StringComparison.Ordinal);
+        Assert.DoesNotContain("SECRET_VALUE", unknown.ToString(), StringComparison.Ordinal);
     }
 
     /// <summary>

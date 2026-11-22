@@ -357,7 +357,8 @@ public sealed class CopilotModelCatalogTests
         // Assert
         Assert.Equal(CopilotModelCatalog.SignInMessage, failure.Message);
         Assert.Contains("gh auth login", failure.Message, StringComparison.Ordinal);
-        Assert.Contains("Copilot CLI's own sign-in is not used", failure.Message, StringComparison.Ordinal);
+        Assert.Contains("copilot login", failure.Message, StringComparison.Ordinal);
+        Assert.Contains("gitHubHost", failure.Message, StringComparison.Ordinal);
         Assert.IsType<InvalidOperationException>(failure.InnerException, exactMatch: false);
     }
 
