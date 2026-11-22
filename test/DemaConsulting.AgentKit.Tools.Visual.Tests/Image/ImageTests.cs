@@ -42,8 +42,63 @@ public class ImageTests
 
         // Assert: every tool the family promises, under the one family prefix
         Assert.Equal(
-            [ImageReadTool.ToolName, ImageCropTool.ToolName, ImageAutoCropTool.ToolName],
+            [ImageReadTool.ToolName, ImageCropTool.ToolName, ImageAutoCropTool.ToolName, ImageViewTool.ToolName],
             tools.Select(tool => tool.Name));
+    }
+
+    /// <summary>
+    ///     Proves a vector document the read tool refuses is drawn by the view tool, which the
+    ///     read tool's refusal names.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task Image_Family_VectorDocument_IsDrawnByTheToolTheReadRefusalNames()
+    {
+        // Arrange: the family composed over a permitted location holding an SVG
+        using var fixture = new TempDirectoryFixture();
+        TempDirectoryFixture.WriteFile(fixture.Root, "figure.svg", Rendering.RenderSamples.Svg);
+        var tools = Compose(fixture.Root);
+
+        // Act: read it, then view it by the tool the refusal names
+        var refusal = Assert.IsType<string>(await InvokeAsync(
+            tools,
+            ImageReadTool.ToolName,
+            new AIFunctionArguments { ["path"] = "figure.svg" }));
+        var viewed = await InvokeAsync(
+            tools,
+            ImageViewTool.ToolName,
+            new AIFunctionArguments { ["path"] = "figure.svg" });
+
+        // Assert: the read is refused naming the view tool, and the view returns a PNG picture
+        Assert.Contains("'" + ImageViewTool.ToolName + "'", refusal, StringComparison.Ordinal);
+        var content = Assert.IsType<List<AIContent>>(viewed);
+        Assert.Equal(ImageMediaTypes.Png, Assert.IsType<DataContent>(content[1]).MediaType);
+    }
+
+    /// <summary>
+    ///     Proves a document whose reference escapes the policy is not drawn by the view tool.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task Image_Family_ViewedDocumentReferencingOutsideThePolicy_IsNotDrawn()
+    {
+        // Arrange: a permitted SVG embedding a picture from outside the policy's location
+        using var fixture = new TempDirectoryFixture();
+        TempDirectoryFixture.WriteBytes(fixture.Outside, "secret.png", ImageTestImages.Png(20, 20));
+        TempDirectoryFixture.WriteFile(
+            fixture.Root,
+            "figure.svg",
+            Rendering.RenderSamples.SvgWithImage("../outside/secret.png"));
+        var tools = Compose(fixture.Root);
+
+        // Act: view it
+        var result = await InvokeAsync(
+            tools,
+            ImageViewTool.ToolName,
+            new AIFunctionArguments { ["path"] = "figure.svg" });
+
+        // Assert: a report the model can act on, not a picture with a hole in it
+        Assert.StartsWith("Render failed (file-access-denied", Assert.IsType<string>(result), StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -424,7 +479,7 @@ public class ImageTests
     [Fact]
     public async Task Image_Family_UnsupportedType_IsRefusedWithRedirectWhereUseful()
     {
-        // Arrange: the family composed over a permitted location holding a vector-text file
+        // Arrange: the family composed over a permitted location holding a vector file
         using var fixture = new TempDirectoryFixture();
         var file = WriteBytes(fixture.Root, "diagram.svg", SampleBytes);
         var tools = Compose(fixture.Root);
@@ -435,10 +490,10 @@ public class ImageTests
             ImageReadTool.ToolName,
             new AIFunctionArguments { ["path"] = file });
 
-        // Assert: refused as an unsupported type and pointed at the tool that can read it
+        // Assert: refused as an unsupported type and pointed at the tool that draws it
         var text = Assert.IsType<string>(result);
         Assert.Contains("Denied (UnsupportedMediaType)", text, StringComparison.Ordinal);
-        Assert.Contains("text_file_read", text, StringComparison.Ordinal);
+        Assert.Contains("'" + ImageViewTool.ToolName + "'", text, StringComparison.Ordinal);
     }
 
     /// <summary>

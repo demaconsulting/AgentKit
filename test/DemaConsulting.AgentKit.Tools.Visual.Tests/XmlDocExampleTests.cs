@@ -23,6 +23,7 @@ public class XmlDocExampleTests
         XmlDocExampleVerifier.VerifyExamples(
             "DemaConsulting.AgentKit.Tools.Visual.xml",
             "DemaConsulting.AgentKit.Core",
+            "DemaConsulting.AgentKit.Tools.Visual",
             "DemaConsulting.AgentKit.Tools.Visual.Image",
             "Microsoft.Extensions.AI");
     }

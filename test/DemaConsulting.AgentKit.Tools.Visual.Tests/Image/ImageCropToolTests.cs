@@ -1037,7 +1037,7 @@ public class ImageCropToolTests
         // Assert: no tool name appears anywhere in the refusal
         var text = Assert.IsType<string>(result);
         Assert.DoesNotContain(ImageReadTool.ToolName, text, StringComparison.Ordinal);
-        Assert.DoesNotContain("text_file_read", text, StringComparison.Ordinal);
+        Assert.DoesNotContain(ImageViewTool.ToolName, text, StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -1090,17 +1090,16 @@ public class ImageCropToolTests
     }
 
     /// <summary>
-    ///     Proves an svg is refused exactly as the read tool refuses it.
+    ///     Proves an svg is refused stating what it is and naming no tool.
     /// </summary>
     /// <remarks>
-    ///     The regression guard for the family giving one answer to "what is this file". An
-    ///     <c>.svg</c> genuinely is text, so naming the text reader is a classification rather
-    ///     than a way around the refusal — and this tool delegates to the same map rather than
-    ///     inventing its own answer.
+    ///     An <c>.svg</c> is vector content with no pixels to cut. The view tool draws it, but
+    ///     only whole, which is not the region the model asked to examine, so the refusal names
+    ///     no tool — the basis every other region refusal follows.
     /// </remarks>
     /// <returns>A task that completes when the scenario has been verified.</returns>
     [Fact]
-    public async Task ImageCropTool_Crop_SvgFile_ReturnsDenialRedirectingToTextFileRead()
+    public async Task ImageCropTool_Crop_SvgFile_ReturnsDenialNamingNoTool()
     {
         // Arrange: a permitted .svg
         using var fixture = new TempDirectoryFixture();
@@ -1110,11 +1109,13 @@ public class ImageCropToolTests
         // Act: ask for a region of it
         var result = await InvokeAsync(tool, file, 0, 0, 4, 4);
 
-        // Assert: the same refusal the read tool composes, naming the reader for that content
+        // Assert: refused, stating the croppable types and naming no tool
         var text = Assert.IsType<string>(result);
         Assert.Contains("Denied (UnsupportedMediaType)", text, StringComparison.Ordinal);
-        Assert.Contains("is text and vector content", text, StringComparison.Ordinal);
-        Assert.Contains("text_file_read", text, StringComparison.Ordinal);
+        Assert.Contains("is vector content", text, StringComparison.Ordinal);
+        Assert.Contains("png, jpg and jpeg", text, StringComparison.Ordinal);
+        Assert.DoesNotContain(ImageViewTool.ToolName, text, StringComparison.Ordinal);
+        Assert.DoesNotContain("tool instead", text, StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -1135,7 +1136,7 @@ public class ImageCropToolTests
         // Assert: refused as unsupported, with no tool invented to send the model to
         var text = Assert.IsType<string>(result);
         Assert.Contains("Denied (UnsupportedMediaType)", text, StringComparison.Ordinal);
-        Assert.DoesNotContain("text_file_read", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("tool instead", text, StringComparison.Ordinal);
         Assert.DoesNotContain(ImageReadTool.ToolName, text, StringComparison.Ordinal);
     }
 

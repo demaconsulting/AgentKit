@@ -66,19 +66,21 @@ public class ImageMediaTypesTests
     }
 
     /// <summary>
-    ///     Proves an <c>.svg</c> file is refused with a redirect to the text file read tool.
+    ///     Proves an <c>.svg</c> file is refused with a redirect to the view tool, which draws
+    ///     vector content.
     /// </summary>
     [Fact]
-    public void ImageMediaTypes_DenyUnsupportedType_Svg_RedirectsToTextFileRead()
+    public void ImageMediaTypes_DenyUnsupportedType_Svg_RedirectsToImageView()
     {
-        // Act: refuse a vector-text file that a text tool, not this family, should read
+        // Act: refuse a vector file that the view tool of this same family draws
         var text = Assert.IsType<string>(ImageMediaTypes.DenyUnsupportedType("diagram.svg"));
 
-        // Assert: refused as an unsupported type, stating what the file is; naming the reader for
+        // Assert: refused as an unsupported type, stating what the file is; naming the tool for
         // that kind of content is a classification, not a prescribed way around the refusal
         Assert.Contains("Denied (UnsupportedMediaType)", text, StringComparison.Ordinal);
-        Assert.Contains("is text and vector content", text, StringComparison.Ordinal);
-        Assert.Contains("text_file_read", text, StringComparison.Ordinal);
+        Assert.Contains("is vector content", text, StringComparison.Ordinal);
+        Assert.Contains("'" + ImageViewTool.ToolName + "'", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("text_file_read", text, StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -92,7 +94,7 @@ public class ImageMediaTypesTests
 
         // Assert: refused as an unsupported type, and naming no tool a retry would only fail at
         Assert.Contains("Denied (UnsupportedMediaType)", text, StringComparison.Ordinal);
-        Assert.DoesNotContain("text_file_read", text, StringComparison.Ordinal);
+        Assert.DoesNotContain(ImageViewTool.ToolName, text, StringComparison.Ordinal);
         Assert.DoesNotContain("tool instead", text, StringComparison.Ordinal);
     }
 
@@ -220,24 +222,26 @@ public class ImageMediaTypesTests
     }
 
     /// <summary>
-    ///     Proves an <c>.svg</c> is refused exactly as the readable-type map refuses it.
+    ///     Proves an <c>.svg</c> region request is refused with its own refusal, naming no tool.
     /// </summary>
     /// <remarks>
-    ///     The family must give one answer to "what is this file". Delegating a type the family
-    ///     cannot read at all back to the readable-type refusal is what keeps the two in step.
+    ///     The view tool draws an <c>.svg</c>, but it returns the whole drawing, which is not the
+    ///     region the model asked to examine; naming it here would be a route to a different
+    ///     answer, so the refusal states what the file is and which types a region can be taken
+    ///     from, as every other region refusal does.
     /// </remarks>
     [Fact]
-    public void ImageMediaTypes_DenyNonCroppableType_Svg_RedirectsToTextFileRead()
+    public void ImageMediaTypes_DenyNonCroppableType_Svg_ReturnsDenialNamingNoTool()
     {
-        // Act: refuse a vector-text file through the croppable-type path
+        // Act: refuse a vector file through the croppable-type path
         var text = Assert.IsType<string>(ImageMediaTypes.DenyNonCroppableType("diagram.svg"));
 
-        // Assert: the identical refusal the readable-type path composes
-        Assert.Equal(
-            Assert.IsType<string>(ImageMediaTypes.DenyUnsupportedType("diagram.svg")),
-            text);
-        Assert.Contains("is text and vector content", text, StringComparison.Ordinal);
-        Assert.Contains("text_file_read", text, StringComparison.Ordinal);
+        // Assert: its own refusal, stating the croppable types and naming no tool
+        Assert.Contains("Denied (UnsupportedMediaType)", text, StringComparison.Ordinal);
+        Assert.Contains("is vector content", text, StringComparison.Ordinal);
+        Assert.Contains("png, jpg and jpeg", text, StringComparison.Ordinal);
+        Assert.DoesNotContain(ImageViewTool.ToolName, text, StringComparison.Ordinal);
+        Assert.DoesNotContain("tool instead", text, StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -253,7 +257,7 @@ public class ImageMediaTypesTests
         Assert.Equal(
             Assert.IsType<string>(ImageMediaTypes.DenyUnsupportedType("diagram.svgz")),
             text);
-        Assert.DoesNotContain("text_file_read", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("tool instead", text, StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -267,7 +271,7 @@ public class ImageMediaTypesTests
 
         // Assert: refused as unsupported, with no redirect invented
         Assert.Contains("Denied (UnsupportedMediaType)", text, StringComparison.Ordinal);
-        Assert.DoesNotContain("text_file_read", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("tool instead", text, StringComparison.Ordinal);
         Assert.DoesNotContain(ImageReadTool.ToolName, text, StringComparison.Ordinal);
     }
 

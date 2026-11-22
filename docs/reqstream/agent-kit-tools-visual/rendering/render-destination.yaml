@@ -1,0 +1,74 @@
+---
+# Software Unit Requirements for RenderDestination
+#
+# These requirements describe the design-level behavior of the RenderDestination unit.
+
+sections:
+  - title: AgentKitToolsVisual Requirements
+    sections:
+      - title: Rendering Requirements
+        sections:
+          - title: RenderDestination Requirements
+            requirements:
+              - id: AgentKitToolsVisual-Rendering-RenderDestination-MustBePng
+                title: >-
+                  The render destination shall refuse a destination whose name does not end in
+                  .png, before any policy decision is taken.
+                justification: |
+                  A rendering is always encoded as PNG; a file named for another format would hold
+                  PNG bytes under a name that says otherwise. The contradiction is in the request,
+                  so it is refused as a malformed request.
+                tests:
+                  - RenderDestination_TryResolve_NotPng_IsRefusedAsInvalidRequest
+
+              - id: AgentKitToolsVisual-Rendering-RenderDestination-WriteDecision
+                title: >-
+                  The render destination shall admit a destination only through the access
+                  policy's write decision, returning the policy's own refusal unchanged.
+                tags: [security]
+                justification: |
+                  The write decision alone keeps a read-wide, write-narrow policy meaningful, and
+                  the policy's refusal names the writable locations so the model can recover in one
+                  turn.
+                tests:
+                  - RenderDestination_TryResolve_ReadOnlyLocation_IsRefusedByTheWriteDecision
+
+              - id: AgentKitToolsVisual-Rendering-RenderDestination-NotADirectory
+                title: >-
+                  The render destination shall refuse a destination that names a directory.
+                justification: |
+                  Writing a picture over a directory is not a meaningful operation, and the model
+                  is told which mistake it made.
+                tests:
+                  - RenderDestination_TryResolve_Directory_IsRefused
+
+              - id: AgentKitToolsVisual-Rendering-RenderDestination-ParentMustExist
+                title: >-
+                  The render destination shall refuse a destination whose parent directory does not
+                  exist, and shall create no directory.
+                justification: |
+                  Silently creating a tree is a side effect no one asked for, and on a mistyped
+                  path it would scatter directories the agent then believes are real.
+                tests:
+                  - RenderDestination_TryResolve_MissingParent_IsRefusedWithoutCreatingIt
+
+              - id: AgentKitToolsVisual-Rendering-RenderDestination-ReplacesAtomically
+                title: >-
+                  The render destination shall replace a file already at the destination in one
+                  step, reporting the destination in the policy's own dialect.
+                justification: |
+                  The draw, look, fix loop saves to the same name each time, so refusing an
+                  existing file would stop it. Writing a temporary file and moving it over the
+                  target means a reader sees the old picture or the new one, never a partial one.
+                tests:
+                  - RenderDestination_TryWriteAsync_ExistingFile_IsReplaced
+
+              - id: AgentKitToolsVisual-Rendering-RenderDestination-NoTemporaryLeftOnFailure
+                title: >-
+                  The render destination shall report a write the file system refuses as a failure
+                  and leave no temporary file behind.
+                justification: |
+                  A failed save must not litter the workspace with files the agent did not ask for
+                  and cannot explain.
+                tests:
+                  - RenderDestination_TryWriteAsync_FileSystemRefuses_LeavesNoTemporaryFile

@@ -392,7 +392,7 @@ sections:
                   - ImageAutoCropTool_AutoCrop_GifFile_ReturnsDenialNamingTheCroppableTypes
                   - ImageAutoCropTool_AutoCrop_WebpFile_ReturnsDenialNamingTheCroppableTypes
                   - ImageAutoCropTool_AutoCrop_PdfFile_ReturnsDenialStatingRasterizationIsRequired
-                  - ImageAutoCropTool_AutoCrop_SvgFile_ReturnsDenialRedirectingToTextFileRead
+                  - ImageAutoCropTool_AutoCrop_SvgFile_ReturnsDenialNamingNoTool
                   - ImageAutoCropTool_AutoCrop_UnknownExtension_ReturnsDenialWithoutRedirect
 
               - id: AgentKitToolsVisual-Image-AutoCropTool-DenyOutsideRoot

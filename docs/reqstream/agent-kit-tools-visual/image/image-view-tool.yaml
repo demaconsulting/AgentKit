@@ -1,0 +1,133 @@
+---
+# Software Unit Requirements for ImageViewTool
+#
+# These requirements describe the design-level behavior of the ImageViewTool unit.
+
+sections:
+  - title: AgentKitToolsVisual Requirements
+    sections:
+      - title: Image Requirements
+        sections:
+          - title: ImageViewTool Requirements
+            requirements:
+              - id: AgentKitToolsVisual-Image-ViewTool-ToolName
+                title: >-
+                  The view tool shall be published under the name image_view, exposed as a constant
+                  on the tool.
+                justification: |
+                  The name is what a model calls and what the read tool's refusal of an .svg names;
+                  publishing it as a constant keeps the two from drifting apart.
+                tests:
+                  - ImageViewTool_ToolName_Constant_IsTheFamilyQualifiedName
+
+              - id: AgentKitToolsVisual-Image-ViewTool-GuardedConstruction
+                title: >-
+                  The view tool shall be constructed only through the guarded construction path,
+                  from an access policy and the pack's renderer, with a description a model can
+                  choose it by, refusing a missing policy or renderer as a programming error.
+                tags: [security]
+                justification: |
+                  The guarded path is what delivers the picture to the provider rather than a
+                  serialized copy of it, and the pack's renderer is what makes every drawing of the
+                  pack share one render gate. A tool built without either would appear to work and
+                  silently lose one of the two.
+                tests:
+                  - ImageViewTool_Create_ConstructedTool_CarriesTheToolNameAndADescription
+
+              - id: AgentKitToolsVisual-Image-ViewTool-InputCheckedBeforeRead
+                title: >-
+                  The view tool shall judge the file it is asked to draw by the access policy's
+                  read decision before learning anything about it, returning the policy's refusal
+                  unchanged, so that a file outside the policy is refused alike whether or not it
+                  exists.
+                tags: [security]
+                justification: |
+                  The rendering library never judges the file it is asked to draw, only the files
+                  that file references, so the input's only judgment is this one. Taking it first
+                  keeps a refused path from revealing whether a file exists there.
+                tests:
+                  - ImageViewTool_View_PathOutsideThePolicy_IsRefusedBeforeAnyRead
+
+              - id: AgentKitToolsVisual-Image-ViewTool-DrawsEachFormat
+                title: >-
+                  The view tool shall draw an SVG, a PDF, a Mermaid, PlantUML, Vega-Lite or
+                  OpenSCAD source and a raster image file to an opaque PNG picture, returned as
+                  image content with a caption naming the format and the picture's size.
+                justification: |
+                  These are the visual formats an agent meets in a workspace that a provider cannot
+                  render itself. Returning each as a PNG gives the model one kind of content to
+                  look at, and the caption tells it what it is looking at and at what size.
+                tests:
+                  - ImageViewTool_View_SupportedFile_ReturnsAPngPicture
+
+              - id: AgentKitToolsVisual-Image-ViewTool-PageSelection
+                title: >-
+                  The view tool shall draw the page, slide or sheet the model names, state it in the
+                  caption of the document's page count, report a page the document does not have,
+                  and refuse a page below 1.
+                justification: |
+                  A model reading a multi-page document needs to ask for the page it wants and to
+                  know how many there are; a page that does not exist is stated rather than
+                  substituted.
+                tests:
+                  - ImageViewTool_View_SecondPage_CaptionStatesThePageOfTheCount
+                  - ImageViewTool_View_PageOutOfRange_IsReported
+
+              - id: AgentKitToolsVisual-Image-ViewTool-WidthApplied
+                title: >-
+                  The view tool shall draw the picture at a width the model names, keeping its
+                  aspect ratio, and refuse a width below 1.
+                justification: |
+                  A model looking at detail asks for a larger picture, and one saving context asks
+                  for a smaller one; a width that cannot be drawn is a malformed request.
+                tests:
+                  - ImageViewTool_View_RequestedWidth_IsApplied
+
+              - id: AgentKitToolsVisual-Image-ViewTool-RefusesMalformedRequests
+                title: >-
+                  The view tool shall refuse a missing path, a directory, a missing file and a file
+                  type it cannot draw, each with its own reason.
+                justification: |
+                  Each mistake calls for a different correction, so each is stated as itself rather
+                  than as a generic failure.
+                tests:
+                  - ImageViewTool_View_MalformedRequests_AreRefused
+                  - ImageViewTool_View_UnsupportedType_IsRefused
+
+              - id: AgentKitToolsVisual-Image-ViewTool-ObservesBinaryCeiling
+                title: >-
+                  The view tool shall refuse a file larger than the policy's binary ceiling before
+                  drawing it, and a drawn picture larger than that ceiling instead of returning it,
+                  each naming the ceiling.
+                tags: [security]
+                justification: |
+                  The binary ceiling bounds both what a tool reads into memory and what it hands a
+                  provider. A drawn picture is content returned to the provider, so it observes the
+                  ceiling as any returned content does; the tool enforces it itself because the
+                  guarded construction path does not.
+                tests:
+                  - ImageViewTool_View_FileBeyondTheBinaryCeiling_IsRefused
+                  - ImageViewTool_View_PictureBeyondTheBinaryCeiling_IsRefused
+
+              - id: AgentKitToolsVisual-Image-ViewTool-ShapedFailure
+                title: >-
+                  The view tool shall report a file it cannot draw as text naming the code, the line
+                  and column, and the offending line of the file with a caret, naming no help topic
+                  and no host path, and shall report a file whose reference the policy refused as a
+                  file-access failure.
+                justification: |
+                  A model that wrote the file can fix it when told precisely what is wrong; a
+                  denial would tell it only that it may not. The view tool has no help catalog, so
+                  it names no help topic.
+                tests:
+                  - ImageViewTool_View_BrokenFile_IsReportedWithTheOffendingLine
+                  - ImageViewTool_View_ReferenceOutsideTheGrant_FailsTheView
+
+              - id: AgentKitToolsVisual-Image-ViewTool-CaptionNotes
+                title: >-
+                  The view tool shall list every note the render reported in the picture's caption.
+                justification: |
+                  A note says what the picture leaves out; without it the model would describe the
+                  picture as complete.
+                tests:
+                  - ImageViewTool_View_RenderWithNotes_CaptionListsThem

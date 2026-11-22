@@ -4,7 +4,8 @@
 
 The Image subsystem is the image tool family: the pack an application attaches to give a
 vision-capable agent policy-governed reading of images and PDF documents, reporting an image's
-pixel dimensions wherever it can establish them.
+pixel dimensions wherever it can establish them, and drawing of the documents, drawings and diagram
+files a provider cannot render itself.
 
 ### Overview
 
@@ -23,11 +24,12 @@ The boundary is narrow and deliberate. The subsystem reads the visual content a 
 render: the raster image types `png`, `jpg`/`jpeg`, `gif` and `webp`, and the paginated document
 type `pdf`. It does not list, convert or interpret content, and the one thing it writes is a
 cropped region of an image it was permitted to read — a single new PNG file, at a destination the
-policy's write decision permits and nowhere else. It does not read vector formats: an `.svg` is
-text a text tool reads, and an `.svgz` is that content compressed, which no tool in this family
-reads. Each of those would be a separate decision an operator should be able to grant or withhold
-separately, and none of them is needed for the "let the agent look at this file"
-loop this family exists to support.
+policy's write decision permits and nowhere else. The read tool does not read vector formats, and
+stays a byte-exact pass-through of what a provider renders itself. Vector drawings, documents
+beyond PDF pass-through and diagram sources — `.svg`, `.pdf` pages, `.pptx` slides, `.vsdx` pages,
+Mermaid, PlantUML, Vega-Lite and OpenSCAD sources — are *drawn* to a PNG picture by a separate tool,
+`image_view`, through the Rendering subsystem, so the two meanings of "look at this file" never
+share one tool. An `.svgz` is SVG content compressed, which no tool in this family reads.
 
 **A second, narrower boundary governs region extraction**, and the two are held in one place so the
 family never gives two answers to "what is this file". Taking a region means *decoding*, which the
@@ -36,9 +38,10 @@ intersection of what the family reads and what it can decode, chosen over the al
 "whatever the decoder handles": widening to formats the read tool refuses would create an
 accidental conversion path — a model could launder an unreadable format into a viewable one by
 taking a region covering the whole image — which nobody designed and no requirement covers. Adding
-formats later is then a single coherent widening across all three tools, reviewable as one decision.
+formats later is then a single coherent widening across the region tools, reviewable as one
+decision.
 
-The subsystem contains five units, plus three shared helpers that are not units:
+The subsystem contains six units, plus three shared helpers that are not units:
 
 | Unit | Responsibility |
 | --- | --- |
@@ -46,6 +49,7 @@ The subsystem contains five units, plus three shared helpers that are not units:
 | `ImageReadTool` | Publishes `image_read`: returns one permitted file's content with a caption |
 | `ImageCropTool` | Publishes `image_crop`: returns a pixel region of one permitted image |
 | `ImageAutoCropTool` | Publishes `image_auto_crop`: returns the content region of a permitted image |
+| `ImageViewTool` | Publishes `image_view`: draws one permitted document or diagram file as a PNG |
 | `ImagePack` | Publishes the tools as one family under the `image` prefix, gated on Vision |
 
 `ImageProbe`, `ImageAdmission` and `ImageDestination` are shared helpers rather than units: each is
@@ -65,8 +69,8 @@ to reach, and the one it failed to reach would be the one an operator was relyin
 
 ### Interfaces
 
-The subsystem exposes five public types — `ImagePack`, the unit of attachment, `ImageMediaTypes`,
-the media-type map a caller may consult, and the three tool classes, which publish the name
+The subsystem exposes six public types — `ImagePack`, the unit of attachment, `ImageMediaTypes`,
+the media-type map a caller may consult, and the four tool classes, which publish the name
 constants their tools carry. Each tool's factory is `internal`, so a tool cannot be obtained
 except through the pack that claims its family prefix — the pack is the unit of attachment, and an
 application that could construct a single tool directly could also construct one outside the
@@ -78,6 +82,8 @@ family whose prefix protects it from collision.
 | `ImageReadTool.ToolName` | Outbound | `string` constant | The name the read tool carries |
 | `ImageCropTool.ToolName` | Outbound | `string` constant | The name the crop tool carries |
 | `ImageAutoCropTool.ToolName` | Outbound | `string` constant | The name the auto-crop tool carries |
+| `ImageViewTool.ToolName` | Outbound | `string` constant | The name the view tool carries |
+| `ImagePack(VisualOptions?)` | Inbound | `VisualOptions` | Rendering bounds; validated at construction |
 | `ImageMediaTypes` | Outbound | Media-type maps and refusals | Extension-driven; states content kind |
 | `PathPolicy` | Inbound | AgentKitCore policy object | Supplied at construction |
 | File system | Inbound | Base Class Library file APIs | Reached only where policy permits |
@@ -85,11 +91,14 @@ family whose prefix protects it from collision.
 The subsystem consumes `PathPolicy`, `ToolLimits`, `ToolResult`, `GuardedToolFactory`, `IToolPack`
 and `HostCapabilities` from AgentKitCore, `AIFunction` and the content types (`AIContent`,
 `DataContent`, `TextContent`) from `Microsoft.Extensions.AI.Abstractions` reached through Core. The
-one classification an unsupported `.svg` earns names `text_file_read`, held as a literal so this
-package does not depend on the AgentKitTools package that ships the text family. It additionally
-consumes the `CanvasNet` raster
-imaging library directly, which is the one OTS runtime dependency this package takes; see
-*CanvasNet Design*. It exposes nothing of its own that another package would depend on.
+one classification an unsupported `.svg` earns names `image_view`, a tool of this same family, so
+the package names no tool of the AgentKitTools text family and depends on that package in no way.
+The view tool draws through the Rendering subsystem (`VisualRenderer`, `VisualAccess`,
+`RenderErrorShaper`), and `ImagePack` owns the one renderer its view tool shares. The region tools
+additionally consume the `CanvasNet` raster imaging library directly; the Viewer that draws
+documents is reached only through the Rendering subsystem. Both are the one OTS runtime dependency
+this package takes; see *CanvasNet Design*. It exposes nothing of its own that another package
+would depend on.
 
 **No type from the imaging library crosses the subsystem's boundary.** `ImageProbe` takes bytes
 and reports integers and booleans; nothing in the subsystem's public surface mentions the library,
@@ -246,7 +255,7 @@ interprets no path itself: it passes the model's text to the policy, which holds
 relative name is measured against. An absolute path remains expressible and remains subject to the
 same containment decision.
 
-**One read decision per source, one independent write decision per destination.** All three tools
+**One read decision per source, one independent write decision per destination.** All four tools
 consult `TryResolveRead` for the file they are asked to look at, and both region tools —
 `ImageCropTool` and `ImageAutoCropTool` — additionally consult `TryResolveWrite` for a destination
 they are asked to write. The two are taken separately
@@ -260,11 +269,13 @@ about the file, so a refused path never discloses whether it exists.
 **The type is decided from the extension.** `ImageMediaTypes` maps an extension to the media type
 the family reads it as, because the media type is what a provider is told the content is and a
 caller that named a `.png` is asking for it to be delivered as one. A type the family cannot read
-is refused through the same unit, which owns whether naming a sibling reader states what the file is
-rather than prescribing a way around the refusal: an `.svg` genuinely *is* text, so its refusal says
-so and names `text_file_read`, on the same basis as `text_file_read`'s own binary-content refusal
-naming `image_read`; an `.svgz` is stated as compressed vector content with nothing further, and any
-other extension is stated as unsupported with nothing further.
+is refused through the same unit, which owns whether naming a sibling tool states what the file is
+rather than prescribing a way around the refusal: an `.svg` is vector content, so its read refusal
+says so and names `image_view`, the tool of this family that draws vector content, on the same
+basis as `text_file_read`'s own binary-content refusal naming `image_read`; a region request for an
+`.svg` names no tool, because the drawing tool returns the whole picture rather than the region
+asked for; an `.svgz` is stated as compressed vector content with nothing further, and any other
+extension is stated as unsupported with nothing further.
 
 **A denial states a fact and stops.** Refusals this subsystem composes — an absent path, a directory,
 a missing file, a ceiling overrun — say what is so and prescribe no course of action, because a
@@ -307,5 +318,25 @@ coordinate space and the crop tool consumes it; a family publishing only one of 
 model either a region request it cannot aim, or a size it has nothing to use. The auto-crop tool
 completes the set from the other side: it answers the region question a model cannot state in that
 coordinate space at all, because it can see that a picture is mostly margin without being able to
-measure where the margin stops. That is why the pack creates all three in the one place the family
+measure where the margin stops. The view tool is how a model looks at the visual content the read
+tool refuses because a provider cannot render it, so the read tool's refusal of such a file names a
+tool the model actually has. That is why the pack creates all four in the one place the family
 prefix is claimed, rather than leaving the pairing to each application's composition code.
+
+**Drawing a file the provider cannot render.** `ImageViewTool` takes the read decision for the file
+itself first — the rendering library never judges the file it is asked to draw — then reads it once
+within the binary ceiling and hands those same bytes, never the path, to the pack's
+`VisualRenderer`. The file's own folder is the base its references resolve against, and
+`VisualAccess` confines every file it references to what the agent may read. A picture is returned
+as `image/png` content with a caption naming the format, the page of the page count for a
+multi-page document, the size and every note; a file the library cannot draw is returned as the text
+`RenderErrorShaper` composes, because the model can fix what it wrote; and a picture larger than the
+binary ceiling is refused, because it is content returned to the provider. See *ImageViewTool Unit
+Design* and *Rendering Subsystem Design*.
+
+**The pack holds one piece of state, its render gate.** `ImagePack(VisualOptions?)` validates the
+one relation between options the options cannot check themselves, and creates the renderer whose
+gate bounds how many drawings run at once. The gate is shared by every composition the pack
+instance is added to, by design: the bound is per pack instance however many agents it serves.
+`WarmUpAsync` is an optional host call that draws a sample of each text format through the same gate
+so the library's first-use cost is paid before a model waits.

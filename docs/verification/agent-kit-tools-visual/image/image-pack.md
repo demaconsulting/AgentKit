@@ -29,12 +29,14 @@ Unit tests reside in `Image/ImagePackTests.cs`, reusing the shared temporary-dir
 
 #### Acceptance Criteria
 
-A unit test run passes when all eleven scenarios below pass without error or exception beyond those
+A unit test run passes when all sixteen scenarios below pass without error or exception beyond those
 explicitly asserted. A prefix that differs between the constant and the contract, a capability
-requirement other than vision, a tool count other than three, a tool named anything other than
-`image_read`, `image_crop` or `image_auto_crop`, a null element, a tool outside the family prefix,
+requirement other than vision, a tool list other than `image_read`, `image_crop`, `image_auto_crop`
+and `image_view` in that order, a null element, a tool outside the family prefix,
 an accepted null
-policy, and a created tool that does not observe the supplied policy each constitute a failure.
+policy, a created tool that does not observe the supplied policy, options that are not applied,
+contradictory options that are accepted, and a warm-up that fails or leaves the pack unable to draw
+each constitute a failure.
 
 #### Test Scenarios
 
@@ -61,15 +63,16 @@ from a host that cannot present its content.
 
 ##### AgentKitToolsVisual-Image-Pack-RegistersReadTool: Every Tool Is Created
 
-**Test**: `ImagePack_CreateTools_Policy_CreatesTheReadCropAndAutoCropTools`
+**Test**: `ImagePack_CreateTools_Policy_CreatesEveryTool`
 
-Asserts exactly three tools, named `image_read`, `image_crop` and `image_auto_crop`, confirming the
+Asserts exactly four tools, named `image_read`, `image_crop`, `image_auto_crop` and `image_view` in
+that order, confirming the
 pack produces the
 family's tools for an application to receive.
 
 ##### AgentKitToolsVisual-Image-Pack-RegistersCropTool: The Crop Tool Is Created Alongside the Read Tool
 
-**Test**: `ImagePack_CreateTools_Policy_CreatesTheReadCropAndAutoCropTools`
+**Test**: `ImagePack_CreateTools_Policy_CreatesEveryTool`
 
 The same scenario read from the other side: the read tool and the crop tool are one capability, so
 the pack creating
@@ -78,20 +81,20 @@ pack rather than of each application's composition code.
 
 ##### AgentKitToolsVisual-Image-Pack-RegistersAutoCropTool: The Auto-Crop Tool Is Created Alongside Its Siblings
 
-**Test**: `ImagePack_CreateTools_Policy_CreatesTheReadCropAndAutoCropTools`
+**Test**: `ImagePack_CreateTools_Policy_CreatesEveryTool`
 
 The same scenario read from the third side. A model that can see a picture is mostly margin cannot
 measure where the margin stops, so the region it would name in the crop tool's coordinate space is
 a guess; publishing the auto-crop tool beside its siblings is what gives it the one region request
-it can make without measuring. Creating all three in the one place the family prefix is claimed is
+it can make without measuring. Creating all four in the one place the family prefix is claimed is
 what stops an application shipping without the third.
 
 ##### AgentKitToolsVisual-Image-Pack-PublishedUnderEveryPolicy: Every Tool Survives a Read-Only Policy
 
 **Test**: `ImagePack_CreateTools_ReadOnlyPolicy_StillPublishesEveryTool`
 
-Asserts that a policy whose every grant is read-only still yields exactly three tools, `image_read`,
-`image_crop` and `image_auto_crop`. Confirms the family is never narrowed by the access policy,
+Asserts that a policy whose every grant is read-only still yields exactly four tools, `image_read`,
+`image_crop`, `image_auto_crop` and `image_view`. Confirms the family is never narrowed by the access policy,
 which is a decision
 rather than an incidental outcome and so is asserted rather than merely described.
 
@@ -135,3 +138,39 @@ the pack invented — is in force. The refusal is asserted through the crop tool
 tool as well as the read
 tool, because a tool that quietly observed a different policy from its neighbor would make the
 configured containment unverifiable.
+
+##### AgentKitToolsVisual-Image-Pack-RegistersViewTool: The View Tool Is Created Last
+
+**Test**: `ImagePack_CreateTools_Policy_CreatesEveryTool`
+
+The same scenario read for the view tool: it is present, so the read tool's refusal of an `.svg`
+names a tool the model has, and it is last, so the order of the existing tools is unchanged.
+
+##### AgentKitToolsVisual-Image-Pack-AcceptsVisualOptions: The Options Given Are Applied
+
+**Test**: `ImagePack_Constructor_Options_AreApplied`
+
+Asserts that the options instance a host passes is the one the pack exposes, and that a pack built
+with none exposes `VisualOptions.Default`, so `new ImagePack()` keeps its meaning.
+
+##### AgentKitToolsVisual-Image-Pack-AcceptsVisualOptions: The View Tool Observes the Pack's Options
+
+**Test**: `ImagePack_CreateTools_ViewTool_ObservesThePackOptions`
+
+Behavioral rather than by reference: a pack whose smallest preview side is 300 draws a 200-pixel SVG
+at 300 by 150 pixels, which the default of 768 would not, so the view tool is shown to observe the
+options of the pack that created it.
+
+##### AgentKitToolsVisual-VisualOptions-MinNotAboveMax: Contradictory Options Are Refused
+
+**Test**: `ImagePack_Constructor_MinPreviewSideAboveMaxRenderSide_ThrowsArgumentException`
+
+Error path: options whose smallest preview side (768) exceeds the largest render side (512) are
+refused with an `ArgumentException` naming `options`, at the constructor that received them.
+
+##### AgentKitToolsVisual-Image-Pack-WarmUp: Warming Up Completes and the Pack Still Draws
+
+**Test**: `ImagePack_WarmUpAsync_Pack_CompletesAndTheViewToolStillDraws`
+
+Warms the pack up, then views an SVG through its view tool and asserts a picture is returned, so the
+warm-up neither fails nor leaves the render gate held.

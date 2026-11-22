@@ -158,14 +158,26 @@ software items, specifically:
   families built on the AgentKitCore contract, carrying the imaging library those families need so
   that AgentKitTools carries none
 - **Image (Subsystem)** — The image tool family: policy-governed reading of images and PDF
-  documents for a vision-capable agent, and extraction of a region of an image — either named in
-  pixels or found by trimming the image to its own content — published as one capability-gated pack
+  documents for a vision-capable agent, extraction of a region of an image — either named in
+  pixels or found by trimming the image to its own content — and drawing of documents, drawings and
+  diagram files as pictures, published as one capability-gated pack
 - **ImageMediaTypes (Unit)** — Maps a file's extension to the media type the image family reads,
   and composes the refusal for a file whose type it cannot read
 - **ImageReadTool (Unit)** — Publishes the `image_read` tool
 - **ImageCropTool (Unit)** — Publishes the `image_crop` tool
 - **ImageAutoCropTool (Unit)** — Publishes the `image_auto_crop` tool
-- **ImagePack (Unit)** — Publishes the image family as one pack
+- **ImageViewTool (Unit)** — Publishes the `image_view` tool
+- **ImagePack (Unit)** — Publishes the image family as one pack, holding its rendering options and
+  render gate
+- **Rendering (Subsystem)** — The internal pieces every visual tool draws through: confinement of
+  referenced files, bounded opaque rendering, failure shaping and saving under the write grant
+- **VisualAccess (Unit)** — Maps the access policy onto the rendering library's file-access policy
+- **VisualRenderer (Unit)** — Draws within the pack's bounds on opaque white, promoting misleading
+  pictures to failures
+- **RenderErrorShaper (Unit)** — Turns a failed render into text a model can act on
+- **RenderDestination (Unit)** — Saves a rendered picture to a destination the write decision
+  permits, replacing an earlier one in one step
+- **VisualOptions (Unit)** — The rendering bounds a host gives a visual tool pack
 - **AgentKitAgentsChatClient (System)** — Builds a Microsoft Agent Framework agent from any
   `IChatClient`, and carries a Core session over that same `IChatClient`, installing the
   image-promoting decorator unconditionally on both
@@ -237,9 +249,10 @@ The following OTS items are also covered:
 
 - **BuildMark** — build-notes documentation tool
 - **ApiMark** — public API surface tracking tool
-- **CanvasNet** — the runtime raster imaging library providing image header inspection including
+- **CanvasNet** — the runtime imaging library providing image header inspection including
   decode feasibility, PNG and JPEG decoding with PNG decompression bounded by the declared size,
-  rectangular region extraction and PNG encoding
+  rectangular region extraction and PNG encoding, and through its Viewer the confined, bounded
+  drawing of documents and diagrams
 - **FileAssert** — document assertion tool
 - **Microsoft.Agents.AI** — the runtime library providing `ChatClientAgent`, which builds an
   `AIAgent` from an `IChatClient`
@@ -369,9 +382,11 @@ the other capability packages an application may attach, depending on `AgentKitC
 depended upon by another capability package, and it references no imaging library.
 
 `AgentKitToolsVisual` is an optional capability package of guarded visual tool families, built on
-the same contract. It ships the `Image` family today, as its one subsystem: reading images and PDF
-documents for a vision-capable agent, returning a region of one, and trimming one to the region its
-own content occupies. It is a package of its own because that family needs an imaging library,
+the same contract. It ships the `Image` family: reading images and PDF documents for a
+vision-capable agent, returning a region of one, trimming one to the region its own content
+occupies, and drawing documents, drawings and diagram files a provider cannot render. The internal
+`Rendering` subsystem holds what every tool that draws shares, and the `VisualOptions` unit the
+bounds a host sets. It is a package of its own because that family needs an imaging library,
 `CanvasNet`, and keeping it here means the library reaches only the applications that attach the
 visual tools. It depends on `AgentKitCore` alone — not on `AgentKitTools` — and no other capability
 package depends on it.
@@ -522,15 +537,25 @@ organized the same way, one folder per tool family:
 
 ```text
 src/DemaConsulting.AgentKit.Tools.Visual/
-└── Image/
-    ├── ImageAdmission.cs        — shared helper; read within the ceilings, triage, decode
-    ├── ImageAutoCropTool.cs     — the image_auto_crop tool
-    ├── ImageCropTool.cs         — the image_crop tool
-    ├── ImageDestination.cs      — shared helper; the destination taxonomy and the write
-    ├── ImageMediaTypes.cs       — extension-to-media-type mapping and the unreadable-type refusal
-    ├── ImagePack.cs             — publishes the image family as one pack
-    ├── ImageProbe.cs            — shared header reader; declared size, decode feasibility
-    └── ImageReadTool.cs         — the image_read tool
+├── VisualOptions.cs             — the rendering bounds a host gives a pack
+├── Image/
+│   ├── ImageAdmission.cs        — shared helper; read within the ceilings, triage, decode
+│   ├── ImageAutoCropTool.cs     — the image_auto_crop tool
+│   ├── ImageCropTool.cs         — the image_crop tool
+│   ├── ImageDestination.cs      — shared helper; the destination taxonomy and the write
+│   ├── ImageMediaTypes.cs       — extension-to-media-type mapping and the unreadable-type refusal
+│   ├── ImagePack.cs             — publishes the image family as one pack
+│   ├── ImageProbe.cs            — shared header reader; declared size, decode feasibility
+│   ├── ImageReadTool.cs         — the image_read tool
+│   └── ImageViewTool.cs         — the image_view tool
+└── Rendering/
+    ├── RenderDestination.cs     — saves a picture under the write grant, replacing atomically
+    ├── RenderErrorShaper.cs     — shapes a failed render into text a model can act on
+    ├── RenderFailure.cs         — supporting type; a classified, located failure
+    ├── RenderOutcome.cs         — supporting type; the picture or the failure of one render
+    ├── RenderRequest.cs         — supporting type; what one render draws, and under what
+    ├── VisualAccess.cs          — maps the access policy onto the file-access policy
+    └── VisualRenderer.cs        — draws within the bounds, on opaque white, through the gate
 ```
 
 Each provider-adapter system is its own source tree. Both carry a session adapter over their

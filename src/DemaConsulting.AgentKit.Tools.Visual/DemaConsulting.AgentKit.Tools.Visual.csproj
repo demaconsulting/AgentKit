@@ -11,7 +11,7 @@
     <Version>0.0.0</Version>
     <Authors>DEMA Consulting</Authors>
     <Company>DEMA Consulting</Company>
-    <Description>Guarded image tools for AI agents - read, crop and trim pictures and documents within the application's path grants - composed through the AgentKit Core contract</Description>
+    <Description>Guarded image and document tools for AI agents - read, view, crop and trim pictures, documents and diagram files within the application's path grants - composed through the AgentKit Core contract</Description>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageProjectUrl>https://github.com/demaconsulting/AgentKit</PackageProjectUrl>
     <RepositoryUrl>https://github.com/demaconsulting/AgentKit</RepositoryUrl>
@@ -73,12 +73,14 @@
   <!-- Runtime Dependencies -->
   <ItemGroup>
     <!-- Runtime dependency, deliberately without PrivateAssets: the image family decodes,
-         crops and encodes raster content with it, so a consuming application needs it at
-         run time. Ships no native binaries and no unsafe code; its decoders are managed. A
-         prerelease pin, chosen because 0.1.0 inflates PNG data without bound - a stable
+         crops and encodes raster content with the CanvasNet core, and renders documents and
+         diagrams with the Viewer, so a consuming application needs both at run time. The
+         Viewer brings the core and the format libraries transitively at the same version.
+         Ships no native binaries and no unsafe code; its decoders are managed. A prerelease
+         pin, chosen because 0.1.0 inflates PNG data without bound - a stable
          AgentKitToolsVisual release waits on a stable 0.2.0. See 'CanvasNet OTS Integration
          Design'. -->
-    <PackageReference Include="DemaConsulting.CanvasNet" Version="0.2.0-beta.13" />
+    <PackageReference Include="DemaConsulting.CanvasNet.Viewer" Version="0.2.0-beta.13" />
   </ItemGroup>
 
   <!-- Build Tool Dependencies -->

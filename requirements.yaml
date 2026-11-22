@@ -95,7 +95,14 @@ includes:
   - docs/reqstream/agent-kit-tools-visual/image/image-media-types.yaml
   - docs/reqstream/agent-kit-tools-visual/image/image-pack.yaml
   - docs/reqstream/agent-kit-tools-visual/image/image-read-tool.yaml
+  - docs/reqstream/agent-kit-tools-visual/image/image-view-tool.yaml
   - docs/reqstream/agent-kit-tools-visual/platform-requirements.yaml
+  - docs/reqstream/agent-kit-tools-visual/rendering.yaml
+  - docs/reqstream/agent-kit-tools-visual/rendering/render-destination.yaml
+  - docs/reqstream/agent-kit-tools-visual/rendering/render-error-shaper.yaml
+  - docs/reqstream/agent-kit-tools-visual/rendering/visual-access.yaml
+  - docs/reqstream/agent-kit-tools-visual/rendering/visual-renderer.yaml
+  - docs/reqstream/agent-kit-tools-visual/visual-options.yaml
   - docs/reqstream/agent-kit-agents-chat-client.yaml
   - docs/reqstream/agent-kit-agents-chat-client/chat-client-agent-factory.yaml
   - docs/reqstream/agent-kit-agents-chat-client/chat-client-provider-session.yaml

@@ -1,0 +1,61 @@
+---
+# Software Unit Requirements for VisualOptions
+#
+# These requirements describe the design-level behavior of the VisualOptions unit.
+
+sections:
+  - title: AgentKitToolsVisual Requirements
+    sections:
+      - title: VisualOptions Requirements
+        requirements:
+          - id: AgentKitToolsVisual-VisualOptions-Defaults
+            title: >-
+              The visual options shall default to a 30-second render timeout, a largest render
+              side of 2048 pixels, a smallest preview side of 768 pixels, a limit of 500,000
+              triangles for a three-dimensional model and one render at a time, and shall keep
+              every value set inside its range exactly as given.
+            justification: |
+              A host that configures nothing must still render within bounds that keep a
+              model-authored drawing from exhausting the host. The triangle limit is a quarter of
+              the rendering library's own default because the triangle count is what drives a
+              model's memory, and a model-authored part rarely needs more. The smallest preview
+              side exists because small labels in a natural-size diagram are read poorly by vision
+              models. A value inside its range is kept unchanged, so the host gets exactly what it
+              configured.
+            tests:
+              - VisualOptions_Default_Values_AreTheDocumentedDefaults
+              - VisualOptions_Init_ValuesInRange_AreKept
+
+          - id: AgentKitToolsVisual-VisualOptions-RejectsOutOfRange
+            title: >-
+              The visual options shall refuse, at the point it is set, a render timeout that is not
+              greater than zero or exceeds ten minutes, a largest render side outside 16 to 8192
+              pixels, a smallest preview side outside 1 to 8192 pixels, a triangle limit below 1
+              and a concurrency bound below 1.
+            tags: [security]
+            justification: |
+              Every option is either applied as stated or refused; none is silently clamped or
+              ignored, because a host that believed a bound was in force when it was not would
+              have no way to notice. The largest side cannot exceed what the rendering library can
+              produce, a zero timeout or concurrency bound would fail every render, and an
+              unbounded timeout would let one render hold a pack's render gate indefinitely.
+              Refusing the value where it is set reports the mistake to the developer who made it.
+            tests:
+              - VisualOptions_RenderTimeout_OutOfRange_Throws
+              - VisualOptions_MaxRenderSide_OutOfRange_Throws
+              - VisualOptions_MinPreviewSide_OutOfRange_Throws
+              - VisualOptions_ScadMaxTriangles_BelowOne_Throws
+              - VisualOptions_MaxConcurrentRenders_BelowOne_Throws
+
+          - id: AgentKitToolsVisual-VisualOptions-MinNotAboveMax
+            title: >-
+              A visual tool pack shall refuse options whose smallest preview side exceeds the
+              largest render side.
+            justification: |
+              The two values cannot both be honored when the smallest exceeds the largest, and
+              neither option's own check can see the other, because an object initializer sets
+              them one at a time. The pack that receives the options is the first place both are
+              known, so it refuses the contradiction at construction rather than applying one value
+              and quietly dropping the other.
+            tests:
+              - ImagePack_Constructor_MinPreviewSideAboveMaxRenderSide_ThrowsArgumentException

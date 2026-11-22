@@ -45,7 +45,7 @@ shared temporary-directory test fixture in `TempDirectoryFixture.cs`, all within
 
 ### Acceptance Criteria
 
-A subsystem test run passes when all twenty-one scenarios below pass without error or exception
+A subsystem test run passes when all twenty-three scenarios below pass without error or exception
 beyond those explicitly asserted. A tool published outside the family prefix, image content
 arriving as a `JsonElement`, a family registered for a non-vision host, a pack consulted despite
 an unmet capability, a refusal raised as an exception rather than returned, a policy refusal that
@@ -226,10 +226,11 @@ the rule that once redacted these refusals is dropped.
 
 **Test**: `Image_Family_UnsupportedType_IsRefusedWithRedirectWhereUseful`
 
-Error path: an `.svg` — which genuinely *is* text — is refused as an unsupported type, the refusal
-states that, and it names `text_file_read` as the reader for that kind of content. The naming is a
-classification of the file rather than a prescribed way around the refusal, on the same basis as the
-text file read tool's own binary-content refusal naming `image_read`.
+Error path: an `.svg` — which is vector content, not a raster image — is refused by the read tool as
+an unsupported type, the refusal states that, and it names `image_view`, the tool of this family
+that draws vector content. The naming is a classification of the file rather than a prescribed way
+around the refusal, on the same basis as the text file read tool's own binary-content refusal naming
+`image_read`.
 
 #### AgentKitToolsVisual-Image-ObservesPolicyLimits: A File Beyond the Binary Ceiling Is Refused, Not Truncated
 
@@ -237,3 +238,19 @@ text file read tool's own binary-content refusal naming `image_read`.
 
 Boundary condition: composes the family under a policy carrying a small binary ceiling and asserts
 the result is a refusal naming that ceiling, containing no content.
+
+#### AgentKitToolsVisual-Image-DocumentViewing: A Vector Document Is Drawn by the Tool the Read Refusal Names
+
+**Test**: `Image_Family_VectorDocument_IsDrawnByTheToolTheReadRefusalNames`
+
+Composes the family through the builder, asks `image_read` for an SVG and receives a refusal naming
+`image_view`, then asks `image_view` for the same file and receives PNG image content — the two
+tools of the family agree on what the file is and which of them draws it.
+
+#### AgentKitToolsVisual-Image-DocumentViewing: A Viewed Document Referencing Outside the Policy Is Not Drawn
+
+**Test**: `Image_Family_ViewedDocumentReferencingOutsideThePolicy_IsNotDrawn`
+
+Error path through the composed family: a permitted SVG embedding a picture from outside the
+policy's location is reported as a `file-access-denied` failure rather than drawn with a hole, so
+the confinement holds for the view tool as composed, not only for the Rendering units in isolation.

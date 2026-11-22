@@ -440,13 +440,14 @@ without decoding, not one whose frame count it cannot establish.
 A PDF is the one admitted type that *looks* croppable and is not, so without the reason stated a
 model would reasonably retry with different coordinates.
 
-##### AgentKitToolsVisual-Image-CropTool-RefusesNonCroppableType: An svg Is Refused Exactly as the Read Tool Refuses It
+##### AgentKitToolsVisual-Image-CropTool-RefusesNonCroppableType: An svg Is Refused Naming No Tool
 
-**Test**: `ImageCropTool_Crop_SvgFile_ReturnsDenialRedirectingToTextFileRead`
+**Test**: `ImageCropTool_Crop_SvgFile_ReturnsDenialNamingNoTool`
 
-The regression guard for the family giving **one** answer to "what is this file". An `.svg`
-genuinely is text, so naming the text reader is a classification rather than a way around the
-refusal — and this unit delegates to the same map rather than inventing its own answer.
+Error path: an `.svg` is vector content with no pixels to cut. The refusal states that, names the
+types a region can be taken from, and names no tool — the view tool draws an `.svg`, but only whole,
+which is not the region the model asked to examine. The refusal comes from the media-type map, so
+the family still gives one answer to "what is this file".
 
 ##### AgentKitToolsVisual-Image-CropTool-RefusesNonCroppableType: An Unknown Extension Is Refused Without a Redirect
 

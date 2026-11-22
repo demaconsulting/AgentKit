@@ -1,8 +1,8 @@
 ---
 # CanvasNet OTS Software Requirements
 #
-# Requirements for the CanvasNet raster imaging library functionality, consumed by the image family
-# in the AgentKitToolsVisual package.
+# Requirements for the CanvasNet imaging library functionality - the raster core and the Viewer that
+# draws documents and diagrams - consumed by the AgentKitToolsVisual package.
 
 sections:
   - title: OTS Software Requirements
@@ -118,3 +118,87 @@ sections:
             tags: [ots]
             tests:
               - ImageCropTool_Crop_Adam7InterlacedPng_IsRefusedNamingTheDimensions
+
+          - id: AgentKit-OTS-CanvasNet-ViewerRender
+            title: >-
+              The CanvasNet Viewer shall draw a file given as bytes and a name — SVG, PDF,
+              Mermaid, PlantUML, Vega-Lite, OpenSCAD or a raster image — to a picture of a requested
+              width on a requested background, drawing the requested page of a document and
+              reporting the page count.
+            justification: |
+              The view tool draws the files a provider cannot render, and every guarantee it makes
+              about the picture — its size, its opaque background, the page it shows — rests on
+              the Viewer drawing as asked. AgentKit's own tests draw each format, assert the
+              background pixel, the requested width and the page of a multi-page document.
+            tags: [ots]
+            tests:
+              - ImageViewTool_View_SupportedFile_ReturnsAPngPicture
+              - VisualRenderer_RenderAsync_Svg_IsDrawnOnOpaqueWhite
+              - VisualRenderer_RenderAsync_WidthBeyondTheLargestSide_IsReduced
+              - VisualRenderer_RenderAsync_DocumentPage_IsDrawnWithThePageCount
+
+          - id: AgentKit-OTS-CanvasNet-FileAccessPolicy
+            title: >-
+              CanvasNet shall consult a caller-supplied file-access policy for every file a
+              rendered document references — pictures, includes and data files, at every level —
+              judging the real path of the opened file, and draw none it refuses.
+            justification: |
+              The confinement of referenced files is AgentKit's policy, but it is enforced inside
+              the library, which opens those files itself. AgentKit's own tests refuse a
+              parent-folder escape, an absolute path, a link, a file URI and a deny-pattern match,
+              for pictures and for included and data files, and observe that none is drawn.
+            tags: [ots, security]
+            tests:
+              - VisualAccess_ToFileAccess_ParentFolderEscape_IsRefused
+              - VisualAccess_ToFileAccess_LinkEscape_IsRefused
+              - VisualAccess_ToFileAccess_DenyPatternInsideTheGrant_IsRefused
+              - VisualAccess_ToFileAccess_IncludedFileOutside_IsRefused
+
+          - id: AgentKit-OTS-CanvasNet-NoNetwork
+            title: >-
+              CanvasNet shall never fetch a network reference a rendered document makes.
+            justification: |
+              A render that fetched a URL would let a model-authored document reach other hosts.
+              AgentKit's own tests point documents at a local listener and observe that it
+              receives no request.
+            tags: [ots, security]
+            tests:
+              - VisualAccess_ToFileAccess_NetworkReference_IsNeverFetched
+              - AgentKitToolsVisual_Rendering_NetworkReferences_AreNeverFetched
+
+          - id: AgentKit-OTS-CanvasNet-PixelBudget
+            title: >-
+              CanvasNet shall refuse a render whose pictures need more pixels than a caller-supplied
+              budget, and an OpenSCAD model producing more triangles than a caller-supplied limit.
+            justification: |
+              The renderer passes the policy's pixel budget and the pack's triangle limit to the
+              library, which is where the allocation happens. AgentKit's own tests render under a
+              small budget and a small limit and observe the refusals.
+            tags: [ots, security]
+            tests:
+              - VisualRenderer_RenderAsync_PictureOverThePixelBudget_FailsAsBudgetExceeded
+              - VisualRenderer_RenderAsync_ModelOverTheTriangleLimit_IsRefused
+
+          - id: AgentKit-OTS-CanvasNet-Cancellation
+            title: >-
+              CanvasNet shall stop a render when the cancellation token it was given is canceled.
+            justification: |
+              The render timeout is first a cancellation the library honors; the abandonment
+              after a grace period is defense in depth behind it. AgentKit's own test renders a
+              model far heavier than the timeout allows and observes the timeout outcome.
+            tags: [ots]
+            tests:
+              - VisualRenderer_RenderAsync_RenderBeyondTheTimeout_FailsAsRenderTimeout
+
+          - id: AgentKit-OTS-CanvasNet-Diagnostics
+            title: >-
+              CanvasNet shall report a source error with its location in the source, and a feature
+              it does not draw as a note with a code, without failing the render.
+            justification: |
+              The error shaper's location and the notes in a caption both come from the library.
+              AgentKit's own tests render a broken source of each format and a source using an
+              unsupported construct, and observe the location and the note.
+            tags: [ots]
+            tests:
+              - RenderErrorShaper_Shape_SyntaxError_StatesCodeLineColumnAndCaret
+              - VisualRenderer_RenderAsync_UnsupportedFeature_IsReportedAsANote

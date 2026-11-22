@@ -58,8 +58,8 @@ behaviors this guide describes:
 - **Capability gating.** The image tools, from the `DemaConsulting.AgentKit.Tools.Visual` package,
   appear only when the host declares the `Vision` capability, and the sample takes that declaration
   from the **selected model's** vision.
-  Running the sample with `--no-vision` removes `image_read`, `image_crop` and `image_auto_crop`
-  from the tools the model is offered — they are never presented, not merely refused.
+  Running the sample with `--no-vision` removes `image_read`, `image_crop`, `image_auto_crop` and
+  `image_view` from the tools the model is offered — they are never presented, not merely refused.
 - **Model choice.** The sample lists only the models that can see, and validates the chosen effort,
   tier and window against the provider's catalog before the session starts.
 - **Both grants in one call.** With a destination, `image_crop` reads the image under the workspace
@@ -164,10 +164,10 @@ With vision enabled the agent lists `text_file_search`, `text_file_read`, `text_
 `text_file_paste_lines`,
 `file_list`, `file_copy`,
 `file_move`, `file_delete`, `file_create_directory`, `file_move_directory`,
-`file_delete_directory`, `markdown_outline`, `image_read`, `image_crop`, and `image_auto_crop` —
-nineteen tools;
+`file_delete_directory`, `markdown_outline`, `image_read`, `image_crop`, `image_auto_crop`, and
+`image_view` — twenty tools;
 with `--no-vision`
-all three image tools
+all four image tools
 are absent, because the builder never asks a pack for tools whose required capability the host has not
 declared.
 

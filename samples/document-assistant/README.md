@@ -97,8 +97,8 @@ result as they happen, so you can watch each behavior below rather than take it 
   `--read-only-workspace` a destination in the workspace is refused while the same call into the
   session folder succeeds — one tool call, two independent decisions.
 - **Capability-gated tools.** The image tools, from the `DemaConsulting.AgentKit.Tools.Visual` package, are offered only
-  when the host declares the `Vision` capability. Run with `--no-vision` and none of `image_read`, `image_crop` or
-  `image_auto_crop` are refused at call time — they are never presented to the model at all.
+  when the host declares the `Vision` capability. Run with `--no-vision` and none of `image_read`, `image_crop`,
+  `image_auto_crop` or `image_view` are refused at call time — they are never presented to the model at all.
 - **Provider quirks absorbed by the adapters.** The Copilot runtime ships its own shell, fetch, and
   file-editing tools; the adapter suppresses them so the agent is offered only the tools you gave it.
   An `IChatClient` provider silently drops a tool-returned image at the wire; that adapter repairs it
@@ -270,7 +270,7 @@ The default session folder is `document-assistant-session` beneath the system te
   reports only the file tools and answers *no* — confirming the Copilot runtime's built-in
   tools are suppressed.
 - **Capability gating.** Add `--no-vision` and ask the agent to list its tools: `image_read`,
-  `image_crop` and `image_auto_crop` are gone.
+  `image_crop`, `image_auto_crop` and `image_view` are gone.
 
 ## Verifying vision honestly
 

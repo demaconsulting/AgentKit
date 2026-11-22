@@ -88,6 +88,13 @@ input-files:
   - docs/design/agent-kit-tools-visual/image/image-media-types.md
   - docs/design/agent-kit-tools-visual/image/image-pack.md
   - docs/design/agent-kit-tools-visual/image/image-read-tool.md
+  - docs/design/agent-kit-tools-visual/image/image-view-tool.md
+  - docs/design/agent-kit-tools-visual/rendering.md
+  - docs/design/agent-kit-tools-visual/rendering/render-destination.md
+  - docs/design/agent-kit-tools-visual/rendering/render-error-shaper.md
+  - docs/design/agent-kit-tools-visual/rendering/visual-access.md
+  - docs/design/agent-kit-tools-visual/rendering/visual-renderer.md
+  - docs/design/agent-kit-tools-visual/visual-options.md
   - docs/design/agent-kit-agents-chat-client.md
   - docs/design/agent-kit-agents-chat-client/chat-client-agent-factory.md
   - docs/design/agent-kit-agents-chat-client/chat-client-provider-session.md

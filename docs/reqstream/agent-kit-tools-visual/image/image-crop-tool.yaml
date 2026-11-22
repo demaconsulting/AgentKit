@@ -177,7 +177,7 @@ sections:
                   - ImageCropTool_Crop_GifFile_ReturnsDenialNamingTheCroppableTypes
                   - ImageCropTool_Crop_WebpFile_ReturnsDenialNamingTheCroppableTypes
                   - ImageCropTool_Crop_PdfFile_ReturnsDenialStatingRasterizationIsRequired
-                  - ImageCropTool_Crop_SvgFile_ReturnsDenialRedirectingToTextFileRead
+                  - ImageCropTool_Crop_SvgFile_ReturnsDenialNamingNoTool
                   - ImageCropTool_Crop_UnknownExtension_ReturnsDenialWithoutRedirect
                   - ImageCropTool_Crop_GifDenial_NamesNoSiblingTool
 

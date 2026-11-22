@@ -145,6 +145,13 @@ words:
   - linuxbrew
   - pipefail
   - JOBOBJECT
+  # The PlantUML delimiters every PlantUML diagram opens and closes with, which the visual tools'
+  # test sources and warm-up sample must contain verbatim.
+  - startuml
+  - enduml
+  # PDF file-structure keywords the visual tools' tests write when they build a document.
+  - endobj
+  - startxref
 
 ignorePaths:
   - '**/.git/**'

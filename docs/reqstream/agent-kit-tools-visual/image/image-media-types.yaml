@@ -67,25 +67,39 @@ sections:
                   - ImageMediaTypes_DenyNonCroppableType_Gif_StatesTheFrameIsUnknowableAndNamesTheCroppableTypes
                   - ImageMediaTypes_DenyNonCroppableType_Webp_StatesItIsNotDecodedAndNamesTheCroppableTypes
                   - ImageMediaTypes_DenyNonCroppableType_Pdf_StatesRasterizationIsRequired
-                  - ImageMediaTypes_DenyNonCroppableType_Svg_RedirectsToTextFileRead
                   - ImageMediaTypes_DenyNonCroppableType_Svgz_RefusesWithoutRedirect
                   - ImageMediaTypes_DenyNonCroppableType_UnknownType_RefusesWithoutRedirect
 
-              - id: AgentKitToolsVisual-Image-MediaTypes-RefusesSvgRedirectsToText
+              - id: AgentKitToolsVisual-Image-MediaTypes-RefusesSvgRedirectsToView
                 title: >-
-                  The media-type map shall refuse an svg file as an unsupported type, stating that
-                  it is text and vector content and naming the text file read tool as the reader
-                  for that kind of content.
+                  The media-type map shall refuse an svg file read as an unsupported type, stating
+                  that it is vector content rather than a raster image and naming the view tool as
+                  the tool that draws that kind of content.
                 tags: [security]
                 justification: |
-                  A denial states a fact and never prescribes a remedy. An .svg genuinely is text
-                  and vector content, not a raster image, so naming the text file read tool states
-                  what the file is rather than offering a way around the refusal. This is the same
-                  basis on which the text file read tool's own binary-content refusal names
-                  image_read, and the two are kept symmetric rather than one being stripped and the
-                  other left.
+                  A denial states a fact and never prescribes a remedy. An .svg is vector content,
+                  not a raster image a provider renders, and the view tool published by this same
+                  pack is what draws vector content, so naming it states what the file is rather
+                  than offering a way around the refusal — the same basis on which the text file
+                  read tool's own binary-content refusal names image_read. Naming the view tool
+                  rather than a text reader also keeps this package free of any dependency on the
+                  text family, whose tools an application composing only images need not have.
                 tests:
-                  - ImageMediaTypes_DenyUnsupportedType_Svg_RedirectsToTextFileRead
+                  - ImageMediaTypes_DenyUnsupportedType_Svg_RedirectsToImageView
+
+              - id: AgentKitToolsVisual-Image-MediaTypes-RefusesSvgCropNoTool
+                title: >-
+                  The media-type map shall refuse a region request for an svg file with its own
+                  refusal, stating that it is vector content and which types a region can be taken
+                  from, naming no tool.
+                justification: |
+                  A region of vector content cannot be cut without first choosing a size to draw
+                  it at, which no region tool does. The view tool draws an .svg, but only whole,
+                  which is not the region the model asked to examine; naming it would offer a
+                  different answer to the question asked, which is the failure every region
+                  refusal in this family avoids.
+                tests:
+                  - ImageMediaTypes_DenyNonCroppableType_Svg_ReturnsDenialNamingNoTool
 
               - id: AgentKitToolsVisual-Image-MediaTypes-RefusesSvgzNoTool
                 title: >-

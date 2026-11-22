@@ -122,10 +122,10 @@ sections:
                   A file of a type the family cannot read has no content to return. A denial states
                   a fact and never prescribes a remedy; the one thing a media-type refusal may add
                   is a statement of what the file actually is, which for an .svg means naming the
-                  text reader. Delegating the refusal to the media-type map keeps that judgment in
-                  one place rather than duplicated in the tool.
+                  view tool, which draws vector content. Delegating the refusal to the media-type
+                  map keeps that judgment in one place rather than duplicated in the tool.
                 tests:
-                  - ImageReadTool_Read_UnsupportedType_ReturnsDenialRedirectingToTextFileRead
+                  - ImageReadTool_Read_UnsupportedType_ReturnsDenialRedirectingToImageView
 
               - id: AgentKitToolsVisual-Image-ReadTool-DirectoryRefused
                 title: >-

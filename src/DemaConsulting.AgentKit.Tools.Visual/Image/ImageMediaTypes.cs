@@ -33,11 +33,14 @@ namespace DemaConsulting.AgentKit.Tools.Visual.Image;
 ///     established precedent in <c>text_file_read</c>, whose binary-content refusal names
 ///     <c>image_read</c>: what is being stated is what the file <em>is</em>, and the named tool is
 ///     simply the reader for that kind of content — not an alternative route to the content this
-///     refusal withheld. An <c>.svg</c> genuinely is text, so naming <c>text_file_read</c> is a
-///     classification of the file, and the two refusals are kept symmetric rather than one being
-///     stripped and the other left. An <c>.svgz</c> is that same content gzip-compressed, which no
-///     tool reads as such, so its refusal states only that. Any other extension is stated as
-///     unsupported, with nothing further.
+///     refusal withheld. An <c>.svg</c> is vector content, not a raster image, and
+///     <c>image_view</c> — published by this same pack — is the tool that draws vector content,
+///     so naming it is a classification of the file rather than a route around the refusal. A
+///     region refusal for an <c>.svg</c> names no tool at all, on the basis every other region
+///     refusal follows: the whole drawing is not the part the model asked to examine. An
+///     <c>.svgz</c> is that same content gzip-compressed, which no tool reads as such, so its
+///     refusal states only that. Any other extension is stated as unsupported, with nothing
+///     further.
 ///     </para>
 ///     <para>
 ///     Every refusal message is a compile-time constant carrying no host detail: no absolute
@@ -95,15 +98,6 @@ public static class ImageMediaTypes
     /// </remarks>
     private const string CroppableTypes = "png, jpg and jpeg";
 
-    /// <summary>
-    ///     The name of the text reader an <c>.svg</c> refusal names.
-    /// </summary>
-    /// <remarks>
-    ///     Written as a literal rather than referenced from the text family, so this package
-    ///     depends on the Core contract alone. The text family ships in a separate package that
-    ///     an application composing only images need not take.
-    /// </remarks>
-    private const string TextFileReadToolName = "text_file_read";
 
     /// <summary>
     ///     The refusal used when the request names a GIF file.
@@ -159,10 +153,22 @@ public static class ImageMediaTypes
         + "A region can be taken from a " + CroppableTypes + " file.";
 
     /// <summary>
-    ///     The refusal used when the request names an <c>.svg</c> file.
+    ///     The refusal used when a read names an <c>.svg</c> file.
     /// </summary>
-    private const string SvgIsText =
-        "An .svg file is text and vector content, not a raster image.";
+    private const string SvgIsVector =
+        "An .svg file is vector content, not a raster image.";
+
+    /// <summary>
+    ///     The refusal used when a region request names an <c>.svg</c> file.
+    /// </summary>
+    /// <remarks>
+    ///     Names no sibling tool, on the same basis as <see cref="GifFrameIsUnknowable"/>: the
+    ///     tool that draws an <c>.svg</c> returns the whole drawing, which is not the region the
+    ///     model asked to examine.
+    /// </remarks>
+    private const string SvgIsNotCroppable =
+        "An .svg file is vector content, not a raster image, so no region can be taken from it. "
+        + "A region can be taken from a " + CroppableTypes + " file.";
 
     /// <summary>
     ///     The refusal used when the request names an <c>.svgz</c> file.
@@ -232,13 +238,13 @@ public static class ImageMediaTypes
 
         return Extension(path) switch
         {
-            // An .svg genuinely is text, so naming the text reader states what the file is rather
-            // than offering a way around the refusal — the same basis on which text_file_read's
-            // binary-content refusal names image_read.
+            // An .svg is vector content, and the tool that draws vector content is image_view, so
+            // naming it states what the file is rather than offering a way around the refusal —
+            // the same basis on which text_file_read's binary-content refusal names image_read.
             ".svg" => ToolResult.Denied(
                 DenialReason.UnsupportedMediaType,
-                SvgIsText,
-                TextFileReadToolName),
+                SvgIsVector,
+                ImageViewTool.ToolName),
 
             // An .svgz is the same content compressed; no tool reads it as such, and there is no
             // classification that names a reader, so the refusal states only that.
@@ -308,8 +314,9 @@ public static class ImageMediaTypes
     ///     <para>
     ///     <b>None of the refusals composed here names a sibling tool.</b> The one place a
     ///     media-type refusal may name one is where the naming <em>is</em> the statement of what
-    ///     the file is — an <c>.svg</c> is text, so the text reader is its reader. A <c>.gif</c>
-    ///     genuinely is an image, so naming the image reader would not classify it; it would
+    ///     the file is — a read of an <c>.svg</c> names <c>image_view</c>, the tool that draws
+    ///     vector content — but a region request is different. A <c>.gif</c> genuinely is an image,
+    ///     and an <c>.svg</c> draws as one, so naming a reader would not classify it; it would
     ///     offer a route to the content this refusal withheld, handing the model a whole image
     ///     after it asked to examine one part of it closely. A model that then described that
     ///     part confidently would be describing what it never examined, which is precisely the
@@ -334,6 +341,10 @@ public static class ImageMediaTypes
             // The one admitted type that looks croppable and is not; without the reason stated a
             // model would reasonably retry with different coordinates.
             ".pdf" => ToolResult.Denied(DenialReason.UnsupportedMediaType, PdfRequiresRasterization),
+
+            // Vector content has no pixels to cut; the drawing tool would answer a different
+            // question, so no tool is named.
+            ".svg" => ToolResult.Denied(DenialReason.UnsupportedMediaType, SvgIsNotCroppable),
 
             // Anything the family cannot read at all is classified by the one map that owns that
             // question, so the family answers "what is this file" in a single voice.

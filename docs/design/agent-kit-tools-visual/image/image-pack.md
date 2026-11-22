@@ -19,14 +19,22 @@ requires, the composition can withhold the family from a host that cannot presen
 
 #### Data Model
 
-The class is sealed and holds no state; it is safe for concurrent use.
+The class is sealed. Its only state is the options it was given and the renderer it creates from
+them, whose render gate bounds how many drawings of its view tool run at once. Both are safe for
+concurrent use, so the class is too. The pack contract expects a pack to be stateless; this pack
+departs from that by holding the gate, deliberately: the gate is shared by every composition the
+instance is added to, so the concurrency bound holds per pack instance however many agents it
+serves.
 
 | Member | Type | Invariant |
 | --- | --- | --- |
 | `FamilyPrefix` (constant) | `string` | `image`; leads every tool name it creates |
 | `IToolPack.FamilyPrefix` | `string` | Reports the constant above |
+| `ImagePack(VisualOptions?)` | constructor | Null means `VisualOptions.Default`; min preview side ≤ max side |
+| `Options` | `VisualOptions` | Non-null; the options the view tool observes |
 | `RequiredCapabilities` | `HostCapabilities` | `Vision`; the family is gated on it |
 | `CreateTools(PathPolicy)` | `IEnumerable<AIFunction>` | Non-null; no null element; every tool |
+| `WarmUpAsync(CancellationToken)` | `Task` | Optional; never called by the pack itself |
 
 The prefix is published both as a constant and through the contract. The constant lets a test or a
 composing application name the family without repeating a string literal that could drift from the
@@ -36,6 +44,15 @@ explicitly so that the constant can keep the name the contract uses; the class i
 member is not hidden from a derived type.
 
 #### Key Methods
+
+##### ImagePack(VisualOptions? options)
+
+Stores `options`, or `VisualOptions.Default` when none is given, so `new ImagePack()` keeps
+compiling and behaving as before. It then refuses options whose `MinPreviewSide` exceeds
+`MaxRenderSide` with an `ArgumentException` naming `options`: each value's own range is checked
+where it is set, but neither accessor can see the other, so the pack is the first place the
+relation is known. Last, it creates the `VisualRenderer` every view tool this pack creates draws
+through.
 
 ##### RequiredCapabilities
 
@@ -51,35 +68,33 @@ Creates the family's tools.
 **Preconditions:** `policy` is non-null; it is the policy the composition was built with, not one
 the pack invented.
 
-**Algorithm:** validates `policy`, then returns `ImageReadTool.Create(policy)` followed by
-`ImageCropTool.Create(policy)` and `ImageAutoCropTool.Create(policy)` as the three elements of a
-collection, in that order.
+**Algorithm:** validates `policy`, then returns `ImageReadTool.Create(policy)`,
+`ImageCropTool.Create(policy)`, `ImageAutoCropTool.Create(policy)` and
+`ImageViewTool.Create(policy, renderer)` as the four elements of a collection, in that order. The
+view tool is appended last so the order of the existing tools is unchanged.
 
-**Postconditions:** exactly the read tool, the crop tool and the auto-crop tool, non-null, each
-named `image_`-prefixed and governed by the supplied policy. The three are created together because
-they are one capability: the read tool states the coordinate space the crop tool consumes, so a pack
-that published only one of them would offer a model either a region request it cannot aim or a
-size it has nothing to use — and the auto-crop tool answers the region question a model cannot state
-in that coordinate space at all, because it can see that a picture is mostly margin without being
-able to measure where the margin stops. Called once per `ToolPackBuilder.Build`, and only when the
-host provides the Vision capability.
+**Postconditions:** exactly the read tool, the crop tool, the auto-crop tool and the view tool,
+non-null, each named `image_`-prefixed and governed by the supplied policy. The four are created
+together because they are one capability: the read tool states the coordinate space the crop tool
+consumes, so a pack that published only one of them would offer a model either a region request it
+cannot aim or a size it has nothing to use — the auto-crop tool answers the region question a model
+cannot state in that coordinate space at all, because it can see that a picture is mostly margin
+without being able to measure where the margin stops — and the view tool draws the visual content
+the read tool refuses, which the read tool's refusal names. Called once per `ToolPackBuilder.Build`,
+and only when the host provides the Vision capability.
 
-**This pack does not filter on the policy, and the reason is a decision rather than an oversight.**
-The rule the text-file and file families apply — described under *Policy-derived publication* in the
-system design — gates a tool on the writes it can only perform, not on whether every argument it
-accepts could be used. All three tools here clear that bar under a policy that permits no writing
-anywhere:
-reading an image is a read, and each region tool's primary mode returns the region inline as image
-content and writes nothing. The optional `destination` both region tools accept genuinely does need
-a write grant, but
-withholding a whole tool over an optional argument would remove a fully working capability, and
-treating a narrowable parameter as grounds for suppressing a tool would mean every optional
-argument needs a gate of its own. A destination named under a read-only policy is answered by the
-ordinary write denial, which enumerates the writable locations, so the model learns its options in
-one turn instead of losing the tool permanently.
+**This pack does not filter on the policy, and the reason is a decision rather than an oversight.** The rule the
+text-file and file families apply — described under *Policy-derived publication* in the system design — gates a tool on
+the writes it can only perform, not on whether every argument it accepts could be used. All four tools here clear that
+bar under a policy that permits no writing anywhere: reading or drawing a file is a read, and each region tool's primary
+mode returns the region inline as image content and writes nothing. The optional `destination` both region tools accept
+genuinely does need a write grant, but withholding a whole tool over an optional argument would remove a fully working
+capability, and treating a narrowable parameter as grounds for suppressing a tool would mean every optional argument
+needs a gate of its own. A destination named under a read-only policy is answered by the ordinary write denial, which
+enumerates the writable locations, so the model learns its options in one turn instead of losing the tool permanently.
 
 **Not filtering includes the degenerate policy, and that is accepted rather than corrected.** Under
-a policy holding no grants at all, all three tools are published and `image_read` refuses every
+a policy holding no grants at all, all four tools are published and `image_read` refuses every
 path it is given, because `PathPolicy.TryResolveRead` can admit none. A symmetric read-visibility
 check would remove that one case at the cost of a second publication question in every pack:
 `PathRule` offers only `ReadOnly` and `ReadWrite`, and `AccessLevel` has no write-only member, so
@@ -90,7 +105,20 @@ granted — a composition whose agent can touch no file however its tool list is
 compile-time constraint that forces it, are recorded in *Image Crop Tool Design* and apply
 identically to *Image Auto Crop Tool Design*.
 
+##### WarmUpAsync(CancellationToken cancellationToken)
+
+Asks the renderer to draw a small sample of every format the view tool draws from text — SVG,
+Mermaid, PlantUML, Vega-Lite and OpenSCAD — and discard them. The first drawing of each format in a
+process pays for loading and initializing its library; a host that would rather pay that at
+start-up calls this once, off its hot path. The pack never calls it. The samples go through the
+render gate and timeout like any drawing, reference no file, and are drawn under a file-access
+policy that refuses every file; a sample that fails is ignored, because the first real drawing that
+meets the same failure reports it. The caller's cancellation is thrown.
+
 #### Error Handling
+
+The constructor raises `ArgumentException` for options whose smallest preview side exceeds the
+largest render side, at the line that supplied them.
 
 `ArgumentNullException` is raised for a null policy. This is validated here as well as in the tool's
 factory so that the failure names the composing application's mistake at the line that made it,
@@ -106,11 +134,14 @@ pack is not reachable from a model's tool call, so no runtime refusal arises her
 #### Dependencies
 
 `IToolPack` and `HostCapabilities` for the contract it implements, `PathPolicy` as the argument it
-passes on, and the read, crop and auto-crop tool units whose internal factories it calls.
+passes on, the read, crop, auto-crop and view tool units whose internal factories it calls,
+`VisualOptions` for its configuration and the Rendering subsystem's `VisualRenderer`, which it
+creates and hands to the view tool.
 `AIFunction`, from `Microsoft.Extensions.AI.Abstractions`, is the form the created tools take.
 
 #### Callers
 
 An application constructs an `ImagePack` and adds it to a `ToolPackBuilder`; the builder then calls
-`CreateTools`, but only for a host that declared the Vision capability. Nothing inside this package
+`CreateTools`, but only for a host that declared the Vision capability. A host may call
+`WarmUpAsync` once at start-up. Nothing inside this package
 calls the unit.

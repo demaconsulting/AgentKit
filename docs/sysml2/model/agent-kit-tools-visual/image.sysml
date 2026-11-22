@@ -4,10 +4,11 @@ package AgentKitToolsVisual_ImageSubsystem {
     private import AgentKitToolsVisual_ImageReadTool::*;
     private import AgentKitToolsVisual_ImageCropTool::*;
     private import AgentKitToolsVisual_ImageAutoCropTool::*;
+    private import AgentKitToolsVisual_ImageViewTool::*;
     private import AgentKitToolsVisual_ImagePack::*;
 
     part def Image {
-        doc /* The image tool family: policy-governed reading of images and PDF documents, reporting an image's declared pixel dimensions wherever it can establish them, and returning a rectangular region of one — either named in pixels by the caller, or found by trimming the image to the region its own content occupies — inline or written to a destination the policy's write decision permits, published as one pack under the image family prefix and gated on the host's vision capability. */
+        doc /* The image tool family: policy-governed reading of images and PDF documents, reporting an image's declared pixel dimensions wherever it can establish them, and returning a rectangular region of one — either named in pixels by the caller, or found by trimming the image to the region its own content occupies — inline or written to a destination the policy's write decision permits, and drawing a document, drawing or diagram file a provider cannot render as an opaque picture, published as one pack under the image family prefix and gated on the host's vision capability. */
 
         metadata info : SoftwareInfo {
             testFiles = ("test/DemaConsulting.AgentKit.Tools.Visual.Tests/Image/ImageTests.cs");
@@ -20,6 +21,7 @@ package AgentKitToolsVisual_ImageSubsystem {
         part imageReadTool : ImageReadTool;
         part imageCropTool : ImageCropTool;
         part imageAutoCropTool : ImageAutoCropTool;
+        part imageViewTool : ImageViewTool;
         part imagePack : ImagePack;
     }
 }

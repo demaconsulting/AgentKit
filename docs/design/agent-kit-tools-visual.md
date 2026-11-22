@@ -19,13 +19,24 @@ distribution for one reason: its families need an imaging library, and keeping t
 means it reaches only the applications that choose the visual tools, while AgentKitTools carries no
 imaging dependency at all.
 
-The system contains the **Image** subsystem: the image tool family, publishing `image_read`,
-`image_crop` and `image_auto_crop` under the `image` family prefix and attached to an application
-as one pack. It is gated on a host capability — it is registered only for a host that declares it
-can present visual content to a model — because its tools return image and PDF content that a
-non-vision host could not use. The family's tool names and behavior are unchanged by its move into
-this package; only its namespace, `DemaConsulting.AgentKit.Tools.Visual.Image`, and its package
-differ. See *Image Subsystem Design*.
+The system contains two subsystems and one unit:
+
+- The **Image** subsystem is the image tool family, publishing `image_read`, `image_crop`,
+  `image_auto_crop` and `image_view` under the `image` family prefix and attached to an application
+  as one pack. It is gated on a host capability — it is registered only for a host that declares it
+  can present visual content to a model — because its tools return image and PDF content that a
+  non-vision host could not use. `image_read` stays a byte-exact pass-through of what a provider
+  renders itself; `image_view` draws the documents, drawings and diagram sources a provider cannot
+  render. See *Image Subsystem Design*.
+- The **Rendering** subsystem holds the internal pieces every tool that draws shares: the mapping
+  of the access policy onto the rendering library's file-access policy (`VisualAccess`), the
+  renderer that applies the bounds, the opaque background and the promotions (`VisualRenderer`), the
+  shaping of failures into text a model can act on (`RenderErrorShaper`), and the saving of a
+  picture under the write grant (`RenderDestination`). Nothing in it is public. See *Rendering
+  Subsystem Design*.
+- **VisualOptions** is the public record of rendering bounds a host gives a pack: the render
+  timeout, the largest render side, the smallest preview side, the triangle limit of a 3D model and
+  the number of renders a pack runs at once. See *VisualOptions Unit Design*.
 
 ## External Interfaces
 
@@ -40,7 +51,9 @@ application through the AgentKitCore pack contract:
 - **ToolPackBuilder** (from AgentKitCore) — an application composes this package's families, with
   any other AgentKit packs, into one ordered tool list governed by a single `PathPolicy`.
 
-An application adds `ImagePack` to give a vision-capable agent the image family. A composition to
+An application adds `ImagePack` to give a vision-capable agent the image family, optionally with
+`VisualOptions` bounding its drawings, and may call `WarmUpAsync` once at start-up so the rendering
+library's first-use cost is not paid while a model waits. A composition to
 which no family has been added remains well defined — an empty `ToolPackBuilder` built with a valid
 policy yields an empty tool list — and the image family on a host that has not declared Vision
 contributes no tools, because the composition does not ask its pack for them.
@@ -50,6 +63,8 @@ contributes no tools, because the composition does not ask its pack for them.
 | `IToolPack` | Outbound | AgentKitCore pack contract | Implemented by each family |
 | `ToolPackBuilder` | Inbound/Outbound | AgentKitCore composition | Governed by one `PathPolicy` |
 | `ImagePack` | Outbound | AgentKitCore pack contract | Prefix `image`; requires Vision |
+| `ImagePack(VisualOptions?)` | Inbound | `VisualOptions` record | Each value range-checked where set |
+| `ImagePack.WarmUpAsync` | Inbound | `Task` | Optional; host-initiated only |
 
 ## Dependencies
 
@@ -60,17 +75,19 @@ result constructors and the pack contract each family in this package is built o
 reaches this package transitively through Core rather than as a direct dependency; see *OTS
 Integration Design* (`docs/design/ots.md`) and *Microsoft.Extensions.AI.Abstractions Design*.
 
-The one direct runtime NuGet dependency is `CanvasNet`, which the image family uses to read what an
-image declares about itself and to extract and re-encode a region of one. It is taken **without**
-`PrivateAssets` because it is needed at run time by any application that attaches the family. It
-was chosen on the property that its decoders are safe managed code and its package carries no
-native binaries, which is what makes parsing hostile image input consistent with this library's
-thesis. It is a prerelease pin, and a stable release of this package waits on a stable CanvasNet
-0.2.0; see *CanvasNet Design*.
+The one direct runtime NuGet dependency is `CanvasNet.Viewer`, which brings the CanvasNet core and
+its format libraries (SVG, PDF, PPTX, VSDX, Mermaid, PlantUML, Vega-Lite, OpenSCAD) transitively at
+the same version. The region tools use the core to read what an image declares about itself and to
+extract and re-encode a region of one; the Rendering subsystem uses the Viewer to draw documents and
+diagrams. It is taken **without** `PrivateAssets` because it is needed at run time by any
+application that attaches the family. It was chosen on the property that its decoders are safe
+managed code and its packages carry no native binaries, which is what makes parsing hostile input
+consistent with this library's thesis. It is a prerelease pin, and a stable release of this package
+waits on a stable CanvasNet 0.2.0; see *CanvasNet Design*.
 
 The package does **not** depend on AgentKitTools. The image family's refusal for an `.svg` file
-names `text_file_read`, the reader for that kind of content, and it holds that name as a literal
-rather than referencing the text family, so no project reference to AgentKitTools is needed.
+names `image_view`, a tool of this same family, so no tool of the text family is named and no
+project reference to AgentKitTools is needed.
 
 The dependency runs in exactly one direction: Tools Visual depends on Core, never the reverse, and
 no other capability package depends on Tools Visual.
@@ -106,6 +123,26 @@ another. The family adds two controls of its own:
   header declares, against the policy's `ToolLimits.MaxImagePixels`, before any pixel data is
   allocated, so a small file cannot provoke a large allocation.
 
+Drawing a document adds controls of its own, all held in the Rendering subsystem:
+
+- **The input is judged first** — the rendering library never judges the file it is asked to draw,
+  so `image_view` takes the read decision for it before anything is learned about it, and draws
+  the bytes it read rather than handing the library a path.
+- **Referenced files are confined** — every picture, include and data file a document references
+  is judged by a file-access policy mapped from the access policy: the grant roots (path as written
+  and real path), no links below the starting folder, and AgentKit's own read decision, which
+  applies deny patterns. The library's allow-everything default is never used, and nothing is
+  fetched from the network.
+- **Every render is bounded** — by the pixel budget, the binary ceiling, the largest render side,
+  the triangle limit and the render timeout, which counts the wait for the render gate. The timeout
+  is a cancellation the library honors; as defense in depth, the caller also stops waiting a short
+  grace period later, and the gate keeps an abandoned render's place until it ends, so abandoned
+  renders cannot accumulate.
+- **Nothing misleading reaches the model** — pictures are drawn on opaque white, an empty picture
+  or one whose embedded image was refused is reported as a failure, and failures are shaped into
+  text with a code, a location, a caret, model-facing advice and every note, with host paths
+  removed.
+
 ## Data Flow
 
 **Composition path:**
@@ -119,6 +156,15 @@ another. The family adds two controls of its own:
 4. **Output**: One ordered tool list, governed by the single policy — the tools of each family the
    application attached, in the order it attached them
 
+**Drawing path:**
+
+1. **Input**: A path the model names, and optionally a page and a width
+2. **Read decision**: The access policy permits the file, or the policy's refusal is returned
+3. **Read**: The file is read once, within the binary ceiling
+4. **Render**: The renderer draws those bytes under the mapped file-access policy, with the file's
+   own folder as the base its references resolve against, within every bound
+5. **Output**: An opaque PNG with a caption, or the shaped failure text, or a denial
+
 ### Policy-derived publication
 
 The AgentKit packs follow one rule: a pack withholds a tool whose writes the path policy governs
@@ -126,10 +172,10 @@ when the policy permits no writing anywhere, and publishes everything else.
 
 | Family | Filters? | Needs a write grant | Read-only total |
 | --- | --- | ---: | ---: |
-| Image | No | none | 3 → **3** |
+| Image | No | none | 4 → **4** |
 
-All three image tools succeed under a read-only policy. Reading an image is a read, and taking a
-region without a destination returns image content rather than writing a file. The optional
+All four image tools succeed under a read-only policy. Reading or drawing a file is a read, and
+taking a region without a destination returns image content rather than writing a file. The optional
 `destination` that `image_crop` and `image_auto_crop` both carry does need a write grant, but the
 rule gates a tool on the writes it can only perform, not on whether each argument can be used; see
 *Image Pack Design*, *Image Crop Tool Design* and *Image Auto Crop Tool Design*.
@@ -145,6 +191,35 @@ rule gates a tool on the writes it can only perform, not on whether each argumen
 - **Compliance**: All functionality must be traceable to requirements
 - **Quality**: Zero warnings, full test coverage, complete documentation
 - **Portability**: Compatible across supported .NET platforms
+
+### Known Limitations
+
+The rendering library is a prerelease, and the following behaviors of the pinned version are known
+and handled here rather than fixed here:
+
+- **Format failures carry no stable code or structured location**
+  ([CanvasNet #166](https://github.com/demaconsulting/CanvasNet/issues/166)). This is why the
+  package shapes failures itself, classifying by exception type and reading the location from the
+  typed exception or the message prefix.
+- **Malformed Vega-Lite JSON is reported as nesting too deep**
+  ([CanvasNet #163](https://github.com/demaconsulting/CanvasNet/issues/163)). The shaped failure is
+  classified correctly by type, as a Vega-Lite error, but its message still states the misleading
+  cause.
+- **A bad PlantUML line can make the diagram be detected as a deployment diagram**
+  ([CanvasNet #164](https://github.com/demaconsulting/CanvasNet/issues/164)), so the message may
+  name the wrong diagram kind; the location still points at the line to fix.
+- **A Vega-Lite encoding without a type renders without a diagnostic**
+  ([CanvasNet #165](https://github.com/demaconsulting/CanvasNet/issues/165)). The picture is
+  returned as drawn; it is caught only if it is empty enough for the near-empty check.
+- **The Vega-Lite, Mermaid and PlantUML budgets cannot be set through the render options**
+  ([CanvasNet #167](https://github.com/demaconsulting/CanvasNet/issues/167)). The library's own
+  defaults apply to those formats; the pixel budget, the binary ceiling, the largest side and the
+  timeout still bound every render.
+- **The default background is transparent**
+  ([CanvasNet #168](https://github.com/demaconsulting/CanvasNet/issues/168)), which a vision model
+  reads as dark text on black. Every render therefore sets an opaque white background.
+- **A platform that cannot report the real path of an opened file** (Linux without `/proc`) has
+  every referenced file refused, because the mapped policy needs the real path; it fails closed.
 
 ### Platform Support
 

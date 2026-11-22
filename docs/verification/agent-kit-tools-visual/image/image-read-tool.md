@@ -177,12 +177,12 @@ not catch a differently-worded one.
 Error path: a file in a sibling directory no read-capable grant permits is refused as
 `PathNotPermitted`, before anything is learned about the file.
 
-##### AgentKitToolsVisual-Image-ReadTool-UnsupportedTypeDenied: An Unsupported Type Redirects to the Text File Read Tool
+##### AgentKitToolsVisual-Image-ReadTool-UnsupportedTypeDenied: An Unsupported Type Redirects to the View Tool
 
-**Test**: `ImageReadTool_Read_UnsupportedType_ReturnsDenialRedirectingToTextFileRead`
+**Test**: `ImageReadTool_Read_UnsupportedType_ReturnsDenialRedirectingToImageView`
 
 Error path: a permitted `.svg` is refused as an unsupported type, the refusal states that the file is
-text and vector content, and it names `text_file_read` as the reader for that kind of content —
+vector content, and it names `image_view` as the tool that draws that kind of content —
 confirming the tool composes the refusal through the media-type map rather than
 inventing its own.
 

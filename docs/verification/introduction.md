@@ -158,14 +158,26 @@ constituent software items, specifically:
   families built on the AgentKitCore contract, carrying the imaging library those families need so
   that AgentKitTools carries none
 - **Image (Subsystem)** — The image tool family: policy-governed reading of images and PDF
-  documents for a vision-capable agent, and extraction of a region of an image — either named in
-  pixels or found by trimming the image to its own content — published as one capability-gated pack
+  documents for a vision-capable agent, extraction of a region of an image — either named in
+  pixels or found by trimming the image to its own content — and drawing of documents, drawings and
+  diagram files as pictures, published as one capability-gated pack
 - **ImageMediaTypes (Unit)** — Maps a file's extension to the media type the image family reads,
   and composes the refusal for a file whose type it cannot read
 - **ImageReadTool (Unit)** — Publishes the `image_read` tool
 - **ImageCropTool (Unit)** — Publishes the `image_crop` tool
 - **ImageAutoCropTool (Unit)** — Publishes the `image_auto_crop` tool
-- **ImagePack (Unit)** — Publishes the image family as one pack
+- **ImageViewTool (Unit)** — Publishes the `image_view` tool
+- **ImagePack (Unit)** — Publishes the image family as one pack, holding its rendering options and
+  render gate
+- **Rendering (Subsystem)** — The internal pieces every visual tool draws through: confinement of
+  referenced files, bounded opaque rendering, failure shaping and saving under the write grant
+- **VisualAccess (Unit)** — Maps the access policy onto the rendering library's file-access policy
+- **VisualRenderer (Unit)** — Draws within the pack's bounds on opaque white, promoting misleading
+  pictures to failures
+- **RenderErrorShaper (Unit)** — Turns a failed render into text a model can act on
+- **RenderDestination (Unit)** — Saves a rendered picture to a destination the write decision
+  permits, replacing an earlier one in one step
+- **VisualOptions (Unit)** — The rendering bounds a host gives a visual tool pack
 - **AgentKitAgentsChatClient (System)** — Builds a Microsoft Agent Framework agent from any
   `IChatClient`, and carries a Core session over that same `IChatClient`, installing the
   image-promoting decorator unconditionally on both
@@ -232,9 +244,10 @@ The following OTS items are also covered:
 
 - **BuildMark** — build-notes documentation tool
 - **ApiMark** — public API surface tracking tool
-- **CanvasNet** — the runtime raster imaging library providing image header inspection including
+- **CanvasNet** — the runtime imaging library providing image header inspection including
   decode feasibility, PNG and JPEG decoding with PNG decompression bounded by the declared size,
-  rectangular region extraction and PNG encoding
+  rectangular region extraction and PNG encoding, and through its Viewer the confined, bounded
+  drawing of documents and diagrams
 - **FileAssert** — document assertion tool
 - **Microsoft.Agents.AI** — the runtime library providing `ChatClientAgent`, which builds an
   `AIAgent` from an `IChatClient`

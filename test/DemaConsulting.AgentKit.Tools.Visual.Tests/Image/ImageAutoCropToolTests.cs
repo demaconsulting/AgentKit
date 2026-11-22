@@ -1706,15 +1706,15 @@ public class ImageAutoCropToolTests
     }
 
     /// <summary>
-    ///     Proves an SVG is refused with a redirect to the text file reader.
+    ///     Proves an SVG is refused stating what it is and naming no tool.
     /// </summary>
     /// <remarks>
-    ///     An <c>.svg</c> genuinely is text, so naming the text reader classifies the file rather
-    ///     than offering a way around the refusal.
+    ///     An <c>.svg</c> is vector content with no pixels to trim. The view tool draws it, but
+    ///     only whole, so naming it would answer a different question than the one asked.
     /// </remarks>
     /// <returns>A task that completes when the scenario has been verified.</returns>
     [Fact]
-    public async Task ImageAutoCropTool_AutoCrop_SvgFile_ReturnsDenialRedirectingToTextFileRead()
+    public async Task ImageAutoCropTool_AutoCrop_SvgFile_ReturnsDenialNamingNoTool()
     {
         // Arrange: a permitted .svg, which is vector content this family does not read
         using var fixture = new TempDirectoryFixture();
@@ -1724,10 +1724,11 @@ public class ImageAutoCropToolTests
         // Act: ask for its content region
         var result = await InvokeAsync(tool, file);
 
-        // Assert: refused, naming the tool that genuinely reads this content
+        // Assert: refused, stating what the file is and naming no tool
         var text = Assert.IsType<string>(result);
         Assert.Contains("Denied (UnsupportedMediaType)", text, StringComparison.Ordinal);
-        Assert.Contains("text_file_read", text, StringComparison.Ordinal);
+        Assert.Contains("is vector content", text, StringComparison.Ordinal);
+        Assert.DoesNotContain(ImageViewTool.ToolName, text, StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -1748,7 +1749,7 @@ public class ImageAutoCropToolTests
         // Assert: refused, with no honest alternative offered because there is none
         var text = Assert.IsType<string>(result);
         Assert.Contains("Denied (UnsupportedMediaType)", text, StringComparison.Ordinal);
-        Assert.DoesNotContain("text_file_read", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("tool instead", text, StringComparison.Ordinal);
         Assert.DoesNotContain(ImageReadTool.ToolName, text, StringComparison.Ordinal);
     }
 

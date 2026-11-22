@@ -212,7 +212,7 @@ public static class ImageReadTool
 
         // The type is decided from the extension before the file system is consulted for size or
         // content. An unsupported type is refused — stating what the file is, which for an .svg
-        // means naming the text reader — rather
+        // means naming image_view, the tool that draws vector content — rather
         // than a file being read only to be discarded.
         if (!ImageMediaTypes.TryResolveMediaType(realPath, out var mediaType))
         {

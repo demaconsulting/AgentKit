@@ -173,13 +173,14 @@ public class ImageReadToolTests
     }
 
     /// <summary>
-    ///     Proves an unsupported type is refused with a redirect to the text file read tool.
+    ///     Proves an unsupported type is refused with a redirect to the view tool, which draws
+    ///     vector content.
     /// </summary>
     /// <returns>A task that completes when the scenario has been verified.</returns>
     [Fact]
-    public async Task ImageReadTool_Read_UnsupportedType_ReturnsDenialRedirectingToTextFileRead()
+    public async Task ImageReadTool_Read_UnsupportedType_ReturnsDenialRedirectingToImageView()
     {
-        // Arrange: a permitted but vector-text file this family cannot read
+        // Arrange: a permitted vector file this tool passes through no provider
         using var fixture = new TempDirectoryFixture();
         var file = WriteBytes(fixture.Root, "diagram.svg", SampleBytes);
         var tool = ImageReadTool.Create(RootedPolicy(fixture.Root));
@@ -187,12 +188,12 @@ public class ImageReadToolTests
         // Act: request the .svg file
         var result = await InvokeAsync(tool, file);
 
-        // Assert: refused as an unsupported type, stating what the file is; naming the reader for
+        // Assert: refused as an unsupported type, stating what the file is; naming the tool for
         // that kind of content is a classification, not a prescribed way around the refusal
         var text = Assert.IsType<string>(result);
         Assert.Contains("Denied (UnsupportedMediaType)", text, StringComparison.Ordinal);
-        Assert.Contains("is text and vector content", text, StringComparison.Ordinal);
-        Assert.Contains("text_file_read", text, StringComparison.Ordinal);
+        Assert.Contains("is vector content", text, StringComparison.Ordinal);
+        Assert.Contains("'" + ImageViewTool.ToolName + "'", text, StringComparison.Ordinal);
     }
 
     /// <summary>

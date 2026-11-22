@@ -22,6 +22,7 @@ package AgentKitDesignViews {
     private import AgentKitTools_MemorySubsystem::*;
     private import AgentKitTools_AgentSubsystem::*;
     private import AgentKitToolsVisual_ImageSubsystem::*;
+    private import AgentKitToolsVisual_RenderingSubsystem::*;
 
     view SoftwareStructureView : InterconnectionView {
         expose AgentKitCore::AgentKitCoreSystem;
@@ -90,6 +91,13 @@ package AgentKitDesignViews {
     view ImageView {
         expose Image;
         expose Image::*;
+        render asInterconnectionDiagram;
+    }
+
+    view RenderingView {
+        // Qualified: the standard Views library also declares a 'Rendering'.
+        expose AgentKitToolsVisual_RenderingSubsystem::Rendering;
+        expose AgentKitToolsVisual_RenderingSubsystem::Rendering::*;
         render asInterconnectionDiagram;
     }
 

@@ -270,19 +270,16 @@ by forgetting it.
 
 ## Tool Results
 
-`ToolResult` constructs what a tool returns: `Text` for text, `Structured` for data that is
-neither text nor content, `Binary` and `Image` for
-content carrying a media type and an optional caption, and `Denied` for a refusal. A refusal names
-its reason and states the fact that caused it; **a denial states a fact and never prescribes a
-remedy**, because a denial that helpfully suggested another tool was measured pushing a model into
-a destructive workaround. The optional redirect survives that rule in exactly two places, where
-naming the tool *is* the fact being stated rather than a route around what was withheld: binary
-content is offered to `image_read`, and an `.svg`, which genuinely is text, is offered to
-`text_file_read`. Every other refusal — including every policy refusal — carries no redirect. Text
-and content reach the
-provider in the form the tool produced them rather than as serialized JSON, which is what allows a
-returned image to be recognized as an image; a structured result is serialized to JSON on the way
-out, because JSON is the form in which a provider can read structured data.
+`ToolResult` constructs what a tool returns: `Text` for text, `Structured` for data that is neither text nor content,
+`Binary` and `Image` for content carrying a media type and an optional caption, and `Denied` for a refusal. A refusal
+names its reason and states the fact that caused it; **a denial states a fact and never prescribes a remedy**, because a
+denial that helpfully suggested another tool was measured pushing a model into a destructive workaround. The optional
+redirect survives that rule in exactly two places, where naming the tool *is* the fact being stated rather than a route
+around what was withheld: binary content is offered to `image_read`, and an `.svg`, which is vector content rather than
+a raster image, is offered to `image_view`, which draws it. Every other refusal — including every policy refusal —
+carries no redirect. Text and content reach the provider in the form the tool produced them rather than as serialized
+JSON, which is what allows a returned image to be recognized as an image; a structured result is serialized to JSON on
+the way out, because JSON is the form in which a provider can read structured data.
 
 `ToolResult.Oversized` is the one result that is not delivered as constructed. A tool whose whole
 output exceeds the result ceiling returns it together with the refusal it would give, and the
@@ -506,6 +503,7 @@ row.
 | Image | `image_read` | Reads an image or PDF, reporting pixel size | `Vision` | No |
 | Image | `image_crop` | Returns or writes a pixel region of a PNG/JPEG | `Vision` | No |
 | Image | `image_auto_crop` | Trims an image to its content, with padding | `Vision` | No |
+| Image | `image_view` | Draws a document, drawing or diagram file as a picture | `Vision` | No |
 | Todo | `todo_list` | Reports the recorded steps, in recorded order | None | No |
 | Todo | `todo_set` | Records a step, or updates the step with that id | None | No |
 | Todo | `todo_remove` | Drops a step by id from the task list | None | No |
@@ -527,10 +525,10 @@ The **Capability** column is the host capability the family requires; the **Writ
 says whether the tool is published only when the access policy permits writing somewhere.
 
 **A tool marked `Yes` is not published at all unless the policy permits writing somewhere.** Eleven
-of the twenty-eight family tools are marked `Yes`: five in the text file family and six in the file
+of the twenty-nine family tools are marked `Yes`: five in the text file family and six in the file
 family. If every grant an application configures is read-only — or it configures no grants at all —
-those eleven are absent from the composed list, and the seven families together publish seventeen
-tools rather than twenty-eight. The text file family offers `text_file_search`, `text_file_read` and
+those eleven are absent from the composed list, and the seven families together publish eighteen
+tools rather than twenty-nine. The text file family offers `text_file_search`, `text_file_read` and
 `text_file_copy_lines`; the file family offers `file_list`; the markdown, image, todo, memory and
 agent families are unaffected.
 
@@ -540,8 +538,9 @@ tool — even though a relative name still lands in the read-only workspace and 
 still refused. Only a policy with no read-write grant anywhere withholds them.
 
 **A policy with no grants at all is the one case where a published tool cannot work.** The eleven
-write-performing tools are withheld as above, and the seventeen survivors are published as usual —
-but `text_file_read`, `text_file_search`, `text_file_copy_lines`, `file_list` and `image_read` then
+write-performing tools are withheld as above, and the eighteen survivors are published as usual —
+but `text_file_read`, `text_file_search`, `text_file_copy_lines`, `file_list`, `image_read` and
+`image_view` then
 refuse every path they are given, because no path resolves under a policy that grants nothing. That
 is not gated, and the reason is that it cannot arise any other way: a grant is either read-only or
 read-write, so permission to write always carries permission to read. The configuration is a
@@ -584,7 +583,7 @@ memory (`MemoryPack`) families require no host capability. Two families are gate
 its tools, so a model is never offered a tool its host cannot use. Where the model was chosen from a
 catalog, take the `Vision` declaration from the selected model; see *A Vision-Only Application*.
 
-The image family's three tools are one capability rather than three. `image_read` states the image's
+The image family's region tools and its read tool are one capability. `image_read` states the image's
 pixel dimensions alongside its content, and `image_crop` takes a region stated in pixels from the
 top-left corner of that same coordinate space — because a model can see a picture but cannot
 measure one, and a region request it cannot aim is a region request it will aim wrongly. A region
@@ -636,6 +635,31 @@ matched case-insensitively, as every extension this family reads is — because 
 encoded as PNG and a file named otherwise would be one every later reader is entitled to misread,
 and **an existing file is never replaced** — the same guarantee
 `text_file_create` makes. No directory is created for a destination whose parent does not exist.
+
+`image_view` is how a model looks at visual content a provider cannot render itself. `image_read`
+hands a file's bytes to the provider unchanged, which is right for PNG, JPEG, GIF, WebP and PDF;
+`image_view` instead **draws** a file — an SVG, a PDF page, a PPTX slide, a VSDX page, a Mermaid
+(`.mmd`), PlantUML (`.puml`), Vega-Lite (`.vl.json`) or OpenSCAD (`.scad`) source, or a raster
+image — and returns the drawing as a PNG on an opaque white background, with a caption naming the
+format, the page of the page count for a multi-page document, the size and anything the drawing
+left out. It takes an optional `page` (from 1) and an optional `width` in pixels.
+
+- **The file is checked like any other read**, before anything is learned about it, and every file
+  the document references — an embedded picture, an included file, a chart's data file — must lie
+  inside the locations the agent may read, deny patterns included. A reference that escapes, by
+  `..`, an absolute path, a `file:` URI or a link, is refused, and nothing is ever fetched from the
+  network.
+- **A file it cannot draw is reported, not refused**: the result names an error code, the line and
+  column, the offending line with a caret under the column, and advice, so a model that wrote the
+  file can fix it. A drawing that came out empty, or whose embedded picture was refused, is
+  reported the same way rather than shown.
+- **Every drawing is bounded** by the policy's pixel budget and binary ceiling and by the pack's
+  `VisualOptions`: a render timeout (30 seconds by default, including any wait for another drawing
+  to finish), a largest side (2048 pixels), a smallest side a small diagram is enlarged to so its
+  labels can be read (768 pixels), a triangle limit for OpenSCAD models (500,000) and the number of
+  drawings a pack runs at once (one). Pass options to `new ImagePack(options)`; each value outside
+  its range is refused where it is set. `ImagePack.WarmUpAsync` optionally draws a sample of each
+  format once, so the first drawing a model asks for does not pay the libraries' start-up cost.
 
 Three of the families carry state or collaborators beyond the path policy, and an application
 should know what it is attaching:
@@ -697,9 +721,9 @@ location rather than a listing of the working directory alone. The tool
 `Create` factories are internal, so composing through the packs is the only supported way to obtain
 these tools.
 
-The grant above is `PathRule.ReadWrite`, which is what makes this composition publish all nineteen
+The grant above is `PathRule.ReadWrite`, which is what makes this composition publish all twenty
 tools of those four families. The same builder, the same packs and the same capability declaration
-over a policy whose grants are all read-only yields a shorter list — eight tools, because the five
+over a policy whose grants are all read-only yields a shorter list — nine tools, because the five
 write-performing text file tools and the six file management tools are withheld. Nothing else
 about the composition changes, and nothing announces the difference, so an application that means
 its agent to edit must grant it somewhere to write.

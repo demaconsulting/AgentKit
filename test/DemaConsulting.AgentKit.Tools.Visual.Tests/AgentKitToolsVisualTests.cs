@@ -1,5 +1,7 @@
 using DemaConsulting.AgentKit.Core;
 using DemaConsulting.AgentKit.Tools.Visual.Image;
+using DemaConsulting.AgentKit.Tools.Visual.Tests.Image;
+using DemaConsulting.AgentKit.Tools.Visual.Tests.Rendering;
 using Microsoft.Extensions.AI;
 
 namespace DemaConsulting.AgentKit.Tools.Visual.Tests;
@@ -44,7 +46,7 @@ public class AgentKitToolsVisualTests
 
         // Assert: each of the family's tools is published, under the family prefix
         Assert.Equal(
-            ["image_read", "image_crop", "image_auto_crop"],
+            ["image_read", "image_crop", "image_auto_crop", "image_view"],
             tools.Select(tool => tool.Name));
     }
 
@@ -89,9 +91,9 @@ public class AgentKitToolsVisualTests
         // Act: build the tool list
         var tools = builder.Build();
 
-        // Assert: the three image tools are published, in the family's order
+        // Assert: the four image tools are published, in the family's order
         Assert.Equal(
-            ["image_read", "image_crop", "image_auto_crop"],
+            ["image_read", "image_crop", "image_auto_crop", "image_view"],
             tools.Select(tool => tool.Name));
     }
 
@@ -127,7 +129,8 @@ public class AgentKitToolsVisualTests
                 tools,
                 ImageCropTool.ToolName,
                 new() { ["path"] = "../outside/x.png", ["x"] = 0, ["y"] = 0, ["width"] = 1, ["height"] = 1 }),
-            await Invoke(tools, ImageAutoCropTool.ToolName, new() { ["path"] = "../outside/x.png" })
+            await Invoke(tools, ImageAutoCropTool.ToolName, new() { ["path"] = "../outside/x.png" }),
+            await Invoke(tools, ImageViewTool.ToolName, new() { ["path"] = "../outside/x.png" })
         };
 
         // Assert: each is a path denial naming the grant relatively, with no host absolute path
@@ -140,6 +143,78 @@ public class AgentKitToolsVisualTests
             Assert.DoesNotContain(workingDirectory, denial, StringComparison.OrdinalIgnoreCase);
             Assert.DoesNotContain(temporaryBase, denial, StringComparison.OrdinalIgnoreCase);
         });
+    }
+
+    /// <summary>
+    ///     Proves that a file a viewed document references from outside the grants is never drawn,
+    ///     whichever route the reference takes.
+    /// </summary>
+    /// <remarks>
+    ///     The rendering library judges no input itself and reads any local file by default, so
+    ///     this is the system-level evidence that the access policy reaches every file a render
+    ///     opens: a parent-folder escape, an absolute path and a link inside the grant pointing
+    ///     outside it are each refused, while a picture inside the grant is drawn.
+    /// </remarks>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task AgentKitToolsVisual_ReferencedFiles_OutsideTheGrants_AreNeverDrawn()
+    {
+        // Arrange: a picture on each side of the grant, a link inside it pointing out, and one
+        // document per route
+        using var fixture = new TempDirectoryFixture();
+        TempDirectoryFixture.WriteBytes(fixture.Root, "ok.png", ImageTestImages.Png(20, 20));
+        var secret = TempDirectoryFixture.WriteBytes(fixture.Outside, "secret.png", ImageTestImages.Png(20, 20));
+        using var link = DirectoryLink.Create(Path.Combine(fixture.Root, "jn"), fixture.Outside);
+        TempDirectoryFixture.WriteFile(fixture.Root, "inside.svg", RenderSamples.SvgWithImage("ok.png"));
+        TempDirectoryFixture.WriteFile(fixture.Root, "escape.svg", RenderSamples.SvgWithImage("../outside/secret.png"));
+        TempDirectoryFixture.WriteFile(fixture.Root, "absolute.svg", RenderSamples.SvgWithImage(secret));
+        TempDirectoryFixture.WriteFile(fixture.Root, "linked.svg", RenderSamples.SvgWithImage("jn/secret.png"));
+        var tools = new ToolPackBuilder(new PathPolicy(fixture.Root, [PathRule.ReadOnly(fixture.Root)]))
+            .WithHostCapabilities(HostCapabilities.Vision)
+            .Add(new ImagePack())
+            .Build();
+        var view = tools.Single(tool => tool.Name == ImageViewTool.ToolName);
+
+        // Act: view each document
+        var inside = await view.InvokeAsync(new() { ["path"] = "inside.svg" }, TestContext.Current.CancellationToken);
+        var refused = new List<object?>();
+        foreach (var name in new[] { "escape.svg", "absolute.svg", "linked.svg" })
+        {
+            refused.Add(await view.InvokeAsync(new() { ["path"] = name }, TestContext.Current.CancellationToken));
+        }
+
+        // Assert: the inside picture is drawn; every escape fails the view instead
+        Assert.IsType<List<AIContent>>(inside);
+        Assert.All(refused, result => Assert.StartsWith(
+            "Render failed (file-access-denied",
+            Assert.IsType<string>(result),
+            StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    ///     Proves that a render never fetches anything from the network.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task AgentKitToolsVisual_Rendering_NetworkReferences_AreNeverFetched()
+    {
+        // Arrange: a listener counting every request, and documents of two formats referencing it
+        using var fixture = new TempDirectoryFixture();
+        using var listener = CountingListener.Start();
+        TempDirectoryFixture.WriteFile(fixture.Root, "figure.svg", RenderSamples.SvgWithImage(listener.Url + "x.png"));
+        TempDirectoryFixture.WriteFile(fixture.Root, "sequence.puml", RenderSamples.PlantUmlInclude(listener.Url + "inc.puml"));
+        var tools = new ToolPackBuilder(new PathPolicy(fixture.Root, [PathRule.ReadOnly(fixture.Root)]))
+            .WithHostCapabilities(HostCapabilities.Vision)
+            .Add(new ImagePack())
+            .Build();
+        var view = tools.Single(tool => tool.Name == ImageViewTool.ToolName);
+
+        // Act: view both
+        await view.InvokeAsync(new() { ["path"] = "figure.svg" }, TestContext.Current.CancellationToken);
+        await view.InvokeAsync(new() { ["path"] = "sequence.puml" }, TestContext.Current.CancellationToken);
+
+        // Assert: nothing reached the listener
+        Assert.Equal(0, listener.Hits);
     }
 
     /// <summary>

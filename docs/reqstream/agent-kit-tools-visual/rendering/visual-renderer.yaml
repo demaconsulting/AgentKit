@@ -1,0 +1,196 @@
+---
+# Software Unit Requirements for VisualRenderer
+#
+# These requirements describe the design-level behavior of the VisualRenderer unit.
+
+sections:
+  - title: AgentKitToolsVisual Requirements
+    sections:
+      - title: Rendering Requirements
+        sections:
+          - title: VisualRenderer Requirements
+            requirements:
+              - id: AgentKitToolsVisual-Rendering-VisualRenderer-OpaqueBackground
+                title: >-
+                  The renderer shall draw every picture on an opaque white background and encode it
+                  without transparency.
+                justification: |
+                  The rendering library's default background is transparent, and a vision model
+                  shown dark text on a transparent picture reads it as dark on black and misses it
+                  (https://github.com/demaconsulting/CanvasNet/issues/168).
+                tests:
+                  - VisualRenderer_RenderAsync_Svg_IsDrawnOnOpaqueWhite
+
+              - id: AgentKitToolsVisual-Rendering-VisualRenderer-PixelBudget
+                title: >-
+                  The renderer shall pass the policy's pixel budget to the rendering library as the
+                  most pixels a render may decode and allocate, and report a render over it as a
+                  budget failure.
+                tags: [security]
+                justification: |
+                  The pixel budget is the host's existing bound on what decoding an image may
+                  cost. A render is the same cost under another name, so it observes the same
+                  budget rather than a second setting for one limit.
+                tests:
+                  - VisualRenderer_RenderAsync_PictureOverThePixelBudget_FailsAsBudgetExceeded
+
+              - id: AgentKitToolsVisual-Rendering-VisualRenderer-SideBounded
+                title: >-
+                  The renderer shall reduce a requested width to the largest render side, and shall
+                  draw a picture whose natural longer side exceeds it again at that side.
+                tags: [security]
+                justification: |
+                  The largest side bounds both the memory of a render and the size of the picture
+                  a model receives, whatever width the model asked for or the source declared.
+                tests:
+                  - VisualRenderer_RenderAsync_WidthBeyondTheLargestSide_IsReduced
+                  - VisualRenderer_RenderAsync_NaturalSizeBeyondTheLargestSide_IsDrawnAtTheLargestSide
+
+              - id: AgentKitToolsVisual-Rendering-VisualRenderer-SmallVectorEnlarged
+                title: >-
+                  When no width is requested, the renderer shall draw a vector picture whose
+                  natural longer side is below the smallest preview side again at that side,
+                  keeping its aspect ratio.
+                justification: |
+                  A diagram's natural size is often a few hundred pixels, at which a vision model
+                  misreads its labels. A vector picture drawn again at a larger size is sharp, so
+                  enlarging it costs nothing in fidelity.
+                tests:
+                  - VisualRenderer_RenderAsync_SmallVectorPicture_IsDrawnAtTheSmallestPreviewSide
+
+              - id: AgentKitToolsVisual-Rendering-VisualRenderer-RasterNeverEnlarged
+                title: >-
+                  The renderer shall never enlarge a raster image, and shall reduce one to a smaller
+                  requested width.
+                justification: |
+                  Enlarging a raster image adds no information and invents pixels a model would
+                  describe as detail; reducing one to a requested width is what the model asked
+                  for.
+                tests:
+                  - VisualRenderer_RenderAsync_RasterImage_IsNeverEnlarged
+
+              - id: AgentKitToolsVisual-Rendering-VisualRenderer-TriangleLimit
+                title: >-
+                  The renderer shall pass the configured triangle limit to the rendering library,
+                  so that a three-dimensional model producing more triangles is refused.
+                tags: [security]
+                justification: |
+                  A model of a few lines can produce millions of triangles and hundreds of
+                  megabytes of geometry. The triangle count is what drives that memory, so it is
+                  what is bounded.
+                tests:
+                  - VisualRenderer_RenderAsync_ModelOverTheTriangleLimit_IsRefused
+
+              - id: AgentKitToolsVisual-Rendering-VisualRenderer-Timeout
+                title: >-
+                  The renderer shall report a render that does not finish within the configured
+                  timeout, including the time it waited to start, as a render-timeout failure.
+                tags: [security]
+                justification: |
+                  A model-authored drawing can ask for minutes of work, and an agent's turn must
+                  not wait that long without being told why. Counting the wait to start against the
+                  timeout bounds what the caller experiences, not only what the library does.
+                tests:
+                  - VisualRenderer_RenderAsync_RenderBeyondTheTimeout_FailsAsRenderTimeout
+
+              - id: AgentKitToolsVisual-Rendering-VisualRenderer-AbandonAndGate
+                title: >-
+                  The renderer shall stop waiting for a render that has not ended a grace period
+                  after its timeout, keep that render's place in the pack's render gate until it
+                  ends, and admit no more renders at once than the configured concurrency bound.
+                tags: [security]
+                justification: |
+                  The rendering library honors cancellation, and abandoning a render after a grace
+                  period is defense in depth: it bounds what a caller waits even if a render stops
+                  noticing its token. Keeping the abandoned render's place in the gate until it ends
+                  is what stops abandoned renders from accumulating and exhausting the host.
+                tests:
+                  - VisualRenderer_RenderAsync_RenderIgnoringCancellation_IsAbandonedAndHoldsTheGate
+
+              - id: AgentKitToolsVisual-Rendering-VisualRenderer-CallerCancellation
+                title: >-
+                  The renderer shall propagate the caller's own cancellation as a cancellation
+                  rather than report it as a timeout.
+                justification: |
+                  A canceled agent turn is not a render the model can fix, so it must not be
+                  reported to the model as one.
+                tests:
+                  - VisualRenderer_RenderAsync_CallerCancels_ThrowsOperationCanceled
+
+              - id: AgentKitToolsVisual-Rendering-VisualRenderer-LenientNotes
+                title: >-
+                  The renderer shall draw a source using a feature the rendering library does not
+                  draw without it, reporting every note the render produced with its code and
+                  location.
+                justification: |
+                  The notes of a lenient render say what was left out and where, which tells a
+                  model more than the single error a strict render would stop at, and the picture
+                  shows the rest of what it drew.
+                tests:
+                  - VisualRenderer_RenderAsync_UnsupportedFeature_IsReportedAsANote
+
+              - id: AgentKitToolsVisual-Rendering-VisualRenderer-RefusedPicturePromoted
+                title: >-
+                  The renderer shall report a render whose embedded picture was refused by the
+                  file-access policy as a file-access failure carrying every note, rather than
+                  return the picture.
+                tags: [security]
+                justification: |
+                  A picture with a refused image drawn as a gap would be described by a model as
+                  complete. Failing the render states what happened and lets the model correct the
+                  reference.
+                tests:
+                  - VisualRenderer_RenderAsync_RefusedPicture_IsPromotedToAFailure
+
+              - id: AgentKitToolsVisual-Rendering-VisualRenderer-EmptyPicturePromoted
+                title: >-
+                  The renderer shall report a vector picture with less than 0.05% of its pixels
+                  drawn as an empty-render failure, whatever its size, shall return a vector
+                  picture with more drawn as it is, and shall return a blank raster image as it
+                  is.
+                justification: |
+                  A model shown an empty picture describes what it expected to see. Some sources
+                  draw nothing without an error — an unsupported Mermaid diagram type is drawn as
+                  an empty square with only a note — so emptiness is measured rather than inferred
+                  from the absence of an error. Emptiness is judged by ink alone, because size
+                  does not show emptiness: a small icon or a small requested width is not empty.
+                  A blank raster image is the true content of its file and is not a failure.
+                tests:
+                  - VisualRenderer_RenderAsync_EmptyPicture_IsPromotedToAFailure
+                  - VisualRenderer_RenderAsync_SmallPictureWithInk_IsDrawn
+                  - VisualRenderer_RenderAsync_BlankRasterImage_IsDrawn
+
+              - id: AgentKitToolsVisual-Rendering-VisualRenderer-PageSelection
+                title: >-
+                  The renderer shall draw the requested page, slide or sheet of a document and
+                  report the page drawn and the page count, and shall report a page the document
+                  does not have as a failure.
+                justification: |
+                  A model reading a document needs to know how many pages there are to ask for the
+                  others, and a page that does not exist must be stated rather than replaced by
+                  another.
+                tests:
+                  - VisualRenderer_RenderAsync_DocumentPage_IsDrawnWithThePageCount
+
+              - id: AgentKitToolsVisual-Rendering-VisualRenderer-Description
+                title: >-
+                  When a description is asked for, the renderer shall list the features of a diagram
+                  or chart and the picture's dominant colors, and shall list neither otherwise.
+                justification: |
+                  A host whose model cannot see a picture can still tell it what was drawn: the
+                  labels, nodes and edges of a diagram, and its colors. Collecting them only when
+                  asked keeps every other render free of the cost.
+                tests:
+                  - VisualRenderer_RenderAsync_DescriptionRequested_ListsFeaturesAndColors
+
+              - id: AgentKitToolsVisual-Rendering-VisualRenderer-WarmUp
+                title: >-
+                  The renderer shall draw a small sample of each named format it knows on request,
+                  through its gate and timeout, ignoring a format it does not know.
+                justification: |
+                  The first render of each format in a process pays for loading its library. A
+                  host that would rather pay that at start-up than while a model waits warms the
+                  renderer up; doing it through the gate keeps warming up within the concurrency
+                  bound.
+                tests:
+                  - VisualRenderer_WarmUpAsync_KnownAndUnknownFormats_Completes

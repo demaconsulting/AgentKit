@@ -12,8 +12,9 @@ sections:
         requirements:
           - id: AgentKitToolsVisual-Image-FamilyComposition
             title: >-
-              The image family shall publish a read tool, a crop tool and an auto-crop tool under
-              the image family prefix, composed as one pack an application attaches.
+              The image family shall publish a read tool, a crop tool, an auto-crop tool and a
+              view tool under the image family prefix, composed as one pack an application
+              attaches.
             justification: |
               An application attaches a capability to an agent as one pack rather than as a
               handful of individually registered tools, so the family must be the unit of
@@ -25,8 +26,13 @@ sections:
               one of them would offer a model either a region request it cannot aim or a size it
               has nothing to use — and the auto-crop tool answers the region question a model
               cannot state in that space at all, because it can see that a picture is mostly
-              margin without being able to measure where the margin stops.
+              margin without being able to measure where the margin stops. The view tool is how
+              the model looks at the visual content the read tool refuses because a provider
+              cannot render it, so the read tool's refusal of such a file can name a tool the
+              model actually has.
             children:
+              - AgentKitToolsVisual-Image-ViewTool-ToolName
+              - AgentKitToolsVisual-Image-Pack-RegistersViewTool
               - AgentKitToolsVisual-Image-ReadTool-ToolName
               - AgentKitToolsVisual-Image-CropTool-ToolName
               - AgentKitToolsVisual-Image-AutoCropTool-ToolName
@@ -275,7 +281,7 @@ sections:
               strands it with no way forward, whereas a returned refusal lets it read the reason
               and choose a permitted alternative. A policy refusal now discloses the permitted
               locations so a confined model learns where it may look instead of guessing. A refusal
-              that also names a better tool — a text tool for an .svg — turns a dead end into the
+              that also names a better tool — the view tool for an .svg — turns a dead end into the
               agent's next step, while one that has no honest alternative says so rather than
               sending the model to a tool that would also fail.
             children:
@@ -292,7 +298,9 @@ sections:
               - AgentKitToolsVisual-Image-AutoCropTool-MissingFileDenied
               - AgentKitToolsVisual-Image-AutoCropTool-MalformedRequestDenied
               - AgentKitToolsVisual-Image-AutoCropTool-DenialDisclosure
-              - AgentKitToolsVisual-Image-MediaTypes-RefusesSvgRedirectsToText
+              - AgentKitToolsVisual-Image-MediaTypes-RefusesSvgRedirectsToView
+              - AgentKitToolsVisual-Image-MediaTypes-RefusesSvgCropNoTool
+              - AgentKitToolsVisual-Image-ViewTool-RefusesMalformedRequests
               - AgentKitToolsVisual-Image-MediaTypes-RefusesSvgzNoTool
               - AgentKitToolsVisual-Image-MediaTypes-RefusesUnknownType
             tests:
@@ -315,5 +323,36 @@ sections:
               - AgentKitToolsVisual-Image-ReadTool-BinaryCeiling
               - AgentKitToolsVisual-Image-CropTool-ObservesBinaryCeiling
               - AgentKitToolsVisual-Image-AutoCropTool-ObservesBinaryCeiling
+              - AgentKitToolsVisual-Image-ViewTool-ObservesBinaryCeiling
             tests:
               - Image_Family_FileBeyondTheBinaryCeiling_IsRefusedNotTruncated
+
+          - id: AgentKitToolsVisual-Image-DocumentViewing
+            title: >-
+              The image family shall draw a document, drawing or diagram file the agent may read —
+              an SVG, a PDF page, a slide, a VSDX page, a Mermaid, PlantUML, Vega-Lite or OpenSCAD
+              source, or a raster image — as an opaque PNG picture returned as image content, with
+              every file it references confined to what the agent may read, under the bounds the
+              pack's options set, and shall report a file it cannot draw as text the model can act
+              on.
+            tags: [security]
+            justification: |
+              A provider renders a few raster types and PDF, but an agent's workspace also holds
+              vector drawings, slide decks and diagram sources. Drawing them is how a model looks at
+              them; leaving the read tool a byte-exact pass-through keeps one tool for each meaning
+              of "read". The drawing is confined and bounded the same way for every tool that draws,
+              by the Rendering subsystem, and a file the model wrote and cannot have drawn is
+              reported with the place to fix rather than refused.
+            children:
+              - AgentKitToolsVisual-Image-ViewTool-GuardedConstruction
+              - AgentKitToolsVisual-Image-ViewTool-InputCheckedBeforeRead
+              - AgentKitToolsVisual-Image-ViewTool-DrawsEachFormat
+              - AgentKitToolsVisual-Image-ViewTool-PageSelection
+              - AgentKitToolsVisual-Image-ViewTool-WidthApplied
+              - AgentKitToolsVisual-Image-ViewTool-ShapedFailure
+              - AgentKitToolsVisual-Image-ViewTool-CaptionNotes
+              - AgentKitToolsVisual-Image-Pack-AcceptsVisualOptions
+              - AgentKitToolsVisual-Image-Pack-WarmUp
+            tests:
+              - Image_Family_VectorDocument_IsDrawnByTheToolTheReadRefusalNames
+              - Image_Family_ViewedDocumentReferencingOutsideThePolicy_IsNotDrawn

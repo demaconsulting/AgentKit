@@ -65,17 +65,20 @@ public class ImagePackTests
     }
 
     /// <summary>
-    ///     Proves the pack creates the read tool, the crop tool and the auto-crop tool.
+    ///     Proves the pack creates the read tool, the crop tool, the auto-crop tool and the view
+    ///     tool.
     /// </summary>
     /// <remarks>
-    ///     The three are asserted together because they are one capability: the read tool reports
-    ///     the coordinate space the crop tool consumes, and the auto-crop tool answers the region
-    ///     question a model cannot state in that space at all. A pack that published only some of
-    ///     them would offer a model a region request it could not aim, a size it could not use,
-    ///     or no way to trim a picture it can see is mostly margin.
+    ///     The four are asserted together because they are one capability: the read tool reports
+    ///     the coordinate space the crop tool consumes, the auto-crop tool answers the region
+    ///     question a model cannot state in that space at all, and the view tool draws the visual
+    ///     content the read tool refuses because a provider cannot render it. A pack that
+    ///     published only some of them would offer a model a region request it could not aim, a
+    ///     size it could not use, no way to trim a picture it can see is mostly margin, or a
+    ///     refusal naming a tool it does not have.
     /// </remarks>
     [Fact]
-    public void ImagePack_CreateTools_Policy_CreatesTheReadCropAndAutoCropTools()
+    public void ImagePack_CreateTools_Policy_CreatesEveryTool()
     {
         // Arrange: a pack and a policy to govern its tools
         var pack = new ImagePack();
@@ -84,11 +87,10 @@ public class ImagePackTests
         // Act: create the family's tools
         var tools = pack.CreateTools(policy).ToList();
 
-        // Assert: exactly the three tools the family publishes
-        Assert.Equal(3, tools.Count);
-        Assert.Contains(tools, tool => tool.Name == ImageReadTool.ToolName);
-        Assert.Contains(tools, tool => tool.Name == ImageCropTool.ToolName);
-        Assert.Contains(tools, tool => tool.Name == ImageAutoCropTool.ToolName);
+        // Assert: exactly the four tools the family publishes, in the family's order
+        Assert.Equal(
+            [ImageReadTool.ToolName, ImageCropTool.ToolName, ImageAutoCropTool.ToolName, ImageViewTool.ToolName],
+            tools.Select(tool => tool.Name));
     }
 
     /// <summary>
@@ -116,11 +118,10 @@ public class ImagePackTests
         // Act: create the family's tools under that policy
         var tools = pack.CreateTools(policy).ToList();
 
-        // Assert: all three survive — the family is never narrowed by a read-only path policy
-        Assert.Equal(3, tools.Count);
-        Assert.Contains(tools, tool => tool.Name == ImageReadTool.ToolName);
-        Assert.Contains(tools, tool => tool.Name == ImageCropTool.ToolName);
-        Assert.Contains(tools, tool => tool.Name == ImageAutoCropTool.ToolName);
+        // Assert: all four survive — the family is never narrowed by a read-only path policy
+        Assert.Equal(
+            [ImageReadTool.ToolName, ImageCropTool.ToolName, ImageAutoCropTool.ToolName, ImageViewTool.ToolName],
+            tools.Select(tool => tool.Name));
     }
 
     /// <summary>
@@ -161,6 +162,87 @@ public class ImagePackTests
                 ImagePack.FamilyPrefix + "_",
                 tool.Name,
                 StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    ///     Proves the pack applies the options it was given, and the defaults when given none.
+    /// </summary>
+    [Fact]
+    public void ImagePack_Constructor_Options_AreApplied()
+    {
+        // Arrange: options differing from every default
+        var options = new VisualOptions { RenderTimeout = TimeSpan.FromSeconds(5), MaxRenderSide = 1024, MinPreviewSide = 512 };
+
+        // Act: build one pack with them and one without
+        var configured = new ImagePack(options);
+        var defaulted = new ImagePack();
+
+        // Assert: the given options, and the defaults
+        Assert.Same(options, configured.Options);
+        Assert.Same(VisualOptions.Default, defaulted.Options);
+    }
+
+    /// <summary>
+    ///     Proves a smallest preview side larger than the largest render side is refused.
+    /// </summary>
+    [Fact]
+    public void ImagePack_Constructor_MinPreviewSideAboveMaxRenderSide_ThrowsArgumentException()
+    {
+        // Arrange: options whose two sides contradict each other
+        var options = new VisualOptions { MaxRenderSide = 512, MinPreviewSide = 768 };
+
+        // Act / Assert: the pack refuses them at the line that supplied them
+        var exception = Assert.Throws<ArgumentException>(() => new ImagePack(options));
+        Assert.Equal("options", exception.ParamName);
+    }
+
+    /// <summary>
+    ///     Proves the view tool observes the pack's options.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task ImagePack_CreateTools_ViewTool_ObservesThePackOptions()
+    {
+        // Arrange: a pack whose smallest preview side is 300, and an SVG 200 pixels wide
+        using var fixture = new TempDirectoryFixture();
+        TempDirectoryFixture.WriteFile(fixture.Root, "figure.svg", Rendering.RenderSamples.Svg);
+        var policy = new PathPolicy(fixture.Root, [PathRule.ReadOnly(fixture.Root)]);
+        var view = new ImagePack(new VisualOptions { MinPreviewSide = 300 })
+            .CreateTools(policy)
+            .Single(tool => tool.Name == ImageViewTool.ToolName);
+
+        // Act: view it
+        var result = await view.InvokeAsync(
+            new AIFunctionArguments { ["path"] = "figure.svg" },
+            TestContext.Current.CancellationToken);
+
+        // Assert: drawn at the pack's smallest preview side, not the default
+        var caption = Assert.IsType<TextContent>(Assert.IsType<List<AIContent>>(result)[0]).Text;
+        Assert.Contains("300x150 pixels", caption, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves warming up completes, and the pack still draws afterwards.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task ImagePack_WarmUpAsync_Pack_CompletesAndTheViewToolStillDraws()
+    {
+        // Arrange: a pack and its view tool
+        using var fixture = new TempDirectoryFixture();
+        TempDirectoryFixture.WriteFile(fixture.Root, "figure.svg", Rendering.RenderSamples.Svg);
+        var pack = new ImagePack();
+        var view = pack.CreateTools(new PathPolicy(fixture.Root, [PathRule.ReadOnly(fixture.Root)]))
+            .Single(tool => tool.Name == ImageViewTool.ToolName);
+
+        // Act: warm up, then view
+        await pack.WarmUpAsync(TestContext.Current.CancellationToken);
+        var result = await view.InvokeAsync(
+            new AIFunctionArguments { ["path"] = "figure.svg" },
+            TestContext.Current.CancellationToken);
+
+        // Assert: the pack draws as before
+        Assert.IsType<List<AIContent>>(result);
     }
 
     /// <summary>

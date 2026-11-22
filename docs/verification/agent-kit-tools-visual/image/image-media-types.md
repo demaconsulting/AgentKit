@@ -26,9 +26,9 @@ Unit tests reside in `Image/ImageMediaTypesTests.cs` within the
 A unit test run passes when all scenarios below pass without error or exception beyond those
 explicitly asserted. A supported extension that fails to resolve, a case difference that changes the
 result, an unsupported extension that resolves anyway, a readable-but-uncroppable extension that
-resolves as croppable, a croppable refusal that names a sibling tool, an `.svg` refused without its
-redirect, and an `.svgz` or unknown type refused *with* an invented redirect each constitute a
-failure.
+resolves as croppable, a croppable refusal that names a sibling tool, an `.svg` read refused without
+its redirect to `image_view`, and an `.svgz` or unknown type refused *with* an invented redirect each
+constitute a failure.
 
 #### Test Scenarios
 
@@ -54,22 +54,22 @@ resolves identically, so a caller is not refused for a difference that means not
 Error path: an extension the family does not read reports as unsupported with no media type, so the
 read tool refuses it rather than attempting a read it cannot complete.
 
-##### AgentKitToolsVisual-Image-MediaTypes-RefusesSvgRedirectsToText: An svg Is Stated to Be Text
+##### AgentKitToolsVisual-Image-MediaTypes-RefusesSvgRedirectsToView: An svg Is Stated to Be Vector Content
 
-**Test**: `ImageMediaTypes_DenyUnsupportedType_Svg_RedirectsToTextFileRead`
+**Test**: `ImageMediaTypes_DenyUnsupportedType_Svg_RedirectsToImageView`
 
 Error path stating what the file is: an `.svg` is refused as an unsupported type, the refusal states
-that it is text and vector content, and it names `text_file_read` as the reader for that kind of
-content. Naming the tool survives the denial rule on the same basis as the text file read tool's own
-binary-content refusal naming `image_read` — the naming *is* the classification, not a prescribed way
-around the refusal.
+that it is vector content, and it names `image_view` as the tool that draws that kind of content,
+and the text file read tool is not named. Naming the tool survives the denial rule on the same basis
+as the text file read tool's own binary-content refusal naming `image_read` — the naming *is* the
+classification, not a prescribed way around the refusal.
 
 ##### AgentKitToolsVisual-Image-MediaTypes-RefusesSvgzNoTool: An svgz Is Refused Without a Redirect
 
 **Test**: `ImageMediaTypes_DenyUnsupportedType_Svgz_RefusesWithoutRedirect`
 
 Error path without a redirect: an `.svgz` is gzip-compressed content no tool in the family reads, so
-the refusal names no tool a retry would only fail at, and the assertion confirms neither the text
+the refusal names no tool a retry would only fail at, and the assertion confirms neither the view
 tool name nor the redirect sentence appears.
 
 ##### AgentKitToolsVisual-Image-MediaTypes-RefusesUnknownType: Any Other Type Is Refused Without a Redirect
@@ -126,12 +126,13 @@ a provider without decoding, not one whose frame count it cannot establish.
 Error path for the one admitted type that *looks* croppable and is not. Without the page-and-resolution
 reason stated, a model would reasonably retry with different coordinates.
 
-##### AgentKitToolsVisual-Image-MediaTypes-RefusesNonCroppableType: An svg Is Refused Identically on Both Paths
+##### AgentKitToolsVisual-Image-MediaTypes-RefusesSvgCropNoTool: An svg Region Request Names No Tool
 
-**Test**: `ImageMediaTypes_DenyNonCroppableType_Svg_RedirectsToTextFileRead`
+**Test**: `ImageMediaTypes_DenyNonCroppableType_Svg_ReturnsDenialNamingNoTool`
 
-The regression guard for the family giving **one** answer to "what is this file": the refusal is
-asserted to be byte-for-byte the one the readable-type path composes, so the two cannot drift.
+Error path: the region refusal for an `.svg` states that it is vector content, names the types a
+region can be taken from, and names neither the view tool nor any redirect — the drawing tool would
+return the whole picture, not the region asked for.
 
 ##### AgentKitToolsVisual-Image-MediaTypes-RefusesNonCroppableType: An svgz Is Refused Identically on Both Paths
 

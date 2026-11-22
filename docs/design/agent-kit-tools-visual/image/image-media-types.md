@@ -61,14 +61,15 @@ Composes the refusal for a file whose extension the family cannot read.
 **Preconditions:** called only once `TryResolveMediaType` has reported the type unsupported, so the
 refusal is always an `UnsupportedMediaType`.
 
-**Algorithm:** chooses on the extension. An `.svg` genuinely *is* text and vector content, so the
-refusal states that and names `text_file_read` — the reader for that kind of content. That
-naming survives the library's rule that **a denial states a fact and never prescribes another tool**,
-on exactly the basis the established precedent in `TextFileReadTool` does: its binary-content refusal
-names `image_read` because what is being stated is what the file *is*, not a way around the refusal.
-The two are deliberately kept symmetric rather than one being stripped and the other left. An
-`.svgz` is that same content gzip-compressed, which no tool reads as such, so its refusal states only
-that. Any other extension is stated as unsupported, with nothing further.
+**Algorithm:** chooses on the extension. An `.svg` is vector content, not a raster image, so the
+refusal states that and names `image_view` — the tool of this same family that draws vector
+content. That naming survives the library's rule that **a denial states a fact and never prescribes
+another tool**, on exactly the basis the established precedent in `TextFileReadTool` does: its
+binary-content refusal names `image_read` because what is being stated is what the file *is*, not a
+way around the refusal. Naming a tool of this family, rather than the text family's reader, also
+keeps the package free of any reference to a family an application composing only images need not
+have. An `.svgz` is that same content gzip-compressed, which no tool reads as such, so its refusal
+states only that. Any other extension is stated as unsupported, with nothing further.
 
 **Postconditions:** returns a `ToolResult.Denied` result naming the reason and, where the extension
 identifies the kind of content, the reader for that kind.
@@ -104,13 +105,16 @@ is the one admitted type that *looks* croppable and is not, and without the reas
 would
 reasonably retry with different coordinates. Each of the three additionally names the set of types
 a region *can* be taken from, so the model is told what it may ask for and not only what it may
-not. Any extension the family cannot read at all is delegated to `DenyUnsupportedType`, so the
-family answers "what is this file" in a single voice.
+not. An `.svg` earns its own refusal here too: it is stated to be vector content from which no
+region can be taken, with the croppable set named and no tool named. Any other extension the family
+cannot read at all is delegated to `DenyUnsupportedType`, so the family answers "what is this file"
+in a single voice.
 
 **None of the refusals composed here names a sibling tool.** The one place a media-type refusal may
-name one is where the naming *is* the statement of what the file is — an `.svg` is text, so the
-text reader is its reader. A `.gif` genuinely *is* an image, so naming the image reader would not
-classify it: it would offer a route to the content the refusal withheld, handing the model the
+name one is where the naming *is* the statement of what the file is — a read of an `.svg` names
+`image_view`, the tool that draws vector content. A region request is different. A `.gif`
+genuinely *is* an image, and an `.svg` draws as one, so naming a reader would not classify it:
+it would offer a route to the content the refusal withheld, handing the model the
 whole image after it asked to examine one part of it closely. A model that then described that part
 confidently would be describing what it never examined, which is precisely the failure this family
 exists to prevent.
@@ -128,11 +132,9 @@ permitted location or a directory separator — the messages are compile-time co
 #### Dependencies
 
 `ToolResult` for the refusals it composes, `DenialReason` for the reason each carries, and
-the name `text_file_read` for the one classification an `.svg` earns — held as a private literal,
-because the text family ships in the separate AgentKitTools package and this package depends on
-the Core contract alone; the name is part of that family's published contract. From the Base Class
-Library:
-`Path` for the extension.
+`ImageViewTool.ToolName` for the one classification an `.svg` read earns, referenced rather than
+restated so the refusal cannot drift from the name the view tool is published under. From the Base
+Class Library: `Path` for the extension.
 
 #### Callers
 

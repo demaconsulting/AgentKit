@@ -2,12 +2,14 @@
 
 ### Purpose
 
-`DemaConsulting.CanvasNet` is used because the image family must read what an image declares about
-itself and must produce a region of one, and neither is expressible without a raster imaging
-library. Reporting an image's pixel dimensions is what gives a model a coordinate space to name a
-region in; extracting and re-encoding that region is what returns it. Both are format work, and
-format work written by hand inside a safety library would be the largest and least reviewable part
-of it.
+`DemaConsulting.CanvasNet` is used because the image family must read what an image declares about itself and must
+produce a region of one, and neither is expressible without a raster imaging library. Its
+`DemaConsulting.CanvasNet.Viewer` package, which brings the core and the format libraries at the same version, is used
+because the image family must also draw the documents, drawings and diagram sources a provider cannot render — SVG, PDF,
+PPTX, VSDX, Mermaid, PlantUML, Vega-Lite and OpenSCAD — and drawing those is format work of a far larger kind. Reporting
+an image's pixel dimensions is what gives a model a coordinate space to name a region in; extracting and re-encoding
+that region is what returns it. Both are format work, and format work written by hand inside a safety library would be
+the largest and least reviewable part of it.
 
 It was chosen over the established alternatives on the property that matters most here: **the
 library's decoders are safe managed code, and the package ships no native binaries at all.**
@@ -23,12 +25,15 @@ dependency — `System.Numerics.Tensors` — with no native component.
 The pinned release, 0.2.0-beta.13, was inspected for that property rather than assumed to keep it.
 The package carries managed assemblies only — no `runtimes/` folder and no native asset of any
 kind — and the assembly is compiled without unsafe code. It does declare platform invoke calls,
-which 0.1.0 did not: its file-reference resolver, which serves the library's own path-taking and
-linked-file APIs, calls the operating system's own path and handle functions (the Windows kernel
-library and the Unix C library) to establish where an opened file really is. Those calls are not
-image parsing, and the image family uses none of the APIs they serve: it gives the library only
-bytes already in memory and never a path. The decoders that see hostile input remain entirely
-managed.
+which 0.1.0 did not: its file-reference resolver calls the operating system's own path and handle
+functions (the Windows kernel library and the Unix C library) to establish where an opened file
+really is. Those calls are not image parsing. The region tools use none of the APIs they serve —
+they give the library only bytes already in memory — but the Viewer uses them when a drawn document
+references another file, and that is exactly what makes the confinement of referenced files sound:
+the file-access policy is asked about the real path of the opened handle, so a link swapped in after
+a check cannot slip through. The Viewer packages were inspected the same way: no `runtimes/` folder,
+no unsafe code, and no platform invoke outside the core. The decoders that see hostile input remain
+entirely managed, and no assembly references a network stack.
 
 It is one of the two runtime NuGet dependencies the AgentKit packages carry outside the
 provider-specific adapters, and the only one outside Core. It is carried by the optional
@@ -66,8 +71,27 @@ than surfacing the library's. Adam7-interlaced PNG is today the only input the r
 undecodable; because the family reads the report rather than the format, a decoder that later
 gains or loses a capability is reflected without a change here.
 
-Nothing in the library's vector, drawing, text or font surface is used, and no type from the
-library appears in any AgentKit signature.
+The Viewer features used by the Rendering subsystem:
+
+- `CanvasNetViewer.Render(Stream, string, ViewerRenderOptions)` — draws content given as bytes and a
+  file name whose extension chooses the format, at a requested width or height, on a requested
+  background (always opaque white here), for a requested page, and reports the page count, the
+  notes of the render with their codes and locations, and for Mermaid and Vega-Lite the positions of
+  the features drawn
+- `ViewerRenderOptions.FileAccess` with `FileAccessPolicy.UnderRoots`, `NoSymlinks`, `FromDelegate`
+  and `Combine` — the policy consulted, with the real path of the opened handle, for every file a
+  drawn document references; `AllowAll`, the default, is never used
+- `ViewerRenderOptions.MaxDecodedPixels`, `ScadViewOptions.MaxTriangles` and
+  `ViewerRenderOptions.CancellationToken` — the pixel budget, the triangle limit and the
+  cancellation every render observes
+- `ViewerRenderOptions.ThrowOnUnsupportedFeature = false` — lenient drawing, with what was not drawn
+  reported as notes
+- `CanvasNetViewer.Extensions` — the file names the view tool accepts
+- The format libraries' typed exceptions and their locations, which the error shaper classifies by
+  type
+- `PngCodec.Save` and `Surface.Analyze` — encoding the drawn picture and naming its dominant colors
+
+No type from the library appears in any public AgentKit signature.
 
 **The header report also carries a channel count and an alpha flag, and this family deliberately
 consumes neither.** Both describe the encoding the *file* uses — a palette-indexed PNG declares one
@@ -78,12 +102,14 @@ neither field is read anywhere in this package.
 
 ### Integration Pattern
 
-`DemaConsulting.CanvasNet` is consumed by `AgentKitToolsVisual` as a **direct** `PackageReference`,
-deliberately **without** `PrivateAssets`: it is a runtime dependency, so an application that
-attaches the image family needs it present at run time and must receive it transitively. It is
-reached from exactly four places in the subsystem — the shared header-probe helper, the shared
-admission helper that triages and decodes, and the two tools that cut a region — so the surface
-that would have to change if the dependency were ever replaced is four files.
+`DemaConsulting.CanvasNet.Viewer` is consumed by `AgentKitToolsVisual` as a **direct**
+`PackageReference`, deliberately **without** `PrivateAssets`: it is a runtime dependency, so an
+application that attaches the image family needs it present at run time and must receive it
+transitively. The core arrives through it at the same version. The core is reached from four places
+in the Image subsystem — the shared header-probe helper, the shared admission helper that triages
+and decodes, and the two tools that cut a region — and the Viewer only from the Rendering subsystem:
+`VisualAccess`, `VisualRenderer` and `RenderErrorShaper`. The view tool itself reaches the library
+only for its list of drawable extensions.
 
 There is no initialization and no configuration object. The pixel buffer type is disposable, and
 every buffer the family creates is governed by a `using`: a decoded image is released as soon as
@@ -92,7 +118,10 @@ documents that disposal releases nothing in this release — the buffer is a pla
 rather than a rented one — so honoring the contract now is what keeps the family correct when a
 future release backs that buffer with a pooled array. Every entry point the family uses is static,
 and every one is called on bytes already read and already inside the policy's binary ceiling, so
-the library is never given a path, never opens a file and never touches the file system.
+the region tools never give the library a path and it never opens a file for them. The Viewer is
+given bytes too, never the input's path, but it opens the files a drawn document references, and
+only under the file-access policy the Rendering subsystem maps from the access policy; see
+*VisualAccess Unit Design*.
 
 **Release precondition.** The pinned version, 0.2.0-beta.13, is a prerelease. The library's last
 stable release, 0.1.0, is the one this package depended on before, and it is superseded here

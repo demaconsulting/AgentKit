@@ -548,12 +548,13 @@ A type the family reads but does not decode.
 
 Asserts the refusal states what would have to happen first.
 
-##### AgentKitToolsVisual-Image-AutoCropTool-RefusesNonCroppableType: An SVG Is Refused With a Redirect to the Text Reader
+##### AgentKitToolsVisual-Image-AutoCropTool-RefusesNonCroppableType: An SVG Is Refused Naming No Tool
 
-**Test**: `ImageAutoCropTool_AutoCrop_SvgFile_ReturnsDenialRedirectingToTextFileRead`
+**Test**: `ImageAutoCropTool_AutoCrop_SvgFile_ReturnsDenialNamingNoTool`
 
-An SVG genuinely is text, so naming the text reader classifies the file rather than offering a way
-around the refusal.
+An SVG is vector content with no pixels to trim. The view tool draws one, but only whole, so naming
+it would answer a different question than the one asked; the refusal states what the file is and
+names no tool.
 
 ##### AgentKitToolsVisual-Image-AutoCropTool-RefusesNonCroppableType: An Unknown Extension Is Refused With No Redirect
 

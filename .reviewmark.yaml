@@ -1359,6 +1359,112 @@ reviews:
       - "src/DemaConsulting.AgentKit.Tools.Visual/Image/ImagePack.cs"          # unit source
       - "test/DemaConsulting.AgentKit.Tools.Visual.Tests/Image/ImagePackTests.cs"  # unit tests
 
+  # AgentKitToolsVisual-Image-ImageViewTool Review (one per unit)
+  - id: AgentKitToolsVisual-Image-ImageViewTool
+    title: Review that AgentKitToolsVisual Image ImageViewTool Implementation is Correct
+    context:
+      - "docs/design/agent-kit-tools-visual.md"
+      - "docs/reqstream/agent-kit-tools-visual.yaml"
+      - "docs/design/agent-kit-tools-visual/image.md"
+      - "docs/reqstream/agent-kit-tools-visual/image.yaml"
+    paths:
+      - "docs/reqstream/agent-kit-tools-visual/image/image-view-tool.yaml"    # unit requirements
+      - "docs/design/agent-kit-tools-visual/image/image-view-tool.md"         # unit design
+      - "docs/verification/agent-kit-tools-visual/image/image-view-tool.md"   # unit verification
+      - "src/DemaConsulting.AgentKit.Tools.Visual/Image/ImageViewTool.cs"      # unit source
+      - "test/DemaConsulting.AgentKit.Tools.Visual.Tests/Image/ImageViewToolTests.cs"  # unit tests
+
+  # AgentKitToolsVisual-Rendering Review (one per subsystem)
+  - id: AgentKitToolsVisual-Rendering
+    title: Review that AgentKitToolsVisual Rendering Satisfies Subsystem Requirements
+    context:
+      - "docs/design/agent-kit-tools-visual.md"
+      - "docs/reqstream/agent-kit-tools-visual.yaml"
+    paths:
+      - "docs/reqstream/agent-kit-tools-visual/rendering.yaml"                # subsystem requirements
+      - "docs/design/agent-kit-tools-visual/rendering.md"                     # subsystem design
+      - "docs/verification/agent-kit-tools-visual/rendering.md"               # subsystem verification
+      - "test/DemaConsulting.AgentKit.Tools.Visual.Tests/Rendering/RenderingTests.cs"        # subsystem tests
+      - "src/DemaConsulting.AgentKit.Tools.Visual/Rendering/RenderRequest.cs"                # supporting type
+      - "src/DemaConsulting.AgentKit.Tools.Visual/Rendering/RenderOutcome.cs"                # supporting type
+      - "src/DemaConsulting.AgentKit.Tools.Visual/Rendering/RenderFailure.cs"                # supporting type
+      - "test/DemaConsulting.AgentKit.Tools.Visual.Tests/Rendering/RenderSamples.cs"         # shared render samples
+      - "test/DemaConsulting.AgentKit.Tools.Visual.Tests/Rendering/CountingListener.cs"      # network-hit counting listener
+      - "test/DemaConsulting.AgentKit.Tools.Visual.Tests/DirectoryLink.cs"                   # directory-link fixture
+
+  # AgentKitToolsVisual-Rendering-VisualAccess Review (one per unit)
+  - id: AgentKitToolsVisual-Rendering-VisualAccess
+    title: Review that AgentKitToolsVisual Rendering VisualAccess Implementation is Correct
+    context:
+      - "docs/design/agent-kit-tools-visual.md"
+      - "docs/reqstream/agent-kit-tools-visual.yaml"
+      - "docs/design/agent-kit-tools-visual/rendering.md"
+      - "docs/reqstream/agent-kit-tools-visual/rendering.yaml"
+    paths:
+      - "docs/reqstream/agent-kit-tools-visual/rendering/visual-access.yaml"    # unit requirements
+      - "docs/design/agent-kit-tools-visual/rendering/visual-access.md"         # unit design
+      - "docs/verification/agent-kit-tools-visual/rendering/visual-access.md"   # unit verification
+      - "src/DemaConsulting.AgentKit.Tools.Visual/Rendering/VisualAccess.cs"      # unit source
+      - "test/DemaConsulting.AgentKit.Tools.Visual.Tests/Rendering/VisualAccessTests.cs"  # unit tests
+
+  # AgentKitToolsVisual-Rendering-VisualRenderer Review (one per unit)
+  - id: AgentKitToolsVisual-Rendering-VisualRenderer
+    title: Review that AgentKitToolsVisual Rendering VisualRenderer Implementation is Correct
+    context:
+      - "docs/design/agent-kit-tools-visual.md"
+      - "docs/reqstream/agent-kit-tools-visual.yaml"
+      - "docs/design/agent-kit-tools-visual/rendering.md"
+      - "docs/reqstream/agent-kit-tools-visual/rendering.yaml"
+    paths:
+      - "docs/reqstream/agent-kit-tools-visual/rendering/visual-renderer.yaml"    # unit requirements
+      - "docs/design/agent-kit-tools-visual/rendering/visual-renderer.md"         # unit design
+      - "docs/verification/agent-kit-tools-visual/rendering/visual-renderer.md"   # unit verification
+      - "src/DemaConsulting.AgentKit.Tools.Visual/Rendering/VisualRenderer.cs"      # unit source
+      - "test/DemaConsulting.AgentKit.Tools.Visual.Tests/Rendering/VisualRendererTests.cs"  # unit tests
+
+  # AgentKitToolsVisual-Rendering-RenderErrorShaper Review (one per unit)
+  - id: AgentKitToolsVisual-Rendering-RenderErrorShaper
+    title: Review that AgentKitToolsVisual Rendering RenderErrorShaper Implementation is Correct
+    context:
+      - "docs/design/agent-kit-tools-visual.md"
+      - "docs/reqstream/agent-kit-tools-visual.yaml"
+      - "docs/design/agent-kit-tools-visual/rendering.md"
+      - "docs/reqstream/agent-kit-tools-visual/rendering.yaml"
+    paths:
+      - "docs/reqstream/agent-kit-tools-visual/rendering/render-error-shaper.yaml"    # unit requirements
+      - "docs/design/agent-kit-tools-visual/rendering/render-error-shaper.md"         # unit design
+      - "docs/verification/agent-kit-tools-visual/rendering/render-error-shaper.md"   # unit verification
+      - "src/DemaConsulting.AgentKit.Tools.Visual/Rendering/RenderErrorShaper.cs"      # unit source
+      - "test/DemaConsulting.AgentKit.Tools.Visual.Tests/Rendering/RenderErrorShaperTests.cs"  # unit tests
+
+  # AgentKitToolsVisual-Rendering-RenderDestination Review (one per unit)
+  - id: AgentKitToolsVisual-Rendering-RenderDestination
+    title: Review that AgentKitToolsVisual Rendering RenderDestination Implementation is Correct
+    context:
+      - "docs/design/agent-kit-tools-visual.md"
+      - "docs/reqstream/agent-kit-tools-visual.yaml"
+      - "docs/design/agent-kit-tools-visual/rendering.md"
+      - "docs/reqstream/agent-kit-tools-visual/rendering.yaml"
+    paths:
+      - "docs/reqstream/agent-kit-tools-visual/rendering/render-destination.yaml"    # unit requirements
+      - "docs/design/agent-kit-tools-visual/rendering/render-destination.md"         # unit design
+      - "docs/verification/agent-kit-tools-visual/rendering/render-destination.md"   # unit verification
+      - "src/DemaConsulting.AgentKit.Tools.Visual/Rendering/RenderDestination.cs"      # unit source
+      - "test/DemaConsulting.AgentKit.Tools.Visual.Tests/Rendering/RenderDestinationTests.cs"  # unit tests
+
+  # AgentKitToolsVisual-VisualOptions Review (one per unit)
+  - id: AgentKitToolsVisual-VisualOptions
+    title: Review that AgentKitToolsVisual VisualOptions Implementation is Correct
+    context:
+      - "docs/design/agent-kit-tools-visual.md"
+      - "docs/reqstream/agent-kit-tools-visual.yaml"
+    paths:
+      - "docs/reqstream/agent-kit-tools-visual/visual-options.yaml"    # unit requirements
+      - "docs/design/agent-kit-tools-visual/visual-options.md"         # unit design
+      - "docs/verification/agent-kit-tools-visual/visual-options.md"   # unit verification
+      - "src/DemaConsulting.AgentKit.Tools.Visual/VisualOptions.cs"      # unit source
+      - "test/DemaConsulting.AgentKit.Tools.Visual.Tests/VisualOptionsTests.cs"  # unit tests
+
   # AgentKitAgentsChatClient-Architecture Review (one per system)
   - id: AgentKitAgentsChatClient-Architecture
     title: Review that AgentKitAgentsChatClient Architecture Satisfies Requirements

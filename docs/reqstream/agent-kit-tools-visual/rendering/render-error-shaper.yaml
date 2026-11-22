@@ -1,0 +1,88 @@
+---
+# Software Unit Requirements for RenderErrorShaper
+#
+# These requirements describe the design-level behavior of the RenderErrorShaper unit.
+
+sections:
+  - title: AgentKitToolsVisual Requirements
+    sections:
+      - title: Rendering Requirements
+        sections:
+          - title: RenderErrorShaper Requirements
+            requirements:
+              - id: AgentKitToolsVisual-Rendering-RenderErrorShaper-ClassifiesByType
+                title: >-
+                  The error shaper shall classify a failed render by the types in its chain of
+                  exceptions — a refused file first, then the rendering library's own code, a
+                  budget, an unsupported feature, the format library, and corrupt input — and never
+                  by the words of its message.
+                justification: |
+                  Message text is not a stable contract and is sometimes misleading: malformed
+                  Vega-Lite JSON is reported as nesting too deep
+                  (https://github.com/demaconsulting/CanvasNet/issues/163), which a classifier
+                  reading words would report as a budget problem. The format library's exceptions
+                  arrive wrapped without a stable code
+                  (https://github.com/demaconsulting/CanvasNet/issues/166), so the types are the
+                  dependable signal.
+                tests:
+                  - RenderErrorShaper_Classify_MisleadingMessage_IsClassifiedByType
+                  - RenderErrorShaper_Classify_RefusedFileInTheChain_IsFileAccessDenied
+                  - RenderErrorShaper_Classify_KnownExceptionTypes_AreGivenTheirCodes
+
+              - id: AgentKitToolsVisual-Rendering-RenderErrorShaper-LocationAndCaret
+                title: >-
+                  The error shaper shall state the line and column a failure points at, and, when
+                  the source is in hand, quote that line with a caret under the column.
+                justification: |
+                  A model fixes a syntax error fastest when it is shown the exact place. The
+                  location is read from the format library's typed exception where there is one and
+                  otherwise from the uniform prefix every format writes, so it is reported for
+                  every format.
+                tests:
+                  - RenderErrorShaper_Shape_SyntaxError_StatesCodeLineColumnAndCaret
+                  - RenderErrorShaper_Shape_MalformedSvg_IsCorruptInputWithItsPosition
+
+              - id: AgentKitToolsVisual-Rendering-RenderErrorShaper-HelpTopicOnlyWhenServed
+                title: >-
+                  The error shaper shall name a help topic only when the caller supplies a help tool
+                  that serves that topic.
+                justification: |
+                  Pointing a model at a topic the help tool refuses wastes a turn and teaches it to
+                  distrust the pointer. A tool without a help catalog names none.
+                tests:
+                  - RenderErrorShaper_Shape_HelpTopic_IsNamedOnlyWhenItExists
+
+              - id: AgentKitToolsVisual-Rendering-RenderErrorShaper-HostTextRewritten
+                title: >-
+                  The error shaper shall replace the rendering library's host-oriented words — the
+                  name of its file-access policy, "allowed roots", and hints written for a host or
+                  a command line — with words about the agent's situation and advice it can follow.
+                justification: |
+                  The rendering library's hints tell a host to widen its roots or a command-line
+                  user to drop a switch; a model can do neither, and would try something else that
+                  fails. Advice addressed to the model is what lets it act.
+                tests:
+                  - RenderErrorShaper_Shape_HostOrientedText_IsRewritten
+
+              - id: AgentKitToolsVisual-Rendering-RenderErrorShaper-HostPathsScrubbed
+                title: >-
+                  The error shaper shall replace the working directory, every grant root and the
+                  input's folder in the text it produces with their form relative to the working
+                  directory, or a placeholder when they lie outside it.
+                tags: [security]
+                justification: |
+                  The text joins a transcript that leaves the host, and must not disclose the
+                  host's directory layout or the user name an absolute path carries.
+                tests:
+                  - RenderErrorShaper_Shape_HostPaths_AreScrubbed
+
+              - id: AgentKitToolsVisual-Rendering-RenderErrorShaper-NotesListed
+                title: >-
+                  The error shaper shall list every note the render reported, and state a timeout
+                  with the seconds it allowed and advice to simplify the source.
+                justification: |
+                  A failure promoted from a drawn picture, an empty one for instance, is explained
+                  by its notes; dropping them would leave the model with the symptom and not the
+                  cause.
+                tests:
+                  - RenderErrorShaper_Shape_TimeoutWithNotes_ListsTheNotes
