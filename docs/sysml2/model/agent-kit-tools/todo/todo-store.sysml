@@ -1,4 +1,4 @@
-package AgentKitTools {
+package AgentKitTools_TodoStore {
     private import SoftwareItemMetadata::*;
 
     part def TodoStore {

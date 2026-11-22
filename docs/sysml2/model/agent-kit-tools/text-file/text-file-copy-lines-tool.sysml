@@ -1,4 +1,4 @@
-package AgentKitTools {
+package AgentKitTools_TextFileCopyLinesTool {
     private import SoftwareItemMetadata::*;
 
     part def TextFileCopyLinesTool {

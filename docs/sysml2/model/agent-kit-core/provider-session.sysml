@@ -1,4 +1,4 @@
-package AgentKitCore {
+package AgentKitCore_ProviderSession {
     private import SoftwareItemMetadata::*;
 
     part def ProviderSession {

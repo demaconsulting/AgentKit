@@ -1,4 +1,4 @@
-package AgentKitTools {
+package AgentKitTools_FileMoveDirectoryTool {
     private import SoftwareItemMetadata::*;
 
     part def FileMoveDirectoryTool {

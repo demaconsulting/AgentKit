@@ -1,4 +1,4 @@
-package AgentKitAgentsCopilot {
+package AgentKitAgentsCopilot_CopilotProviderSession {
     private import SoftwareItemMetadata::*;
 
     part def CopilotProviderSession {

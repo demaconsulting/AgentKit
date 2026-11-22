@@ -1,4 +1,4 @@
-package AgentKitCore {
+package AgentKitCore_ToolOutputReadTool {
     private import SoftwareItemMetadata::*;
 
     part def ToolOutputReadTool {

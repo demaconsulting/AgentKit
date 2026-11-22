@@ -1,4 +1,4 @@
-package AgentKitAgentsChatClient {
+package AgentKitAgentsChatClient_ChatClientAgentFactory {
     private import SoftwareItemMetadata::*;
 
     part def ChatClientAgentFactory {

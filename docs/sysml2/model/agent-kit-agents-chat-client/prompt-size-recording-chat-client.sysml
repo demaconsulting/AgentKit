@@ -1,4 +1,4 @@
-package AgentKitAgentsChatClient {
+package AgentKitAgentsChatClient_PromptSizeRecordingChatClient {
     private import SoftwareItemMetadata::*;
 
     part def PromptSizeRecordingChatClient {

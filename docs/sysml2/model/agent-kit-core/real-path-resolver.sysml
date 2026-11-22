@@ -1,4 +1,4 @@
-package AgentKitCore {
+package AgentKitCore_RealPathResolver {
     private import SoftwareItemMetadata::*;
 
     part def RealPathResolver {

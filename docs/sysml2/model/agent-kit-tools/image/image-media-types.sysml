@@ -1,4 +1,4 @@
-package AgentKitTools {
+package AgentKitTools_ImageMediaTypes {
     private import SoftwareItemMetadata::*;
 
     part def ImageMediaTypes {

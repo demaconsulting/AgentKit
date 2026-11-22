@@ -1,4 +1,4 @@
-package AgentKitAgentsChatClient {
+package AgentKitAgentsChatClient_ChatClientProviderSession {
     private import SoftwareItemMetadata::*;
 
     part def ChatClientProviderSession {

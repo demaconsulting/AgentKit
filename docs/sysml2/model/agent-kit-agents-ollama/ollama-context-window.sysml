@@ -1,4 +1,4 @@
-package AgentKitAgentsOllama {
+package AgentKitAgentsOllama_OllamaContextWindow {
     private import SoftwareItemMetadata::*;
 
     part def OllamaContextWindow {

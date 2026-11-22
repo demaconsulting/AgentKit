@@ -9,8 +9,8 @@ dotnet-tool restore and CI pipeline used by the other pipeline tools.
 
 ### Features Used
 
-- Model validation via `dotnet sysml2tools lint 'docs/sysml2/**/*.sysml'`, which reports syntax
-  errors and unresolved references without producing output files
+- Model validation via `dotnet sysml2tools lint --strict-unresolved 'docs/sysml2/**/*.sysml'`,
+  which reports syntax errors and fails on unresolved references without producing output files
 - View rendering via `dotnet sysml2tools render`, which renders every `view` declared in
   `docs/sysml2/views/design-views.sysml` to an SVG file named after the view (for example
   `SoftwareStructureView.svg`)
@@ -19,9 +19,9 @@ dotnet-tool restore and CI pipeline used by the other pipeline tools.
 ### Integration Pattern
 
 SysML2Tools is invoked as a `dotnet tool` from two places: `lint.ps1` runs
-`dotnet sysml2tools lint 'docs/sysml2/**/*.sysml'` as an early-detection lint gate, and
+`dotnet sysml2tools lint --strict-unresolved 'docs/sysml2/**/*.sysml'` as an early-detection lint gate, and
 `.github/workflows/build.yaml` runs
-`dotnet sysml2tools render --output docs/design/generated --format svg 'docs/sysml2/model/**/*.sysml' 'docs/sysml2/views/design-views.sysml'`
+`dotnet sysml2tools render --output docs/design/generated --format svg 'docs/sysml2/common/**/*.sysml' 'docs/sysml2/model/**/*.sysml' 'docs/sysml2/views/design-views.sysml'`
 immediately before Pandoc compiles the Design document. FileAssert then asserts that each declared
 view's rendered SVG file exists in `docs/design/generated/` and is well-formed XML, before Pandoc
 embeds it in the compiled document. It is a stateless CLI invocation — each run reads the SysML2

@@ -1,4 +1,4 @@
-package AgentKitCore {
+package AgentKitCore_ToolPackBuilder {
     private import SoftwareItemMetadata::*;
 
     part def ToolPackBuilder {

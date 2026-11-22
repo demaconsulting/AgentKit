@@ -1,5 +1,6 @@
-package AgentKitAgentsCopilot {
+package AgentKitAgentsCopilot_CopilotSummarizer {
     private import SoftwareItemMetadata::*;
+    private import AgentKitAgentsCopilot_CopilotRuntime::*;
 
     part def CopilotSummarizer {
         doc /* Consolidates session history on a short-lived, tool-free Copilot session of its own, using the consolidation prompt AgentKit Core publishes, so a consolidation never spends the context of the session it is compacting and never counts toward the occupancy that triggered the rotation. The session carries no tools and an empty allow-list, holds the runtime's own compaction threshold clear of the session engine's rotation point, and is released on every path including failure; an empty answer is returned as an empty record rather than raised. */

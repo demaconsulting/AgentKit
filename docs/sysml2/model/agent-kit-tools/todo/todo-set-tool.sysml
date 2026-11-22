@@ -1,4 +1,4 @@
-package AgentKitTools {
+package AgentKitTools_TodoSetTool {
     private import SoftwareItemMetadata::*;
 
     part def TodoSetTool {

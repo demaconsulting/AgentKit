@@ -1,4 +1,4 @@
-package AgentKitCore {
+package AgentKitCore_PathPolicy {
     private import SoftwareItemMetadata::*;
 
     part def PathPolicy {

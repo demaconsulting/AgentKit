@@ -1,4 +1,4 @@
-package AgentKitAgentsChatClient {
+package AgentKitAgentsChatClient_ChatClientSummarizer {
     private import SoftwareItemMetadata::*;
 
     part def ChatClientSummarizer {

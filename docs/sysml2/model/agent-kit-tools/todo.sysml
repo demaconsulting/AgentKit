@@ -1,5 +1,10 @@
-package AgentKitTools {
+package AgentKitTools_TodoSubsystem {
     private import SoftwareItemMetadata::*;
+    private import AgentKitTools_TodoStore::*;
+    private import AgentKitTools_TodoListTool::*;
+    private import AgentKitTools_TodoSetTool::*;
+    private import AgentKitTools_TodoRemoveTool::*;
+    private import AgentKitTools_TodoPack::*;
 
     part def Todo {
         doc /* The todo tool family: an in-memory flat task list one agent can write down, advance and close out, published as one pack under the todo family prefix, requiring no host capability and consulting no path policy. */

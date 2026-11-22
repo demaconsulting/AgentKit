@@ -1,4 +1,4 @@
-package AgentKitCore {
+package AgentKitCore_SessionTranscript {
     private import SoftwareItemMetadata::*;
 
     part def SessionTranscript {

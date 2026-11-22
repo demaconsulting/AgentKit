@@ -1,4 +1,4 @@
-package AgentKitTools {
+package AgentKitTools_FileDeleteTool {
     private import SoftwareItemMetadata::*;
 
     part def FileDeleteTool {

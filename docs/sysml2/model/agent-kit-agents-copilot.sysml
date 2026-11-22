@@ -1,5 +1,13 @@
 package AgentKitAgentsCopilot {
     private import SoftwareItemMetadata::*;
+    private import AgentKitAgentsCopilot_CopilotAgent::*;
+    private import AgentKitAgentsCopilot_CopilotAgentFactory::*;
+    private import AgentKitAgentsCopilot_CopilotProviderSession::*;
+    private import AgentKitAgentsCopilot_CopilotProviderSessionFactory::*;
+    private import AgentKitAgentsCopilot_CopilotRuntime::*;
+    private import AgentKitAgentsCopilot_CopilotSessionObserver::*;
+    private import AgentKitAgentsCopilot_CopilotSummarizer::*;
+    private import AgentKitAgentsCopilot_CopilotTurnChannel::*;
 
     doc
     /*

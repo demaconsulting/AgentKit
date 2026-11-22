@@ -1,4 +1,4 @@
-package AgentKitAgentsChatClient {
+package AgentKitAgentsChatClient_ToolPackContextProvider {
     private import SoftwareItemMetadata::*;
 
     part def ToolPackContextProvider {

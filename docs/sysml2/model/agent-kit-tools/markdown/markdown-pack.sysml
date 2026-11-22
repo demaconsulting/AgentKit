@@ -1,4 +1,4 @@
-package AgentKitTools {
+package AgentKitTools_MarkdownPack {
     private import SoftwareItemMetadata::*;
 
     part def MarkdownPack {

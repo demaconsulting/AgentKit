@@ -1,4 +1,4 @@
-package AgentKitCore {
+package AgentKitCore_ToolOutputOptions {
     private import SoftwareItemMetadata::*;
 
     part def ToolOutputOptions {

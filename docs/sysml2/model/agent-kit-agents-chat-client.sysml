@@ -1,5 +1,11 @@
 package AgentKitAgentsChatClient {
     private import SoftwareItemMetadata::*;
+    private import AgentKitAgentsChatClient_ChatClientAgentFactory::*;
+    private import AgentKitAgentsChatClient_ChatClientProviderSession::*;
+    private import AgentKitAgentsChatClient_ChatClientProviderSessionFactory::*;
+    private import AgentKitAgentsChatClient_PromptSizeRecordingChatClient::*;
+    private import AgentKitAgentsChatClient_ChatClientSummarizer::*;
+    private import AgentKitAgentsChatClient_ToolPackContextProvider::*;
 
     doc
     /*

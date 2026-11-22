@@ -1,5 +1,7 @@
 package AgentKitAgentsOllama {
     private import SoftwareItemMetadata::*;
+    private import AgentKitAgentsOllama_OllamaContextWindow::*;
+    private import AgentKitAgentsOllama_OllamaContextSizingChatClient::*;
 
     doc
     /*

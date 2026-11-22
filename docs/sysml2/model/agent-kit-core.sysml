@@ -1,5 +1,32 @@
 package AgentKitCore {
     private import SoftwareItemMetadata::*;
+    private import AgentKitCore_RealPathResolver::*;
+    private import AgentKitCore_PathRule::*;
+    private import AgentKitCore_PathPolicy::*;
+    private import AgentKitCore_ToolLimits::*;
+    private import AgentKitCore_ToolResult::*;
+    private import AgentKitCore_ToolOutputOptions::*;
+    private import AgentKitCore_ToolOutputStore::*;
+    private import AgentKitCore_ToolOutputSpill::*;
+    private import AgentKitCore_ToolOutputRetention::*;
+    private import AgentKitCore_ToolOutputReadTool::*;
+    private import AgentKitCore_ToolOutputSearchTool::*;
+    private import AgentKitCore_ToolName::*;
+    private import AgentKitCore_GuardedToolFactory::*;
+    private import AgentKitCore_ToolPack::*;
+    private import AgentKitCore_ToolPackBuilder::*;
+    private import AgentKitCore_ImagePromotingChatClient::*;
+    private import AgentKitCore_AgentSession::*;
+    private import AgentKitCore_AgentSessionOptions::*;
+    private import AgentKitCore_ContextUsage::*;
+    private import AgentKitCore_SessionTranscript::*;
+    private import AgentKitCore_ContextLayout::*;
+    private import AgentKitCore_RotationEngine::*;
+    private import AgentKitCore_Summarizer::*;
+    private import AgentKitCore_ProviderSession::*;
+    private import AgentKitCore_InMemoryProviderSession::*;
+    private import AgentKitCore_CompactingAgentSession::*;
+    private import AgentKitCore_AgentKitChatReducer::*;
 
     doc
     /*

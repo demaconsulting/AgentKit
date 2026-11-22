@@ -1,4 +1,4 @@
-package AgentKitTools {
+package AgentKitTools_AgentProfile {
     private import SoftwareItemMetadata::*;
 
     part def AgentProfile {

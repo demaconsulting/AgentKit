@@ -1,4 +1,4 @@
-package AgentKitTools {
+package AgentKitTools_TextFileLineBuffers {
     private import SoftwareItemMetadata::*;
 
     part def TextFileLineBuffers {

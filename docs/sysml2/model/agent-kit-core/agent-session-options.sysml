@@ -1,4 +1,4 @@
-package AgentKitCore {
+package AgentKitCore_AgentSessionOptions {
     private import SoftwareItemMetadata::*;
 
     part def AgentSessionOptions {

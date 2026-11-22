@@ -1,4 +1,4 @@
-package AgentKitCore {
+package AgentKitCore_Summarizer {
     private import SoftwareItemMetadata::*;
 
     part def Summarizer {

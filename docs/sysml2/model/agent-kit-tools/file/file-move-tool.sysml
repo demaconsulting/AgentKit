@@ -1,4 +1,4 @@
-package AgentKitTools {
+package AgentKitTools_FileMoveTool {
     private import SoftwareItemMetadata::*;
 
     part def FileMoveTool {

@@ -1,4 +1,4 @@
-package AgentKitAgentsOllama {
+package AgentKitAgentsOllama_OllamaContextSizingChatClient {
     private import SoftwareItemMetadata::*;
 
     part def OllamaContextSizingChatClient {

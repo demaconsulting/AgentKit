@@ -1,70 +1,105 @@
 // Views rendered into docs/design/generated/ for the Design document.
-// Reopens the AgentKitCore package so each 'expose' statement can reference
-// its target part def directly. Per SysML2Tools syntax, 'expose' is only valid
-// inside a named 'view' usage (not a 'view def' definition), and it - not
-// 'render' - is what scopes the rendered diagram content.
-package AgentKitCore {
-    view SoftwareStructureView {
-        expose AgentKitCore;
-        expose AgentKitTools;
-        expose AgentKitAgentsChatClient;
-        expose AgentKitAgentsCopilot;
-        expose AgentKitAgentsOllama;
+// One repository-level views package imports each system and subsystem package so every
+// 'expose' statement can reference its target part def directly. Per SysML2Tools syntax,
+// 'expose' is only valid inside a named 'view' usage (not a 'view def' definition), and it -
+// not 'render' - is what scopes the rendered diagram content. SoftwareStructureView is an
+// InterconnectionView overview: each system renders as a frame with its direct members.
+// The per-system and per-subsystem views expose the container and its direct children and
+// render as interconnection diagrams so nested composition renders correctly.
+package AgentKitDesignViews {
+    private import StandardViewDefinitions::*;
+    private import Views::*;
+    private import AgentKitCore::*;
+    private import AgentKitTools::*;
+    private import AgentKitAgentsChatClient::*;
+    private import AgentKitAgentsCopilot::*;
+    private import AgentKitAgentsOllama::*;
+    private import AgentKitTools_TextFileSubsystem::*;
+    private import AgentKitTools_FileSubsystem::*;
+    private import AgentKitTools_MarkdownSubsystem::*;
+    private import AgentKitTools_ImageSubsystem::*;
+    private import AgentKitTools_TodoSubsystem::*;
+    private import AgentKitTools_MemorySubsystem::*;
+    private import AgentKitTools_AgentSubsystem::*;
+
+    view SoftwareStructureView : InterconnectionView {
+        expose AgentKitCore::AgentKitCoreSystem;
+        expose AgentKitTools::AgentKitToolsSystem;
+        expose AgentKitAgentsChatClient::AgentKitAgentsChatClientSystem;
+        expose AgentKitAgentsCopilot::AgentKitAgentsCopilotSystem;
+        expose AgentKitAgentsOllama::AgentKitAgentsOllamaSystem;
+        filter not (@SysML::Documentation);
     }
 
     view AgentKitCoreView {
         expose AgentKitCoreSystem;
+        expose AgentKitCoreSystem::*;
+        render asInterconnectionDiagram;
     }
-}
 
-package AgentKitTools {
     view AgentKitToolsView {
         expose AgentKitToolsSystem;
+        expose AgentKitToolsSystem::*;
+        render asInterconnectionDiagram;
+    }
+
+    view AgentKitAgentsChatClientView {
+        expose AgentKitAgentsChatClientSystem;
+        expose AgentKitAgentsChatClientSystem::*;
+        render asInterconnectionDiagram;
+    }
+
+    view AgentKitAgentsCopilotView {
+        expose AgentKitAgentsCopilotSystem;
+        expose AgentKitAgentsCopilotSystem::*;
+        render asInterconnectionDiagram;
+    }
+
+    view AgentKitAgentsOllamaView {
+        expose AgentKitAgentsOllamaSystem;
+        expose AgentKitAgentsOllamaSystem::*;
+        render asInterconnectionDiagram;
     }
 
     view TextFileView {
         expose TextFile;
+        expose TextFile::*;
+        render asInterconnectionDiagram;
     }
 
     view FileView {
         expose File;
+        expose File::*;
+        render asInterconnectionDiagram;
     }
 
     view MarkdownView {
         expose Markdown;
+        expose Markdown::*;
+        render asInterconnectionDiagram;
     }
 
     view ImageView {
         expose Image;
+        expose Image::*;
+        render asInterconnectionDiagram;
     }
 
     view TodoView {
         expose Todo;
+        expose Todo::*;
+        render asInterconnectionDiagram;
     }
 
     view MemoryView {
         expose Memory;
+        expose Memory::*;
+        render asInterconnectionDiagram;
     }
 
     view AgentView {
         expose Agent;
-    }
-}
-
-package AgentKitAgentsChatClient {
-    view AgentKitAgentsChatClientView {
-        expose AgentKitAgentsChatClientSystem;
-    }
-}
-
-package AgentKitAgentsCopilot {
-    view AgentKitAgentsCopilotView {
-        expose AgentKitAgentsCopilotSystem;
-    }
-}
-
-package AgentKitAgentsOllama {
-    view AgentKitAgentsOllamaView {
-        expose AgentKitAgentsOllamaSystem;
+        expose Agent::*;
+        render asInterconnectionDiagram;
     }
 }

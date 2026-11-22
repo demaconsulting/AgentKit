@@ -1,4 +1,4 @@
-package AgentKitCore {
+package AgentKitCore_RotationEngine {
     private import SoftwareItemMetadata::*;
 
     part def RotationEngine {

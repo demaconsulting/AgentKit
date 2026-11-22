@@ -1,5 +1,10 @@
-package AgentKitTools {
+package AgentKitTools_ImageSubsystem {
     private import SoftwareItemMetadata::*;
+    private import AgentKitTools_ImageMediaTypes::*;
+    private import AgentKitTools_ImageReadTool::*;
+    private import AgentKitTools_ImageCropTool::*;
+    private import AgentKitTools_ImageAutoCropTool::*;
+    private import AgentKitTools_ImagePack::*;
 
     part def Image {
         doc /* The image tool family: policy-governed reading of images and PDF documents, reporting an image's declared pixel dimensions wherever it can establish them, and returning a rectangular region of one — either named in pixels by the caller, or found by trimming the image to the region its own content occupies — inline or written to a destination the policy's write decision permits, published as one pack under the image family prefix and gated on the host's vision capability. */

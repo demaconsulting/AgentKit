@@ -1,4 +1,4 @@
-package AgentKitTools {
+package AgentKitTools_AgentRunTool {
     private import SoftwareItemMetadata::*;
 
     part def AgentRunTool {

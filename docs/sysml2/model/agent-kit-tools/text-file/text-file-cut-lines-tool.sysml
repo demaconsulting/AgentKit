@@ -1,4 +1,4 @@
-package AgentKitTools {
+package AgentKitTools_TextFileCutLinesTool {
     private import SoftwareItemMetadata::*;
 
     part def TextFileCutLinesTool {
