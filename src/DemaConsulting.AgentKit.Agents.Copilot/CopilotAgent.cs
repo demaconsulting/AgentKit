@@ -207,8 +207,9 @@ internal sealed class CopilotAgent : AIAgent
 
     /// <inheritdoc/>
     /// <exception cref="InvalidOperationException">
-    ///     <paramref name="session"/> was not created by an agent of this kind, or the runtime
-    ///     reported a session error.
+    ///     <paramref name="session"/> was not created by an agent of this kind, the runtime reported a
+    ///     session error, or the runtime or the SDK failed the turn — raised as a redacted copy, never
+    ///     the SDK's own exception.
     /// </exception>
     protected override IAsyncEnumerable<AgentResponseUpdate> RunCoreStreamingAsync(
         IEnumerable<ChatMessage> messages,
@@ -237,7 +238,11 @@ internal sealed class CopilotAgent : AIAgent
     /// <param name="message">The composed message to send.</param>
     /// <param name="cancellationToken">The run's deadline.</param>
     /// <returns>The run's updates, in the order the runtime produced them.</returns>
-    /// <exception cref="InvalidOperationException">The runtime reported a session error.</exception>
+    /// <exception cref="InvalidOperationException">
+    ///     The runtime reported a session error, or the runtime or the SDK failed the turn, raised as
+    ///     a redacted copy.
+    /// </exception>
+    /// <exception cref="IOException">The connection to the runtime failed during the turn, raised as a redacted copy.</exception>
     private async IAsyncEnumerable<AgentResponseUpdate> RunTurnAsync(
         CopilotAgentSession conversation,
         bool ephemeral,
@@ -257,7 +262,7 @@ internal sealed class CopilotAgent : AIAgent
             Task? send = null;
             try
             {
-                send = SendAsync(channel, message, updates.Writer, runCancellation.Token);
+                send = SendAsync(channel, message, updates.Writer, _signIn, runCancellation.Token);
 
                 await foreach (var update in updates.Reader.ReadAllAsync(runCancellation.Token).ConfigureAwait(false))
                 {
@@ -330,12 +335,14 @@ internal sealed class CopilotAgent : AIAgent
     /// <param name="channel">The channel to take the turn on.</param>
     /// <param name="message">The message to send.</param>
     /// <param name="writer">The update stream to complete.</param>
+    /// <param name="signIn">The runtime's sign-in, whose tokens a relayed failure is redacted of.</param>
     /// <param name="cancellationToken">The run's only deadline.</param>
     /// <returns>A task that completes with the turn.</returns>
     private static async Task SendAsync(
         ICopilotTurnChannel channel,
         MessageOptions message,
         ChannelWriter<AgentResponseUpdate> writer,
+        CopilotSignInPlan? signIn,
         CancellationToken cancellationToken)
     {
         try
@@ -346,9 +353,17 @@ internal sealed class CopilotAgent : AIAgent
         catch (Exception failure)
         {
             // Completing the stream with the failure is what surfaces it to the reader; the task's
-            // own exception is observed by FinishAsync.
-            writer.TryComplete(failure);
-            throw;
+            // own exception is observed by FinishAsync. The runtime's or the SDK's failure is
+            // relayed as a redacted copy of the same kind, never as the original; a cancellation
+            // carrying nothing to redact passes unchanged.
+            var relayed = CopilotSignIn.RedactRelayed(failure, signIn);
+            writer.TryComplete(relayed);
+            if (ReferenceEquals(relayed, failure))
+            {
+                throw;
+            }
+
+            throw relayed;
         }
     }
 

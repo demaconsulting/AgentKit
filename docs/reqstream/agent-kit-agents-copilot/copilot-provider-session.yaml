@@ -135,7 +135,8 @@ sections:
               The session shall accept no further turn, and shall send none, once a turn it handed to
               the Copilot runtime could not be recorded, naming the original failure, with every token
               the runtime's sign-in knows and any text shaped like a GitHub token redacted, as the
-              reason it will not be used again.
+              reason it will not be used again; and shall raise the turn's runtime or SDK failure as
+              a redacted copy of the same kind, never the SDK's own exception.
             justification: |
               Handing the prompt over is the dividing line. Past it the runtime may hold a turn the
               engine's transcript does not — a send that failed is as uncertain as a turn that came
@@ -152,12 +153,17 @@ sections:
               transcript, which is the state known to be good. Naming the original failure rather than
               inventing a fresh one is what lets an application act on the cause instead of on the
               symptom, and the rule is one rule for two causes — this and the runtime rewriting
-              history — because the consequence of each is identical. The failure's text may quote a
-              token the runtime was given, so the refusal quotes it redacted.
+              history — because the consequence of each is identical. The failure's text, its chain
+              and an RPC error's data may quote a token the runtime was given, so the failure is
+              relayed as a new exception of the same kind with a redacted message and a redacted copy
+              as its cause, and the later refusal quotes it redacted; a host still catches the kind it
+              caught before.
             tests:
               - CopilotProviderSession_Send_AfterATurnItCouldNotRecord_RefusesWithoutSending
               - CopilotProviderSession_Send_ChannelFails_EndsTheSessionAndHandsNothingBack
-              - CopilotProviderSession_Send_ChannelFailureQuotingAToken_LaterRefusalIsRedacted
+              - CopilotProviderSession_Send_ChannelFailureQuotingAToken_IsRelayedRedacted
+              - CopilotProviderSession_Send_SessionErrorQuotingAToken_IsRelayedRedacted
+              - CopilotProviderSession_Send_Canceled_PassesTheCancellationUnchanged
 
           - id: AgentKitAgentsCopilot-CopilotProviderSession-RefusesASilentSession
             title: >-

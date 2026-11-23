@@ -211,3 +211,30 @@ sections:
             tests:
               - CopilotSignIn_RedactFailure_ChainQuotingKnownSecrets_CarriesNoSecret
               - CopilotSignIn_RedactFailure_KeepsTheTypeNameMessageAndStackTrace
+
+          - id: AgentKitAgentsCopilot-CopilotSignIn-RelaysFailuresRedacted
+            title: >-
+              The sign-in shall provide, for a runtime or SDK failure AgentKit relays to a host, a new
+              exception of the same kind — an I/O failure, a timeout or an invalid operation as its own
+              type, a cancellation with its token, a disposal, and any other type as an invalid
+              operation — whose message has every token the sign-in knows and any text shaped like a
+              GitHub token redacted and whose cause is the failure's redacted copy; shall return a
+              cancellation or disposal that has no cause and nothing to redact unchanged; and shall
+              return a failure already built around a redacted copy unchanged.
+            tags: [security]
+            justification: |
+              A failure the runtime or the SDK raises can quote a token in its message, its chain or
+              properties AgentKit cannot inspect, such as an RPC error's data, so relaying the original
+              would hand a host a token in an exception built to be shown and logged. Relaying a new
+              exception every time, rather than only when a secret is spotted, fails closed. Keeping
+              the kind means a host still catches what it caught before; a type outside the base class
+              library becomes an invalid operation because a host cannot catch a type it does not
+              reference, and the original type's name is kept in the cause. A clean cancellation or
+              disposal passes unchanged so its token and object name survive, and a failure AgentKit
+              already built around a redacted copy is left alone so relaying twice changes nothing.
+            tests:
+              - CopilotSignIn_RedactRelayed_SessionErrorQuotingATokenAndRpcData_IsRelayedRedacted
+              - CopilotSignIn_RedactRelayed_KeepsTheKindAHostCatches
+              - CopilotSignIn_RedactRelayed_CleanCancellationOrDisposal_PassesUnchanged
+              - CopilotSignIn_RedactRelayed_CancellationOrDisposalCarryingASecret_IsRebuiltRedacted
+              - CopilotSignIn_RedactRelayed_AlreadyRelayed_IsReturnedUnchanged

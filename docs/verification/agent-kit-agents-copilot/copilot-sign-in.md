@@ -22,10 +22,10 @@ Copilot runtime, reads the real user's Copilot CLI home or touches a credential 
   for the GitHub CLI and `node` lookups, and return the environment and the SDK client options, which
   the tests inspect.
 - **`ExplainUnauthenticated`, `Classify`, `NormalizeHost`, `CreateSessionTokenProvider`,
-  `RedactFailure` and `Report`** are pure, or take a fabricated `GetAuthStatusResponse`, SDK
+  `RedactFailure`, `RedactRelayed` and `Report`** are pure, or take a fabricated `GetAuthStatusResponse`, SDK
   token-provider arguments, a fabricated exception chain, and a logger that keeps every entry. The
-  redacted copy's tests walk the whole exception chain, every inner exception of an aggregate
-  included.
+  redacted copy's and the relayed failure's tests walk the whole exception chain, every inner
+  exception of an aggregate included.
 
 A sentinel token is used wherever a token appears, and the tests assert it never appears in a
 finding, a message, a log entry or a string form. The redaction tests also use secrets that are not
@@ -74,7 +74,9 @@ not deleted on any outcome; a configuration with comments and trailing commas no
 configuration that yields an account; a refusal missing a source, its finding or a remedy; a token
 in any finding, message, log entry or string form; a known token of any shape left in quoted runtime,
 SDK or exception text; a cause copy that keeps the original, loses its type name, message or stack
-trace, carries its data, or leaves a token anywhere in its chain; or a lifetime of more than one hour
+trace, carries its data, or leaves a token anywhere in its chain; a relayed failure that is the
+original, changes the kind a host catches, loses a cancellation's token, or leaves a token anywhere in
+its chain; or a lifetime of more than one hour
 reported to the runtime as one hour or less constitutes a failure.
 
 ### Test Scenarios
@@ -278,3 +280,36 @@ both inner messages, is redacted. A thrown `FileNotFoundException` with data att
 its type name, message, stack trace and `HResult` unchanged, a string form laid out as an exception's
 and led by the type name, and no data; a failure never thrown has no stack trace; and a chain of
 twenty exceptions is copied to `MaximumDepth`, sixteen.
+
+#### AgentKitAgentsCopilot-CopilotSignIn-RelaysFailuresRedacted: A Relayed Failure Is a New, Redacted Exception
+
+**Tests**:
+
+- `CopilotSignIn_RedactRelayed_SessionErrorQuotingATokenAndRpcData_IsRelayedRedacted`
+- `CopilotSignIn_RedactRelayed_KeepsTheKindAHostCatches`
+- `CopilotSignIn_RedactRelayed_CleanCancellationOrDisposal_PassesUnchanged`
+- `CopilotSignIn_RedactRelayed_CancellationOrDisposalCarryingASecret_IsRebuiltRedacted`
+- `CopilotSignIn_RedactRelayed_AlreadyRelayed_IsReturnedUnchanged`
+
+Error paths and boundaries. The first relays a thrown failure in the SDK's shape — an
+`InvalidOperationException` reading `Session error: …` that quotes a known secret and a GitHub-shaped
+token, over an RPC-shaped exception of a type outside the base class library whose message, data and
+own error-data property quote the secret. The result is a new `InvalidOperationException` reading
+exactly `Session error: refused <redacted> gho_<redacted>`; its cause is a `CopilotRedactedException`
+naming `System.InvalidOperationException`, chaining a copy naming the RPC-shaped type that carries no
+data; and a walk of the whole chain, every inner exception of an aggregate included, finds neither
+value in a message, a stack trace or a string form.
+
+The second, a theory, relays an `EndOfStreamException`, a `TimeoutException`, an
+`InvalidOperationException` and a `JsonException`, each quoting a GitHub-shaped token, and asserts
+an `IOException`, a `TimeoutException`, an `InvalidOperationException` and an
+`InvalidOperationException` respectively — each a new exception with the redacted message, a cause
+naming the original type, and a clean chain.
+
+The third asserts that an `OperationCanceledException` carrying a token, a `TaskCanceledException`
+and an `ObjectDisposedException`, none with a cause or anything to redact, come back as the same
+instance. The fourth relays an `OperationCanceledException` whose cause quotes a secret and an
+`ObjectDisposedException` whose message and cause quote secrets: each is rebuilt as the same type —
+not the same instance — the cancellation keeping its token, the disposal's message redacted, and both
+chains clean. The fifth asserts that a failure already built around a redacted copy, and a failure
+relayed once, are each returned unchanged, so relaying twice changes nothing.

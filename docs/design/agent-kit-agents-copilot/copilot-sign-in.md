@@ -107,7 +107,8 @@ runtime or SDK failure that AgentKit keeps as an inner exception in place of the
 
 The copy is made every time, not only when a secret is spotted: that fails closed for properties
 AgentKit cannot inspect, such as an RPC error's data. It is internal: a host catches the outer
-exception, whose type never changes, and the copy is diagnostic text.
+exception, whose type never changes, and the copy is diagnostic text. It is also the cause of every
+failure AgentKit relays (`RedactRelayed`).
 
 `CopilotCliAccount` (internal record): `Host` (normalized `https://name`) and `Login`; never a token.
 
@@ -284,6 +285,38 @@ copy of `failure` and its chain, redacting each message and stack trace with `Re
 **Known limitation.** Exact-value redaction cannot recognize a token the runtime transformed, for
 example by URL-encoding or truncating it; the token-shape pattern still applies to such text.
 
+#### RedactRelayed(failure, plan)
+
+**Purpose:** Build the exception AgentKit relays to a host in place of a runtime or SDK failure, so no
+exception that reaches a host holds the original or a token.
+
+**Algorithm:** The first rule that matches applies:
+
+1. A failure whose inner exception is already a `CopilotRedactedException` is returned unchanged. Only
+   AgentKit builds that type, and always with the outer message already redacted — the start wrap,
+   `ExplainListFailure`, or an earlier relay — so relaying twice changes nothing.
+2. An `OperationCanceledException` (including `TaskCanceledException`) or an
+   `ObjectDisposedException` with no inner exception and nothing in its message to redact is returned
+   unchanged, keeping its type, `CancellationToken` and `ObjectName`. Otherwise it is rebuilt as an
+   `OperationCanceledException` with the same token, or an `ObjectDisposedException`, with the
+   redacted message and `RedactFailure(failure, plan)` as its cause. Disposal is tested before rule 3
+   because `ObjectDisposedException` derives from `InvalidOperationException`.
+3. An `InvalidOperationException` becomes a new `InvalidOperationException`.
+4. An `IOException`, including a subclass, becomes a new `IOException`.
+5. A `TimeoutException` becomes a new `TimeoutException`.
+6. Anything else — such as the RPC error type of the SDK's transport, a `JsonException` or an
+   `ArgumentException` — becomes a new `InvalidOperationException`.
+
+Under rules 3 to 6 the message is `Redact(plan, failure.Message)` and the cause is
+`RedactFailure(failure, plan)`, which names the original type. The original is never kept, whether or
+not a secret was spotted, so properties AgentKit cannot inspect, such as an RPC error's data, never
+pass through. A caller rethrows with `throw;` when the result is the failure itself, keeping its
+stack, and throws the result otherwise. Keeping the kind means a host still catches what it caught
+before; a type outside the base class library becomes `InvalidOperationException` because a host
+cannot catch a type it does not reference.
+
+**Postconditions:** The exception to throw; it never throws itself.
+
 ### Error Handling
 
 | Condition | Handling |
@@ -303,10 +336,11 @@ example by URL-encoding or truncating it; the token-shape pattern still applies 
 
 Every message and finding AgentKit composes from runtime, SDK or exception text is redacted with the
 plan's secrets and the token-shape pattern. A runtime or SDK failure AgentKit keeps as an inner
-exception is a `CopilotRedactedException` copy (`RedactFailure`), never the original, so no exception
-in the chain carries a token. Only the host provider's own failure is kept unchanged as the cause of
-the provider refusal: the host's own code raised it, AgentKit quotes none of it, and keeping it lets
-the host recognize its own failure type.
+exception is a `CopilotRedactedException` copy (`RedactFailure`), never the original, and a runtime or
+SDK failure AgentKit relays to a host is a new exception of the same kind built by `RedactRelayed`,
+so no exception in the chain carries a token. Only the host provider's own failure is kept
+unchanged as the cause of the provider refusal: the host's own code raised it, AgentKit quotes none
+of it, and keeping it lets the host recognize its own failure type.
 
 ### Dependencies
 
@@ -325,8 +359,9 @@ calls `ExplainUnauthenticated`; the `CopilotRuntime` constructor calls `Classify
 `StartAsync`'s path and on the turn channel's discovery path, calls `Redact(plan, text)`, and
 `CopilotRuntime.StartClientAsync` calls `RedactFailure` for the cause; `CopilotModelCatalog`'s
 `ExplainListFailure` calls `RedactFailure`; `CopilotAgent` (a session error) and
-`CopilotProviderSession` (its refusals) call `Redact(plan, text)`; `CopilotRuntimeOptions` calls
-`NormalizeHost`.
+`CopilotProviderSession` (its refusals) call `Redact(plan, text)`; `CopilotAgent`,
+`CopilotProviderSession` and `CopilotSummarizer` call `RedactRelayed` for a turn's failure;
+`CopilotRuntimeOptions` calls `NormalizeHost`.
 
 ### Untested Platforms
 

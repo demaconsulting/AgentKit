@@ -228,7 +228,15 @@ public sealed class CopilotProviderSession : IProviderSession
     /// </remarks>
     /// <exception cref="InvalidOperationException">
     ///     The runtime rewrote this session's history, went idle without answering, or answered
-    ///     without reporting its occupancy.
+    ///     without reporting its occupancy; or the runtime or the SDK failed the turn, raised as a
+    ///     redacted copy (an SDK failure of a type outside the base class library arrives as this
+    ///     type).
+    /// </exception>
+    /// <exception cref="IOException">
+    ///     The connection to the runtime failed during the turn, raised as a redacted copy.
+    /// </exception>
+    /// <exception cref="TimeoutException">
+    ///     The turn timed out in the SDK, raised as a redacted copy.
     /// </exception>
     public async Task<ProviderTurn> SendAsync(string message, CancellationToken cancellationToken = default)
     {
@@ -258,27 +266,52 @@ public sealed class CopilotProviderSession : IProviderSession
         // replacement was seeded with, and neither is detectable from here. The engine's answer to a
         // session it cannot account for is to seed a replacement from the transcript, which is the
         // state known to be good.
+        AssistantMessageEvent? answer;
         try
         {
-            var answer = await _channel
+            answer = await _channel
                 .SendAndWaitAsync(new MessageOptions { Prompt = TakeMessageToSend(message) }, cancellationToken)
                 .ConfigureAwait(false);
+        }
+        catch (Exception failure)
+        {
+            // The runtime's or the SDK's own failure is relayed as a redacted copy of the same kind:
+            // its text, its chain and anything an RPC error carries can quote a token, and the
+            // original is never handed to a caller. A cancellation carrying nothing to redact passes
+            // unchanged.
+            var relayed = CopilotSignIn.RedactRelayed(failure, _signIn);
+            MarkUnusable(relayed.Message);
+            if (ReferenceEquals(relayed, failure))
+            {
+                throw;
+            }
 
+            throw relayed;
+        }
+
+        try
+        {
             return CompleteTurn(answer);
         }
         catch (Exception failure)
         {
-            // The failure's text is quoted redacted in the later refusal. The failure itself is
-            // rethrown unchanged: it is the SDK's own exception, or a refusal composed below from
-            // text already redacted, and wrapping it would change the type a caller catches.
-            _unusableReason =
-                "A turn was sent to the Copilot runtime but could not be recorded, so the runtime "
-                + "may hold a turn this session's transcript does not - and where the turn carried a "
-                + "seeded record, that record has been sent and will not be sent again. The session "
-                + $"was abandoned rather than reused. The turn failed because: {CopilotSignIn.Redact(_signIn, failure.Message)}";
+            // A refusal composed below from text already redacted, rethrown unchanged.
+            MarkUnusable(failure.Message);
             throw;
         }
     }
+
+    /// <summary>
+    ///     Marks this session unusable after a turn it could not record, so every later send is
+    ///     refused naming why.
+    /// </summary>
+    /// <param name="reason">Why the turn failed; redacted again before it is quoted.</param>
+    private void MarkUnusable(string reason) =>
+        _unusableReason =
+            "A turn was sent to the Copilot runtime but could not be recorded, so the runtime "
+            + "may hold a turn this session's transcript does not - and where the turn carried a "
+            + "seeded record, that record has been sent and will not be sent again. The session "
+            + $"was abandoned rather than reused. The turn failed because: {CopilotSignIn.Redact(_signIn, reason)}";
 
     /// <summary>
     ///     Turns what the runtime produced into a recorded turn, or refuses it.

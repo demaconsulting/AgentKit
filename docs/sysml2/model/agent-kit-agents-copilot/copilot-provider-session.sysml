@@ -13,7 +13,8 @@ package AgentKitAgentsCopilot_CopilotProviderSession {
         }
     }
 
-    // The refusals a session gives quote the runtime's error redacted with the runtime's sign-in, so
-    // no token it knows reaches the exception.
+    // The refusals a session gives quote the runtime's error redacted with the runtime's sign-in, and
+    // a turn's runtime or SDK failure is relayed as a redacted copy, so no token it knows reaches the
+    // exception.
     dependency CopilotProviderSession to AgentKitAgentsCopilot_CopilotSignIn::CopilotSignIn;
 }

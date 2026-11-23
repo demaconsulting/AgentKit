@@ -408,17 +408,17 @@ public class CopilotProviderSessionTests
     }
 
     /// <summary>
-    ///     Proves the refusal a session gives after a turn it could not record quotes the turn's failure
-    ///     with every token the runtime's sign-in knows, and any text shaped like a GitHub token,
-    ///     redacted.
+    ///     Proves a turn whose send fails with an error quoting both tokens is relayed as a redacted
+    ///     copy of the same kind, never the channel's own exception, and that the refusal a session
+    ///     gives after it quotes the failure redacted too.
     /// </summary>
     /// <remarks>
-    ///     The first send rethrows the channel's own exception unchanged — the SDK's, which AgentKit
-    ///     neither composes nor wraps, so its type is the one a caller catches. The later refusal is
-    ///     composed by AgentKit, so that is the text redacted.
+    ///     The relayed exception is new: its message is redacted, its cause is the redacted copy, and
+    ///     nothing in its chain carries a secret. The later refusal is composed by AgentKit from the
+    ///     redacted text.
     /// </remarks>
     [Fact]
-    public async Task CopilotProviderSession_Send_ChannelFailureQuotingAToken_LaterRefusalIsRedacted()
+    public async Task CopilotProviderSession_Send_ChannelFailureQuotingAToken_IsRelayedRedacted()
     {
         // Arrange: a turn whose send fails with an error quoting both tokens
         var cause = new IOException($"connection reset for {KnownSecret} and {ShapedSecret}");
@@ -432,11 +432,64 @@ public class CopilotProviderSessionTests
             () => session.SendAsync("another question", TestContext.Current.CancellationToken));
 
         // Assert
-        Assert.Same(cause, first);
+        Assert.NotSame(cause, first);
+        Assert.Equal("connection reset for <redacted> and gho_<redacted>", first.Message);
+        var copy = Assert.IsType<CopilotRedactedException>(first.InnerException);
+        Assert.Equal(typeof(IOException).FullName, copy.OriginalTypeName);
+        CopilotSignInTests.AssertNoSecretInChain(first, KnownSecret, ShapedSecret);
         Assert.Contains("could not be recorded", refusal.Message, StringComparison.Ordinal);
         Assert.Contains("connection reset for <redacted> and gho_<redacted>", refusal.Message, StringComparison.Ordinal);
-        Assert.DoesNotContain(KnownSecret, refusal.ToString(), StringComparison.Ordinal);
-        Assert.DoesNotContain(ShapedSecret, refusal.ToString(), StringComparison.Ordinal);
+        CopilotSignInTests.AssertNoSecretInChain(refusal, KnownSecret, ShapedSecret);
+    }
+
+    /// <summary>
+    ///     Proves a session error the SDK raises for a turn — quoting both tokens, over a cause that
+    ///     quotes one too — is relayed as a new <see cref="InvalidOperationException"/> whose chain
+    ///     carries no secret, and the next send is refused naming the redacted text.
+    /// </summary>
+    [Fact]
+    public async Task CopilotProviderSession_Send_SessionErrorQuotingAToken_IsRelayedRedacted()
+    {
+        // Arrange: the SDK's shape - "Session error: ..." over the RPC failure
+        var cause = new InvalidOperationException(
+            $"Session error: refused {KnownSecret} {ShapedSecret}",
+            new IOException($"pipe {KnownSecret}"));
+        var runtime = Runtime(new ScriptedTurn([], Failure: cause));
+        await using var session = await OpenAsync(runtime, signIn: PlanKnowing(KnownSecret));
+
+        // Act
+        var first = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => session.SendAsync("a question", TestContext.Current.CancellationToken));
+        var refusal = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => session.SendAsync("another question", TestContext.Current.CancellationToken));
+
+        // Assert
+        Assert.NotSame(cause, first);
+        Assert.Equal("Session error: refused <redacted> gho_<redacted>", first.Message);
+        Assert.IsType<CopilotRedactedException>(first.InnerException);
+        CopilotSignInTests.AssertNoSecretInChain(first, KnownSecret, ShapedSecret);
+        Assert.Contains("The turn failed because: Session error: refused <redacted> gho_<redacted>", refusal.Message, StringComparison.Ordinal);
+        CopilotSignInTests.AssertNoSecretInChain(refusal, KnownSecret, ShapedSecret);
+    }
+
+    /// <summary>
+    ///     Proves a turn canceled in the runtime passes the cancellation on unchanged — the same
+    ///     instance, which carries nothing to redact.
+    /// </summary>
+    [Fact]
+    public async Task CopilotProviderSession_Send_Canceled_PassesTheCancellationUnchanged()
+    {
+        // Arrange
+        var cause = new OperationCanceledException("The turn was canceled.");
+        var runtime = Runtime(new ScriptedTurn([], Failure: cause));
+        await using var session = await OpenAsync(runtime, signIn: PlanKnowing(KnownSecret));
+
+        // Act
+        var failure = await Assert.ThrowsAsync<OperationCanceledException>(
+            () => session.SendAsync("a question", TestContext.Current.CancellationToken));
+
+        // Assert
+        Assert.Same(cause, failure);
     }
 
     /// <summary>

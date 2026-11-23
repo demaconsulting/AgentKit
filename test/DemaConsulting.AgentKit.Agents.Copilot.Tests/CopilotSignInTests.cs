@@ -1325,6 +1325,147 @@ public sealed class CopilotSignInTests : IDisposable
     }
 
     /// <summary>
+    ///     Proves a session error the SDK raises — quoting a known secret and a token-shaped value, and
+    ///     carrying an RPC error whose message and data quote the secret — is relayed as a new
+    ///     <see cref="InvalidOperationException"/> with a redacted message and a redacted copy as its
+    ///     cause, and that nothing in the relayed chain carries a secret.
+    /// </summary>
+    [Fact]
+    public void CopilotSignIn_RedactRelayed_SessionErrorQuotingATokenAndRpcData_IsRelayedRedacted()
+    {
+        // Arrange: the SDK's shape - a session error over the RPC error the runtime returned
+        const string secret = "s3cr3t-relay-xyz";
+        var plan = PlanKnowing(secret);
+        var rpc = new RpcErrorException($"rpc {secret}", new { token = secret });
+        rpc.Data["token"] = secret;
+        var failure = Thrown(new InvalidOperationException($"Session error: refused {secret} {SentinelToken}", rpc));
+
+        // Act
+        var relayed = CopilotSignIn.RedactRelayed(failure, plan);
+
+        // Assert
+        var outer = Assert.IsType<InvalidOperationException>(relayed);
+        Assert.NotSame(failure, outer);
+        Assert.Equal("Session error: refused <redacted> gho_<redacted>", outer.Message);
+        var cause = Assert.IsType<CopilotRedactedException>(outer.InnerException);
+        Assert.Equal(typeof(InvalidOperationException).FullName, cause.OriginalTypeName);
+        var rpcCopy = Assert.IsType<CopilotRedactedException>(cause.InnerException);
+        Assert.Equal(typeof(RpcErrorException).FullName, rpcCopy.OriginalTypeName);
+        Assert.Empty(rpcCopy.Data);
+        AssertNoSecretInChain(relayed, secret, SentinelToken);
+    }
+
+    /// <summary>
+    ///     Proves a relayed failure keeps the kind a host catches: an I/O failure and a timeout stay
+    ///     their own types, and an <see cref="InvalidOperationException"/> or a type outside the base
+    ///     class library becomes an <see cref="InvalidOperationException"/>, each a new exception with
+    ///     a redacted copy as its cause.
+    /// </summary>
+    /// <param name="kind">The failure the SDK raised.</param>
+    /// <param name="expected">The type relayed.</param>
+    [Theory]
+    [InlineData("io", typeof(IOException))]
+    [InlineData("timeout", typeof(TimeoutException))]
+    [InlineData("invalid", typeof(InvalidOperationException))]
+    [InlineData("json", typeof(InvalidOperationException))]
+    public void CopilotSignIn_RedactRelayed_KeepsTheKindAHostCatches(string kind, Type expected)
+    {
+        // Arrange
+        var message = $"failed for {SentinelToken}";
+        Exception failure = kind switch
+        {
+            "io" => new EndOfStreamException(message),
+            "timeout" => new TimeoutException(message),
+            "invalid" => new InvalidOperationException(message),
+            _ => new JsonException(message),
+        };
+
+        // Act
+        var relayed = CopilotSignIn.RedactRelayed(failure, plan: null);
+
+        // Assert
+        Assert.Equal(expected, relayed.GetType());
+        Assert.NotSame(failure, relayed);
+        Assert.Equal("failed for gho_<redacted>", relayed.Message);
+        var cause = Assert.IsType<CopilotRedactedException>(relayed.InnerException);
+        Assert.Equal(failure.GetType().FullName, cause.OriginalTypeName);
+        AssertNoSecretInChain(relayed, SentinelToken);
+    }
+
+    /// <summary>
+    ///     Proves a cancellation or a disposal carrying nothing to redact passes unchanged, keeping its
+    ///     instance, type and token.
+    /// </summary>
+    [Fact]
+    public void CopilotSignIn_RedactRelayed_CleanCancellationOrDisposal_PassesUnchanged()
+    {
+        // Arrange
+        using var source = new CancellationTokenSource();
+        var canceled = new OperationCanceledException("canceled", source.Token);
+        var taskCanceled = new TaskCanceledException("task canceled");
+        var disposed = new ObjectDisposedException("CopilotRuntime");
+
+        // Act and assert
+        Assert.Same(canceled, CopilotSignIn.RedactRelayed(canceled, PlanKnowing("s3cr3t-unused")));
+        Assert.Same(taskCanceled, CopilotSignIn.RedactRelayed(taskCanceled, plan: null));
+        Assert.Same(disposed, CopilotSignIn.RedactRelayed(disposed, plan: null));
+    }
+
+    /// <summary>
+    ///     Proves a cancellation or a disposal carrying a secret — in its message or its inner
+    ///     exception — is rebuilt as the same kind, keeping the cancellation's token, with nothing in
+    ///     its chain carrying the secret.
+    /// </summary>
+    [Fact]
+    public void CopilotSignIn_RedactRelayed_CancellationOrDisposalCarryingASecret_IsRebuiltRedacted()
+    {
+        // Arrange
+        const string secret = "s3cr3t-cancel-xyz";
+        var plan = PlanKnowing(secret);
+        using var source = new CancellationTokenSource();
+        var canceled = new OperationCanceledException("canceled", new IOException($"pipe {secret}"), source.Token);
+        var disposed = new ObjectDisposedException($"closed for {secret}", new IOException($"pipe {SentinelToken}"));
+
+        // Act
+        var relayedCancel = CopilotSignIn.RedactRelayed(canceled, plan);
+        var relayedDisposal = CopilotSignIn.RedactRelayed(disposed, plan);
+
+        // Assert
+        var cancel = Assert.IsType<OperationCanceledException>(relayedCancel);
+        Assert.NotSame(canceled, cancel);
+        Assert.Equal(source.Token, cancel.CancellationToken);
+        Assert.IsType<CopilotRedactedException>(cancel.InnerException);
+        AssertNoSecretInChain(cancel, secret);
+        var disposal = Assert.IsType<ObjectDisposedException>(relayedDisposal);
+        Assert.NotSame(disposed, disposal);
+        Assert.Contains("closed for <redacted>", disposal.Message, StringComparison.Ordinal);
+        AssertNoSecretInChain(disposal, secret, SentinelToken);
+    }
+
+    /// <summary>
+    ///     Proves a failure AgentKit already built around a redacted copy is returned unchanged, so
+    ///     relaying twice changes nothing.
+    /// </summary>
+    [Fact]
+    public void CopilotSignIn_RedactRelayed_AlreadyRelayed_IsReturnedUnchanged()
+    {
+        // Arrange
+        const string secret = "s3cr3t-twice-xyz";
+        var plan = PlanKnowing(secret);
+        var explained = new InvalidOperationException("explained", CopilotSignIn.RedactFailure(new IOException(secret), plan));
+        var once = CopilotSignIn.RedactRelayed(new IOException($"lost {secret}"), plan);
+
+        // Act
+        var relayedExplained = CopilotSignIn.RedactRelayed(explained, plan);
+        var twice = CopilotSignIn.RedactRelayed(once, plan);
+
+        // Assert
+        Assert.Same(explained, relayedExplained);
+        Assert.Same(once, twice);
+        AssertNoSecretInChain(twice, secret);
+    }
+
+    /// <summary>
     ///     Proves the runtime's sign-in is logged with its source, host and login, that a runtime on
     ///     another account than the Copilot CLI's is warned about, and that no token is logged.
     /// </summary>
@@ -1398,6 +1539,19 @@ public sealed class CopilotSignInTests : IDisposable
     }
 
     /// <summary>
+    ///     Builds a sign-in that knows one secret, as a runtime's does once it has resolved its tokens.
+    ///     Shared by every test that proves a failure is redacted of a known secret.
+    /// </summary>
+    /// <param name="secret">The secret.</param>
+    /// <returns>The sign-in.</returns>
+    internal static CopilotSignInPlan PlanKnowing(string secret)
+    {
+        var secrets = new CopilotSignInSecrets();
+        secrets.Add(secret);
+        return new CopilotSignInPlan { Secrets = secrets };
+    }
+
+    /// <summary>
     ///     Throws an exception and returns it as caught, so it carries a real stack trace.
     /// </summary>
     /// <param name="exception">The exception.</param>
@@ -1417,11 +1571,11 @@ public sealed class CopilotSignInTests : IDisposable
     /// <summary>
     ///     Asserts that no exception in a failure's chain — every inner exception, and every inner
     ///     exception of an aggregate — carries a secret in its message, its stack trace or its string
-    ///     form.
+    ///     form. Shared by every test that proves a failure reaches a host without a secret.
     /// </summary>
     /// <param name="failure">The failure.</param>
     /// <param name="secrets">The secrets.</param>
-    private static void AssertNoSecretInChain(Exception failure, params string[] secrets)
+    internal static void AssertNoSecretInChain(Exception failure, params string[] secrets)
     {
         var pending = new Stack<Exception>([failure]);
         while (pending.TryPop(out var current))
@@ -1456,6 +1610,20 @@ public sealed class CopilotSignInTests : IDisposable
     {
         /// <inheritdoc/>
         public override string StackTrace => stackTrace;
+    }
+
+    /// <summary>
+    ///     An exception shaped like an RPC error of the SDK's transport: a type outside the base class
+    ///     library, carrying the error's data in a property of its own.
+    /// </summary>
+    /// <param name="message">The message.</param>
+    /// <param name="errorData">The error's data, which can quote anything.</param>
+    public sealed class RpcErrorException(string message, object errorData) : Exception(message)
+    {
+        /// <summary>
+        ///     Gets the error's data.
+        /// </summary>
+        public object ErrorData => errorData;
     }
 
     /// <summary>

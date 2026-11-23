@@ -379,11 +379,17 @@ user's configuration also configures an MCP server.
 Verifies `AgentKitAgentsCopilot-Runtime-KeepsTokensOutOfFailures`. With a sign-in whose token is not
 shaped like a GitHub token, a start failure quoting it, chaining an aggregate of two exceptions that
 quote it and a `gho_` token, is explained through `StartClientAsync`; and an agent built with the same
-sign-in runs a turn on a scripted runtime that reports a session error quoting both values. Each
-failure reaching the host is walked through its whole chain of inner exceptions: no exception carries
-either value in its string form, no aggregate survives (each is copied), the start failure's cause is
-a redacted copy, and the session error reads `<redacted>` in their places. The redaction of the
-provider session's refusals and the model listing's cause is asserted in their unit verification.
+sign-in runs a turn on a scripted runtime that reports a session error quoting both values. On a
+second scripted runtime whose every turn fails with the SDK's `Session error: …` exception quoting
+both values, over an aggregate of an `IOException` and a `TimeoutException` that quote them too, the
+same sign-in drives an agent's turn with no session error event before it (so the agent's relay is
+proven, not only its event mapper), a provider session's turn and the refusal of its next turn, and a
+consolidation. Each failure reaching the host is walked through its whole chain — every inner
+exception and every inner exception of an aggregate: no exception carries either value in its
+message, stack trace or string form, no aggregate survives (each is copied), the start failure's
+cause is a redacted copy, the session error reads `<redacted>` in their places, and each relayed turn
+failure reads `Session error: refused <redacted> gho_<redacted>` with a redacted copy as its cause.
+The redaction of the model listing's cause is asserted in its unit verification.
 
 ### Runtime: The Installed Copilot CLI Is the Default
 

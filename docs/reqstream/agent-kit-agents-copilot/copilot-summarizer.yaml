@@ -109,3 +109,18 @@ sections:
               limit, so either setting would be dropped with nothing reporting it.
             tests:
               - CopilotSummarizer_Constructor_SelectionWithAWindowOrOutputLimit_Throws
+
+          - id: AgentKitAgentsCopilot-CopilotSummarizer-KeepsTokensOutOfFailures
+            title: >-
+              The summarizer shall fail a consolidation the runtime or the SDK fails with a redacted
+              copy of the same kind — its message, and every exception in its chain, with every token
+              the runtime's sign-in knows and any text shaped like a GitHub token redacted — never the
+              SDK's own exception.
+            tags: [security]
+            justification: |
+              A consolidation failure reaches the host through the session engine, which rethrows it,
+              and an exception is built to be shown and logged whole. The SDK's own exception can quote
+              a token in its message, its chain or an RPC error's data, so it is relayed as a new
+              exception of the same kind, which a host still catches as before.
+            tests:
+              - CopilotSummarizer_Consolidate_FailureQuotingAToken_IsRelayedRedacted

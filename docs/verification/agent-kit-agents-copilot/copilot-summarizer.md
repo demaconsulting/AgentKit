@@ -147,3 +147,16 @@ Error paths. A selection carrying a 4,000-token window is refused at constructio
 `ArgumentException` whose message says `ContextWindowTokens` cannot be applied here, and a selection
 of a hand-built Copilot model description carrying an output limit is refused with one saying
 `MaxOutputTokens` cannot be applied on Copilot. No session is opened by either.
+
+#### AgentKitAgentsCopilot-CopilotSummarizer-KeepsTokensOutOfFailures: A Failed Consolidation Carries No Token
+
+**Test**: `CopilotSummarizer_Consolidate_FailureQuotingAToken_IsRelayedRedacted`
+
+A summarizer built with a sign-in that knows a secret of no GitHub token shape consolidates on a
+session whose turn fails with the SDK's shape: an `InvalidOperationException` reading
+`Session error: …` that quotes the secret and a `gho_` token, over an `IOException` quoting the
+secret. The consolidation fails with a new `InvalidOperationException`, not the scripted one,
+reading exactly `Session error: refused <redacted> gho_<redacted>`, with a `CopilotRedactedException`
+as its cause; a walk of its whole chain — every inner exception and every inner exception of an
+aggregate — finds neither value in any message, stack trace or string form, and the session was
+still released once.

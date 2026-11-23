@@ -490,25 +490,29 @@ sections:
         title: >-
           The library shall put no token the runtime's sign-in knows, and no text shaped like a GitHub
           token, in any exception it raises or keeps as a cause: the runtime's start failure and its
-          redacted cause, a session error that fails an agent's run, a provider session's refusals,
+          redacted cause, a session error that fails an agent's run, a turn the runtime or the SDK
+          fails on an agent, a provider session or a consolidation, a provider session's refusals,
           and a model listing failure and its redacted cause.
         tags: [security]
         justification: |
           An exception is built to be shown, logged and attached to crash reports, which print its
           whole chain. The runtime and the SDK may quote any token they were given in their own error
           text, so every place AgentKit composes or keeps such text redacts it, and a runtime or SDK
-          failure kept as a cause is a redacted copy rather than the original. The SDK's own
-          exceptions that AgentKit passes through without composing or wrapping them, and the
-          conversation content the model already received, are left as the runtime produced them:
-          wrapping the one would change the exception types a host catches, and rewriting the other
-          would make the transcript disagree with the runtime's conversation.
+          failure kept as a cause is a redacted copy rather than the original. A relayed runtime or
+          SDK failure is a new exception of the same base class library type with a redacted message
+          and a redacted copy as its cause; only a cancellation or disposal carrying nothing to
+          redact passes unchanged. The conversation content the model already received is left as
+          the runtime produced it: rewriting it would make the transcript disagree with the
+          runtime's conversation.
         children:
           - AgentKitAgentsCopilot-CopilotSignIn-ReportsWhatEachSourceFound
           - AgentKitAgentsCopilot-CopilotSignIn-KeepsOnlyARedactedCause
+          - AgentKitAgentsCopilot-CopilotSignIn-RelaysFailuresRedacted
           - AgentKitAgentsCopilot-CopilotRuntime-ExplainsAMissingRuntime
           - AgentKitAgentsCopilot-CopilotAgent-ReportsRuntimeErrors
           - AgentKitAgentsCopilot-CopilotProviderSession-RefusesASilentSession
           - AgentKitAgentsCopilot-CopilotProviderSession-EndsOnATurnItCouldNotRecord
+          - AgentKitAgentsCopilot-CopilotSummarizer-KeepsTokensOutOfFailures
           - AgentKitAgentsCopilot-CopilotModelCatalog-ReadsTheServiceThroughTheRuntime
         tests:
           - AgentKitAgentsCopilot_Runtime_FailureQuotingAToken_ReachesNoException

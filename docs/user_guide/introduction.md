@@ -1272,7 +1272,10 @@ obtained, or that your token provider returns, is also removed from the runtime 
 messages — a failed start, a session error that fails an agent's run, a provider session's refusal — along with any text
 shaped like a GitHub token. When AgentKit keeps a runtime or SDK failure as an inner exception, it keeps a redacted
 copy: the original's type name, message and stack trace, with the same text removed, so no exception in the chain
-carries a token.
+carries a token. When a runtime or SDK failure reaches you — a turn that fails on an agent or a provider session, or a
+consolidation that fails — it arrives as a new exception of the same kind (`IOException`, `TimeoutException` or
+`InvalidOperationException`; any other type as `InvalidOperationException`), with the message redacted and that
+redacted copy as its inner exception. A cancellation or disposal that carries nothing to redact reaches you unchanged.
 
 **GitHub Enterprise Cloud hosts.** Each source is used with its own host. The Copilot CLI sign-in
 uses its account's host. A token needs its host too: GitHub refuses a token for a `*.ghe.com` account
@@ -1606,6 +1609,13 @@ GitHub host:
   stack trace with any token removed; the outer exception is still an `InvalidOperationException`.
   Code that tested the inner exception's type, for example for a `FileNotFoundException`, should read
   its message or `ToString()`, which starts with the original type name.
+- **A failed turn or consolidation raises a redacted copy, not the SDK's exception.** A turn that fails
+  on an agent or a provider session, and a consolidation that fails, now raise a new exception of the
+  same kind with the message redacted and a redacted copy of the SDK's exception as the inner
+  exception. An `IOException`, `TimeoutException` or `InvalidOperationException` keeps its type; any
+  other type — for example the RPC transport's `RemoteInvocationException` — now arrives as an
+  `InvalidOperationException`. Code that caught such a type should catch `InvalidOperationException`
+  and read the inner exception's `ToString()`, which starts with the original type name.
 
 ### Migrating from the Earlier Adapter
 

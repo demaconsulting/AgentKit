@@ -388,6 +388,35 @@ public class CopilotAgentTests
     }
 
     /// <summary>
+    ///     Proves a turn the runtime or the SDK fails — with no session error event before it, so the
+    ///     failure reaches the run only through the send — is relayed redacted: a new
+    ///     <see cref="InvalidOperationException"/> whose message is redacted, whose cause is the
+    ///     redacted copy, and whose chain carries no secret.
+    /// </summary>
+    [Fact]
+    public async Task CopilotAgent_RunStreaming_TurnFailureQuotingAToken_IsRelayedRedacted()
+    {
+        // Arrange: the SDK's session-error shape, over a cause that quotes the secret too
+        const string secret = "s3cr3t-turn-xyz";
+        const string shaped = "gho_AgentTurnSecret123";
+        var cause = new InvalidOperationException(
+            $"Session error: refused {secret} {shaped}",
+            new IOException($"pipe {secret}"));
+        var runtime = new FakeCopilotRuntime(_ => [new ScriptedTurn([], Failure: cause)]);
+        var agent = MakeAgent(runtime, signIn: CopilotSignInTests.PlanKnowing(secret));
+
+        // Act
+        var failure = await Assert.ThrowsAsync<InvalidOperationException>(() => Collect(agent, "q"));
+
+        // Assert
+        Assert.NotSame(cause, failure);
+        Assert.Equal("Session error: refused <redacted> gho_<redacted>", failure.Message);
+        Assert.IsType<CopilotRedactedException>(failure.InnerException);
+        CopilotSignInTests.AssertNoSecretInChain(failure, secret, shaped);
+        Assert.Equal(1, Assert.Single(runtime.Channels).DisposeCount);
+    }
+
+    /// <summary>
     ///     Proves the non-streaming run returns exactly what the stream carried, gathered into one
     ///     response.
     /// </summary>
@@ -644,8 +673,9 @@ public class CopilotAgentTests
     /// </summary>
     /// <param name="runtime">The scripted runtime.</param>
     /// <param name="name">The agent's name.</param>
+    /// <param name="signIn">The runtime's sign-in, whose tokens a failure is redacted of, or <see langword="null"/>.</param>
     /// <returns>The agent.</returns>
-    private static CopilotAgent MakeAgent(FakeCopilotRuntime runtime, string? name = "test-agent") =>
+    private static CopilotAgent MakeAgent(FakeCopilotRuntime runtime, string? name = "test-agent", CopilotSignInPlan? signIn = null) =>
         CopilotAgentFactory.CreateAgent(
             [AIFunctionFactory.Create(() => "ok", "doc_read")],
             instructions: null,
@@ -654,7 +684,8 @@ public class CopilotAgentTests
             model: null,
             workingDirectory: null,
             runtime.Opener,
-            runtime.Resumer);
+            runtime.Resumer,
+            signIn: signIn);
 
     /// <summary>
     ///     Builds a scripted turn whose only event is a complete assistant message.

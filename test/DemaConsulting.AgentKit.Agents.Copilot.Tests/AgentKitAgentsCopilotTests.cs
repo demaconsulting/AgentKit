@@ -446,20 +446,26 @@ public class AgentKitAgentsCopilotTests
 
     /// <summary>
     ///     Proves a token the runtime's sign-in knows reaches no exception the host sees: neither a
-    ///     start failure and its whole chain of causes, nor a session error that fails an agent's run.
+    ///     start failure and its whole chain of causes, nor a session error that fails an agent's run,
+    ///     nor a turn the runtime or the SDK fails — an agent's turn with no session error before it,
+    ///     a provider session's turn, or a consolidation.
     /// </summary>
     [Fact]
     public async Task AgentKitAgentsCopilot_Runtime_FailureQuotingAToken_ReachesNoException()
     {
-        // Arrange: a sign-in that knows a token of no GitHub shape; a start failure and a session
-        // error that quote it and a token-shaped value
+        // Arrange: a sign-in that knows a token of no GitHub shape; a start failure, a session
+        // error and the SDK's session-error exception, each quoting it and a token-shaped value
         const string secret = "s3cr3t-subsystem-xyz";
         const string shaped = "gho_SubsystemSecret123";
         var plan = new CopilotSignInPlan { Source = CopilotSignInSource.GitHubToken, Token = secret };
         var cause = new InvalidOperationException(
             $"start refused for {secret}",
             new AggregateException(new IOException($"pipe closed for {shaped}"), new IOException($"again {secret}")));
+        Exception SessionError() => new InvalidOperationException(
+            $"Session error: refused {secret} {shaped}",
+            new AggregateException(new IOException($"pipe {secret}"), new TimeoutException($"late {shaped}")));
         var runtime = new FakeCopilotRuntime(_ => [new ScriptedTurn([CopilotEvents.Error($"session refused {secret} {shaped}")])]);
+        var failing = new FakeCopilotRuntime(_ => [new ScriptedTurn([], Failure: SessionError())]);
         var agent = CopilotAgentFactory.CreateAgent(
             [MakeTool("doc_read")],
             instructions: null,
@@ -470,6 +476,18 @@ public class AgentKitAgentsCopilotTests
             runtime.Opener,
             runtime.Resumer,
             signIn: plan);
+        var relayingAgent = CopilotAgentFactory.CreateAgent(
+            [MakeTool("doc_read")],
+            instructions: null,
+            onPermissionRequest: null,
+            name: "document-assistant",
+            model: null,
+            workingDirectory: null,
+            failing.Opener,
+            failing.Resumer,
+            signIn: plan);
+        var factory = new CopilotProviderSessionFactory(failing.Opener, model: null, signIn: plan);
+        var summarizer = new CopilotSummarizer(failing.Opener, model: null, signIn: plan);
 
         // Act
         var startFailure = await Assert.ThrowsAsync<InvalidOperationException>(() => CopilotRuntime.StartClientAsync(
@@ -477,27 +495,48 @@ public class AgentKitAgentsCopilotTests
             launch: null,
             plan,
             TestContext.Current.CancellationToken));
-        var runFailure = await Assert.ThrowsAsync<InvalidOperationException>(async () =>
-        {
-            await foreach (var update in agent.RunStreamingAsync("q", cancellationToken: TestContext.Current.CancellationToken))
-            {
-                Assert.NotNull(update);
-            }
-        });
+        var runFailure = await Assert.ThrowsAsync<InvalidOperationException>(() => RunAsync(agent));
+        var turnFailure = await Assert.ThrowsAsync<InvalidOperationException>(() => RunAsync(relayingAgent));
+        await using var session = await factory.CreateAsync(new ProviderSessionSeed(null, [], []), TestContext.Current.CancellationToken);
+        var sendFailure = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => session.SendAsync("q", TestContext.Current.CancellationToken));
+        var refusal = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => session.SendAsync("q", TestContext.Current.CancellationToken));
+        var consolidationFailure = await Assert.ThrowsAsync<InvalidOperationException>(() => summarizer.ConsolidateAsync(
+            new ConsolidationRequest(1, "USER: hello", ConsolidationPrompt.LowInstruction),
+            TestContext.Current.CancellationToken));
 
-        // Assert: every exception in each chain is free of both values
-        foreach (var failure in new Exception[] { startFailure, runFailure })
+        // Assert: every exception in each whole chain - inner exceptions and every inner exception of
+        // an aggregate - is free of both values
+        foreach (var failure in new Exception[] { startFailure, runFailure, turnFailure, sendFailure, refusal, consolidationFailure })
         {
+            CopilotSignInTests.AssertNoSecretInChain(failure, secret, shaped);
             for (Exception? current = failure; current is not null; current = current.InnerException)
             {
-                Assert.False(current.ToString().Contains(secret, StringComparison.Ordinal), $"A {current.GetType().Name} carries the token.");
-                Assert.False(current.ToString().Contains(shaped, StringComparison.Ordinal), $"A {current.GetType().Name} carries the token-shaped value.");
                 Assert.IsNotType<AggregateException>(current);
             }
         }
 
         Assert.IsType<CopilotRedactedException>(startFailure.InnerException);
         Assert.Contains("<redacted>", runFailure.Message, StringComparison.Ordinal);
+        foreach (var relayed in new Exception[] { turnFailure, sendFailure, consolidationFailure })
+        {
+            Assert.Equal("Session error: refused <redacted> gho_<redacted>", relayed.Message);
+            Assert.IsType<CopilotRedactedException>(relayed.InnerException);
+        }
+    }
+
+    /// <summary>
+    ///     Runs an agent streaming to the end, without a conversation.
+    /// </summary>
+    /// <param name="agent">The agent.</param>
+    /// <returns>A task that completes when the run has ended.</returns>
+    private static async Task RunAsync(CopilotAgent agent)
+    {
+        await foreach (var update in agent.RunStreamingAsync("q", cancellationToken: TestContext.Current.CancellationToken))
+        {
+            Assert.NotNull(update);
+        }
     }
 
     /// <summary>

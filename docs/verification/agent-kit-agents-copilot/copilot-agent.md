@@ -196,6 +196,7 @@ conversation.
 
 - `CopilotAgent_RunStreaming_SessionError_FailsTheRunNamingTheError`
 - `CopilotAgent_RunStreaming_SessionErrorQuotingAToken_IsRedacted`
+- `CopilotAgent_RunStreaming_TurnFailureQuotingAToken_IsRelayedRedacted`
 
 Replays a root session error and asserts the run fails with `InvalidOperationException` naming the
 runtime's message, and that the channel was still released once. The sub-agent case, which must not
@@ -203,6 +204,14 @@ fail the run, is asserted in the streaming scenario above. An agent built with a
 secret of no GitHub token shape replays a session error quoting that secret and a `gho_` token: the
 run fails with exactly `Session error: refused <redacted> and gho_<redacted>`, neither value appears
 in the exception's string form, and no cause is attached.
+
+The third scripts the turn itself failing, with no session error event before it, so the failure
+reaches the run only through the send: an `InvalidOperationException` in the SDK's `Session error: …`
+shape quoting both values, over an `IOException` quoting the secret. The run fails with a new
+`InvalidOperationException`, not the scripted one, reading exactly
+`Session error: refused <redacted> gho_<redacted>`, with a `CopilotRedactedException` as its cause; a
+walk of its whole chain — every inner exception and every inner exception of an aggregate — finds
+neither value, and the channel was released once.
 
 #### AgentKitAgentsCopilot-CopilotAgent-RejectsForeignSessions: Another Agent's Session Is Refused
 

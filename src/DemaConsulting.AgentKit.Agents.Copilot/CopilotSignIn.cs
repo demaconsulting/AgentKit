@@ -70,6 +70,8 @@ namespace DemaConsulting.AgentKit.Agents.Copilot;
 ///     token. A runtime or SDK failure AgentKit keeps as an inner exception is a redacted copy
 ///     (<see cref="CopilotRedactedException"/>): its type name, message and stack trace, each
 ///     redacted, with every chained exception copied the same way and nothing else of the original.
+///     A runtime or SDK failure AgentKit relays to a host is a new exception of the same kind, with
+///     a redacted message and that copy as its cause (<see cref="RedactRelayed"/>).
 ///     Only the host's own token provider's exception is kept unchanged: the host's code raised it,
 ///     AgentKit quotes none of it, and the host can then recognize its own failure.
 ///     </para>
@@ -1020,6 +1022,74 @@ internal static partial class CopilotSignIn
         CopilotRedactedException.Copy(failure, text => Redact(plan, text), depth: 1);
 
     /// <summary>
+    ///     Makes the exception AgentKit relays to a host in place of a runtime or SDK failure: a new
+    ///     exception of the same kind, whose message is redacted and whose inner exception is the
+    ///     redacted copy of the failure.
+    /// </summary>
+    /// <remarks>
+    ///     <para>
+    ///     The first rule that matches applies:
+    ///     </para>
+    ///     <list type="number">
+    ///         <item>
+    ///             A failure whose inner exception is already a <see cref="CopilotRedactedException"/>
+    ///             was built by AgentKit with its message already redacted, and is returned unchanged,
+    ///             so relaying twice changes nothing.
+    ///         </item>
+    ///         <item>
+    ///             An <see cref="OperationCanceledException"/> or <see cref="ObjectDisposedException"/>
+    ///             with no inner exception and nothing in its message to redact is returned unchanged,
+    ///             keeping its type, token and object name. Otherwise it is rebuilt as the same kind
+    ///             (an <see cref="OperationCanceledException"/> keeps its token).
+    ///         </item>
+    ///         <item>An <see cref="InvalidOperationException"/> becomes a new <see cref="InvalidOperationException"/>.</item>
+    ///         <item>An <see cref="IOException"/> becomes a new <see cref="IOException"/>.</item>
+    ///         <item>A <see cref="TimeoutException"/> becomes a new <see cref="TimeoutException"/>.</item>
+    ///         <item>
+    ///             Anything else, such as an RPC error of the SDK's transport, becomes a new
+    ///             <see cref="InvalidOperationException"/>: a host cannot catch a type it does not
+    ///             reference, and the original type's name is kept in the redacted copy.
+    ///         </item>
+    ///     </list>
+    ///     <para>
+    ///     The original is never kept, whether or not a secret was spotted: properties AgentKit cannot
+    ///     inspect, such as an RPC error's data, never pass through. Disposal is tested before
+    ///     <see cref="InvalidOperationException"/>, from which it derives.
+    ///     </para>
+    /// </remarks>
+    /// <param name="failure">The failure the runtime or the SDK raised.</param>
+    /// <param name="plan">
+    ///     The sign-in whose tokens are removed, or <see langword="null"/> to remove token-shaped text
+    ///     only.
+    /// </param>
+    /// <returns>
+    ///     The exception to throw: <paramref name="failure"/> itself when it carries nothing to redact
+    ///     under the first two rules, which a caller then rethrows with <c>throw;</c> to keep its stack.
+    /// </returns>
+    internal static Exception RedactRelayed(Exception failure, CopilotSignInPlan? plan)
+    {
+        // Already relayed, or built by AgentKit around a redacted copy: its message is already redacted
+        if (failure.InnerException is CopilotRedactedException)
+        {
+            return failure;
+        }
+
+        var message = Redact(plan, failure.Message);
+        var clean = failure.InnerException is null && string.Equals(message, failure.Message, StringComparison.Ordinal);
+        return failure switch
+        {
+            OperationCanceledException when clean => failure,
+            ObjectDisposedException when clean => failure,
+            OperationCanceledException canceled =>
+                new OperationCanceledException(message, RedactFailure(failure, plan), canceled.CancellationToken),
+            ObjectDisposedException => new ObjectDisposedException(message, RedactFailure(failure, plan)),
+            IOException => new IOException(message, RedactFailure(failure, plan)),
+            TimeoutException => new TimeoutException(message, RedactFailure(failure, plan)),
+            _ => new InvalidOperationException(message, RedactFailure(failure, plan)),
+        };
+    }
+
+    /// <summary>
     ///     Tries the Copilot CLI sign-in: checks the account against the requested host and reads its
     ///     token.
     /// </summary>
@@ -1438,6 +1508,10 @@ internal sealed class CopilotSignInSecrets
 ///     original so no exception in the chain carries a token.
 /// </summary>
 /// <remarks>
+///     <para>
+///     It is the inner exception of every failure AgentKit explains in its own words, and of every
+///     runtime or SDK failure it relays to a host (<see cref="CopilotSignIn.RedactRelayed"/>).
+///     </para>
 ///     <para>
 ///     The copy carries the original's type name (<see cref="OriginalTypeName"/>, which also leads
 ///     <see cref="ToString"/>), its message and its stack trace text, each redacted, and its
