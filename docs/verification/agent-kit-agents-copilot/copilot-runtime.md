@@ -313,13 +313,21 @@ its token, a start failure quoting both the start token and the session token �
 and chaining an inner exception that chains an aggregate of two exceptions quoting them, is explained with `<redacted>`
 in their places and neither value in the message; the inner exception is a redacted copy carrying the original's type
 name and the redacted message, the aggregate is copied with its type name, and a walk of the whole chain, every inner
-exception of any aggregate included, finds neither value in any message, stack trace or string form.
+exception of any aggregate included, finds neither value in any message, stack trace, string form or data.
 
 #### AgentKitAgentsCopilot-CopilotRuntime-PassesCancellationThrough: Cancellation Is Not a Fault
 
-**Test**: `CopilotRuntime_StartClient_Canceled_PropagatesUnchanged`
+**Tests**:
 
-The very same `OperationCanceledException` instance reaches the caller.
+- `CopilotRuntime_StartClient_Canceled_PropagatesUnchanged`
+- `CopilotRuntime_StartClient_CanceledCarryingASecret_IsRebuiltRedacted`
+
+A clean cancellation — no cause and nothing in its message to redact — reaches the caller as the very same
+`OperationCanceledException` instance. A cancellation quoting a known secret in its message and chaining an I/O failure
+quoting it and a token-shaped value is rebuilt as a new `OperationCanceledException` of exactly that type, with the same
+token, the message `stopped <redacted>` and a redacted copy naming `OperationCanceledException` as its cause; a
+`TaskCanceledException` with a cause is rebuilt as a `TaskCanceledException` with its token. The shared chain walk
+finds no secret in either.
 
 #### AgentKitAgentsCopilot-CopilotRuntime-LeavesNoRuntimeBehind: Disposed on Failure, Once on Request, Never Restarted
 
@@ -359,6 +367,21 @@ A null or blank session identifier is refused before the runtime is reached, and
 disposed runtime fails with `ObjectDisposedException`. That the runtime deletes a real session is a
 property of the SDK call the method forwards to; the opt-in live suite's agent scenarios delete their
 conversations through this method.
+
+#### AgentKitAgentsCopilot-CopilotRuntime-RelaysDeletionFailuresRedacted: Deletion Failures Relayed Redacted
+
+**Tests**:
+
+- `CopilotRuntime_DeleteSessionAsync_RuntimeFailureQuotingASecret_IsRelayedRedacted`
+- `CopilotRuntime_DeleteSessionAsync_CleanCancellation_PassesUnchanged`
+
+The deletion is injected through the runtime's `RelayDeleteSessionAsync` seam, on a runtime whose sign-in knows a
+secret. An RPC-shaped error quoting the secret in its message, error data and `Data`, the same error wrapped in an
+`InvalidOperationException` that also quotes a token-shaped value, and an `IOException` thrown synchronously each
+arrive as a new `InvalidOperationException` or `IOException` with the secret and token replaced by `<redacted>`, a
+redacted copy naming the original type as the cause, no `Data` at any level, and no secret anywhere the shared chain
+walk looks. The deletion receives the session identifier and the caller's token. A clean cancellation reaches the
+caller as the same instance.
 
 #### AgentKitAgentsCopilot-CopilotRuntime-RejectsInvalidOptions: Missing Options Are Refused
 

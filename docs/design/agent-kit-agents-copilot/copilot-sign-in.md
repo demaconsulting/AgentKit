@@ -296,17 +296,17 @@ exception that reaches a host holds the original or a token.
 1. A failure whose inner exception is already a `CopilotRedactedException` is returned unchanged. Only
    AgentKit builds that type, and always with the outer message already redacted — the start wrap,
    `ExplainListFailure`, or an earlier relay — so relaying twice changes nothing.
-2. An `OperationCanceledException` (including `TaskCanceledException`) or an
-   `ObjectDisposedException` with no inner exception and nothing in its message to redact is returned
-   unchanged, keeping its type, `CancellationToken` and `ObjectName`. Otherwise it is rebuilt as an
-   `OperationCanceledException` with the same token, or an `ObjectDisposedException`, with the
-   redacted message and `RedactFailure(failure, plan)` as its cause. Disposal is tested before rule 3
-   because `ObjectDisposedException` derives from `InvalidOperationException`.
+2. An `OperationCanceledException` (including `TaskCanceledException`) or an `ObjectDisposedException` with no inner
+   exception and nothing in its message to redact is returned unchanged, keeping its type, `CancellationToken` and
+   `ObjectName`. Otherwise it is rebuilt as a `TaskCanceledException` for a `TaskCanceledException`, an
+   `OperationCanceledException` for any other cancellation (both with the same token), or an `ObjectDisposedException`,
+   with the redacted message and `RedactFailure(failure, plan)` as its cause. Disposal is tested before rule 3 because
+   `ObjectDisposedException` derives from `InvalidOperationException`.
 3. An `InvalidOperationException` becomes a new `InvalidOperationException`.
 4. An `IOException`, including a subclass, becomes a new `IOException`.
 5. A `TimeoutException` becomes a new `TimeoutException`.
-6. Anything else — such as the RPC error type of the SDK's transport, a `JsonException` or an
-   `ArgumentException` — becomes a new `InvalidOperationException`.
+6. Anything else — such as the SDK's RPC error `Microsoft.Copilot.RemoteRpcException`, a `JsonException`
+   or an `ArgumentException` — becomes a new `InvalidOperationException`.
 
 Under rules 3 to 6 the message is `Redact(plan, failure.Message)` and the cause is
 `RedactFailure(failure, plan)`, which names the original type. The original is never kept, whether or
@@ -370,7 +370,8 @@ of it, and keeping it lets the host recognize its own failure type.
 calls `ExplainUnauthenticated`; the `CopilotRuntime` constructor calls `Classify` and
 `CreateSessionTokenProvider`, passing the plan's `Secrets`; `CopilotRuntime.ExplainStartFailure`, on
 `StartAsync`'s path and on the turn channel's discovery path, calls `Redact(plan, text)`, and
-`CopilotRuntime.StartClientAsync` calls `RedactFailure` for the cause; `CopilotModelCatalog`'s
+`CopilotRuntime.StartClientAsync` calls `RedactFailure` for the cause and `RedactRelayed` for a cancellation;
+`CopilotRuntime.RelayDeleteSessionAsync` calls `RelayAsync` to delete a session; `CopilotModelCatalog`'s
 `ExplainListFailure` calls `RedactFailure`; `CopilotAgent` (a session error) and
 `CopilotProviderSession` (its refusals) call `Redact(plan, text)`; `CopilotAgent`,
 `CopilotProviderSession` and `CopilotSummarizer` call `RedactRelayed` for a turn's failure;

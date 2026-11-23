@@ -386,7 +386,7 @@ same sign-in drives an agent's turn with no session error event before it (so th
 proven, not only its event mapper), a provider session's turn and the refusal of its next turn, and a
 consolidation. Each failure reaching the host is walked through its whole chain — every inner
 exception and every inner exception of an aggregate: no exception carries either value in its
-message, stack trace or string form, no aggregate survives (each is copied), the start failure's
+message, stack trace, string form or data, no aggregate survives (each is copied), the start failure's
 cause is a redacted copy, the session error reads `<redacted>` in their places, and each relayed turn
 failure reads `Session error: refused <redacted> gho_<redacted>` with a redacted copy as its cause.
 The redaction of the model listing's cause is asserted in its unit verification.

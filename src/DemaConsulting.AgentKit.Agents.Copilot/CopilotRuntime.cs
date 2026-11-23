@@ -443,7 +443,11 @@ public sealed class CopilotRuntime : IAsyncDisposable
     /// </exception>
     /// <exception cref="IOException">The data directory or its marker could not be created or read.</exception>
     /// <exception cref="UnauthorizedAccessException">The data directory is not writable, or its marker is not readable.</exception>
-    /// <exception cref="OperationCanceledException">The start was canceled. It propagates unchanged.</exception>
+    /// <exception cref="OperationCanceledException">
+    ///     The start was canceled. A cancellation carrying nothing to redact propagates unchanged;
+    ///     otherwise it is rebuilt with the same token, a redacted message and a redacted copy as its
+    ///     cause, and a <see cref="TaskCanceledException"/> stays one.
+    /// </exception>
     public static async Task<CopilotRuntime> StartAsync(
         CopilotRuntimeOptions options,
         CancellationToken cancellationToken = default)
@@ -511,8 +515,15 @@ public sealed class CopilotRuntime : IAsyncDisposable
     ///     </para>
     ///     <para>
     ///     Side effects: asks the runtime process to delete the session's persisted state. Safe to
-    ///     call concurrently with sessions open on other conversations. The runtime reports a session
-    ///     it does not hold, or a failure to delete one, through the SDK's own exception, which
+    ///     call concurrently with sessions open on other conversations.
+    ///     </para>
+    ///     <para>
+    ///     A failure is relayed as a new exception of the same kind, never as the SDK's own exception:
+    ///     its message is redacted and a redacted copy of the failure
+    ///     (<see cref="CopilotRedactedException"/>) is its <see cref="Exception.InnerException"/>. The
+    ///     runtime reports a session it does not hold through the SDK's RPC error,
+    ///     <c>Microsoft.Copilot.RemoteRpcException</c>, which therefore arrives as an
+    ///     <see cref="InvalidOperationException"/>. A cancellation carrying nothing to redact
     ///     propagates unchanged.
     ///     </para>
     /// </remarks>
@@ -525,12 +536,46 @@ public sealed class CopilotRuntime : IAsyncDisposable
     /// <exception cref="ArgumentNullException"><paramref name="sessionId"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException"><paramref name="sessionId"/> is empty or whitespace.</exception>
     /// <exception cref="ObjectDisposedException">The runtime has been disposed.</exception>
+    /// <exception cref="InvalidOperationException">
+    ///     The runtime refused or failed the deletion, including for a session it does not hold. The
+    ///     message is redacted and a redacted copy of the failure is the inner exception.
+    /// </exception>
+    /// <exception cref="IOException">The connection to the runtime was lost, relayed redacted.</exception>
+    /// <exception cref="TimeoutException">The deletion timed out, relayed redacted.</exception>
     /// <exception cref="OperationCanceledException">The deletion was canceled.</exception>
     public Task DeleteSessionAsync(string sessionId, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(sessionId);
 
-        return Client.DeleteSessionAsync(sessionId, cancellationToken);
+        // Read before any relay, so a disposed runtime throws AgentKit's own disposal exception
+        var client = Client;
+        return RelayDeleteSessionAsync(client.DeleteSessionAsync, sessionId, cancellationToken);
+    }
+
+    /// <summary>
+    ///     Runs a session deletion and relays its failure redacted with this runtime's sign-in plan.
+    /// </summary>
+    /// <remarks>
+    ///     The deletion is injected because the SDK's client cannot be made to fail on demand without
+    ///     a runtime. A failure the deletion throws synchronously is relayed the same way as one its
+    ///     task carries (<see cref="CopilotSignIn.RelayAsync{T}"/>).
+    /// </remarks>
+    /// <param name="delete">Deletes the session.</param>
+    /// <param name="sessionId">The runtime session to delete.</param>
+    /// <param name="cancellationToken">Cancels the deletion.</param>
+    /// <returns>A task that completes when the deletion has completed.</returns>
+    internal async Task RelayDeleteSessionAsync(
+        Func<string, CancellationToken, Task> delete,
+        string sessionId,
+        CancellationToken cancellationToken)
+    {
+        await CopilotSignIn.RelayAsync(
+            async () =>
+            {
+                await delete(sessionId, cancellationToken).ConfigureAwait(false);
+                return true;
+            },
+            SignIn).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -1134,7 +1179,11 @@ public sealed class CopilotRuntime : IAsyncDisposable
     ///     The start failed. The message reports the runtime's own error, redacted, and the likely
     ///     cause; a redacted copy of the original failure is the <see cref="Exception.InnerException"/>.
     /// </exception>
-    /// <exception cref="OperationCanceledException">The start was canceled. It propagates unchanged.</exception>
+    /// <exception cref="OperationCanceledException">
+    ///     The start was canceled. A cancellation carrying nothing to redact propagates unchanged;
+    ///     otherwise it is rebuilt with the same token, a redacted message and a redacted copy as its
+    ///     cause, and a <see cref="TaskCanceledException"/> stays one.
+    /// </exception>
     internal static Task StartClientAsync(Func<CancellationToken, Task> start, CancellationToken cancellationToken) =>
         StartClientAsync(start, launch: null, signIn: null, cancellationToken);
 
@@ -1159,7 +1208,11 @@ public sealed class CopilotRuntime : IAsyncDisposable
     ///     cause; a redacted copy of the original failure (<see cref="CopilotRedactedException"/>:
     ///     its type name, message and stack trace) is the <see cref="Exception.InnerException"/>.
     /// </exception>
-    /// <exception cref="OperationCanceledException">The start was canceled. It propagates unchanged.</exception>
+    /// <exception cref="OperationCanceledException">
+    ///     The start was canceled. A cancellation carrying nothing to redact propagates unchanged;
+    ///     otherwise it is rebuilt with the same token, a redacted message and a redacted copy as its
+    ///     cause, and a <see cref="TaskCanceledException"/> stays one.
+    /// </exception>
     internal static async Task StartClientAsync(
         Func<CancellationToken, Task> start,
         CopilotRuntimeLaunch? launch,
@@ -1170,7 +1223,18 @@ public sealed class CopilotRuntime : IAsyncDisposable
         {
             await start(cancellationToken).ConfigureAwait(false);
         }
-        catch (Exception failure) when (failure is not OperationCanceledException)
+        catch (OperationCanceledException canceled)
+        {
+            // A clean cancellation keeps its stack; one carrying a cause or a token is rebuilt redacted
+            var relayed = CopilotSignIn.RedactRelayed(canceled, signIn);
+            if (ReferenceEquals(relayed, canceled))
+            {
+                throw;
+            }
+
+            throw relayed;
+        }
+        catch (Exception failure)
         {
             // The runtime's error is quoted redacted, and kept as the cause only as a redacted copy
             throw new InvalidOperationException(ExplainStartFailure(failure, launch, signIn), CopilotSignIn.RedactFailure(failure, signIn));

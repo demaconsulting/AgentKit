@@ -856,7 +856,9 @@ so no path can acquire capability another path withholds.
   listing failure's) is a redacted copy carrying the original's type name, message and stack trace,
   never the original. A runtime or SDK failure AgentKit relays to a host — a turn that fails on an
   agent, a provider session or a consolidation, a session the runtime fails to create or resume for
-  any of them, or a model listing failure other than a lost or unsigned connection — is a new
+  any of them, a session the host asks the runtime to delete that it refuses or fails, a start
+  cancellation carrying a cause or a token, or a model listing failure other than a lost or unsigned
+  connection — is a new
   exception of the same base class library type with a redacted message and a redacted copy as its
   cause (`CopilotSignIn.RedactRelayed`); only a cancellation or disposal carrying nothing to redact
   passes unchanged, and a type outside the base class library arrives as `InvalidOperationException`.

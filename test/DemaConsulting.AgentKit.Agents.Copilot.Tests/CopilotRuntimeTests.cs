@@ -972,6 +972,51 @@ public class CopilotRuntimeTests
     }
 
     /// <summary>
+    ///     Proves a canceled start carrying a cause or a token is rebuilt as a new cancellation of the
+    ///     same kind — an <see cref="OperationCanceledException"/>, or a
+    ///     <see cref="TaskCanceledException"/> kept as one — with the same token, a redacted message and
+    ///     a redacted copy as its cause, so nothing in its chain carries a secret.
+    /// </summary>
+    [Fact]
+    public async Task CopilotRuntime_StartClient_CanceledCarryingASecret_IsRebuiltRedacted()
+    {
+        // Arrange
+        const string secret = "s3cr3t-start-cancel-xyz";
+        const string tokenShaped = "gho_STOPPED0123456789abcdefABCDEF0123";
+        var plan = CopilotSignInTests.PlanKnowing(secret);
+        using var source = new CancellationTokenSource();
+        var canceled = new OperationCanceledException(
+            $"stopped {secret}",
+            new IOException($"pipe {secret} {tokenShaped}"),
+            source.Token);
+        var taskCanceled = new TaskCanceledException("task stopped", new IOException($"pipe {secret}"), source.Token);
+
+        // Act
+        var failure = await Assert.ThrowsAsync<OperationCanceledException>(() => CopilotRuntime.StartClientAsync(
+            _ => Task.FromException(canceled),
+            launch: null,
+            plan,
+            TestContext.Current.CancellationToken));
+        var taskFailure = await Assert.ThrowsAsync<TaskCanceledException>(() => CopilotRuntime.StartClientAsync(
+            _ => Task.FromException(taskCanceled),
+            launch: null,
+            plan,
+            TestContext.Current.CancellationToken));
+
+        // Assert
+        Assert.NotSame(canceled, failure);
+        Assert.Equal(source.Token, failure.CancellationToken);
+        Assert.Equal("stopped <redacted>", failure.Message);
+        var copy = Assert.IsType<CopilotRedactedException>(failure.InnerException);
+        Assert.Equal(typeof(OperationCanceledException).FullName, copy.OriginalTypeName);
+        CopilotSignInTests.AssertNoSecretInChain(failure, secret, tokenShaped);
+        Assert.NotSame(taskCanceled, taskFailure);
+        Assert.Equal(source.Token, taskFailure.CancellationToken);
+        Assert.IsType<CopilotRedactedException>(taskFailure.InnerException);
+        CopilotSignInTests.AssertNoSecretInChain(taskFailure, secret);
+    }
+
+    /// <summary>
     ///     Proves a start that succeeds completes without an error.
     /// </summary>
     [Fact]
@@ -1128,6 +1173,105 @@ public class CopilotRuntimeTests
 
         // Act / Assert
         await Assert.ThrowsAsync<ObjectDisposedException>(() => runtime.DeleteSessionAsync("session", TestContext.Current.CancellationToken));
+    }
+
+    /// <summary>
+    ///     Proves a deletion the runtime refuses or fails — an RPC error quoting a secret in its
+    ///     message, data and error data, the same error wrapped in an
+    ///     <see cref="InvalidOperationException"/> that also quotes a token-shaped value, and an I/O
+    ///     failure thrown synchronously — is relayed with this runtime's sign-in plan as a new
+    ///     exception of the kind a host catches, with a redacted message, a redacted copy carrying no
+    ///     data as its cause, and nothing in its chain carrying a secret.
+    /// </summary>
+    [Fact]
+    public async Task CopilotRuntime_DeleteSessionAsync_RuntimeFailureQuotingASecret_IsRelayedRedacted()
+    {
+        // Arrange: a runtime whose sign-in knows the secret, and deletions the runtime fails
+        const string secret = "s3cr3t-delete-xyz";
+        const string tokenShaped = "gho_DELETE0123456789abcdefABCDEF012345";
+        const string sessionId = "session-to-delete";
+        using var directory = new TemporaryDirectory();
+        await using var runtime = new CopilotRuntime(NewClient(directory.Path), directory.Path, signIn: CopilotSignInTests.PlanKnowing(secret));
+        using var source = new CancellationTokenSource();
+        var seen = new List<(string SessionId, CancellationToken Token)>();
+        CopilotSignInTests.RpcErrorException NewRpcError()
+        {
+            var rpc = new CopilotSignInTests.RpcErrorException($"delete {sessionId} refused {secret}", new { token = secret });
+            rpc.Data["token"] = secret;
+            return rpc;
+        }
+
+        // Act
+        var rpcFailure = await Assert.ThrowsAsync<InvalidOperationException>(() => runtime.RelayDeleteSessionAsync(
+            (id, token) =>
+            {
+                seen.Add((id, token));
+                return Task.FromException(NewRpcError());
+            },
+            sessionId,
+            source.Token));
+        var wrappedFailure = await Assert.ThrowsAsync<InvalidOperationException>(() => runtime.RelayDeleteSessionAsync(
+            (id, token) =>
+            {
+                seen.Add((id, token));
+                return Task.FromException(new InvalidOperationException($"Session error: {secret} {tokenShaped}", NewRpcError()));
+            },
+            sessionId,
+            source.Token));
+        var ioFailure = await Assert.ThrowsAsync<IOException>(() => runtime.RelayDeleteSessionAsync(
+            (id, token) =>
+            {
+                seen.Add((id, token));
+                throw new IOException($"pipe broke on {secret}");
+            },
+            sessionId,
+            source.Token));
+
+        // Assert
+        Assert.All(seen, call =>
+        {
+            Assert.Equal(sessionId, call.SessionId);
+            Assert.Equal(source.Token, call.Token);
+        });
+        Assert.Equal(3, seen.Count);
+        Assert.Equal($"delete {sessionId} refused <redacted>", rpcFailure.Message);
+        Assert.Equal("Session error: <redacted> gho_<redacted>", wrappedFailure.Message);
+        Assert.Equal("pipe broke on <redacted>", ioFailure.Message);
+        var expectedTypes = new[] { typeof(CopilotSignInTests.RpcErrorException), typeof(InvalidOperationException), typeof(IOException) };
+        var failures = new Exception[] { rpcFailure, wrappedFailure, ioFailure };
+        for (var index = 0; index < failures.Length; index++)
+        {
+            var copy = Assert.IsType<CopilotRedactedException>(failures[index].InnerException);
+            Assert.Equal(expectedTypes[index].FullName, copy.OriginalTypeName);
+            for (Exception? current = failures[index]; current is not null; current = current.InnerException)
+            {
+                Assert.Empty(current.Data);
+            }
+
+            CopilotSignInTests.AssertNoSecretInChain(failures[index], secret, tokenShaped);
+        }
+    }
+
+    /// <summary>
+    ///     Proves a deletion canceled without a cause or anything to redact reaches the caller as the
+    ///     same cancellation.
+    /// </summary>
+    [Fact]
+    public async Task CopilotRuntime_DeleteSessionAsync_CleanCancellation_PassesUnchanged()
+    {
+        // Arrange
+        using var directory = new TemporaryDirectory();
+        await using var runtime = new CopilotRuntime(NewClient(directory.Path), directory.Path, signIn: CopilotSignInTests.PlanKnowing("s3cr3t-unused"));
+        var canceled = new OperationCanceledException("canceled");
+
+        // Act
+        var failure = await Assert.ThrowsAsync<OperationCanceledException>(() => runtime.RelayDeleteSessionAsync(
+            (_, _) => Task.FromException(canceled),
+            "session",
+            TestContext.Current.CancellationToken));
+
+        // Assert
+        Assert.Same(canceled, failure);
     }
 
     /// <summary>
@@ -1680,7 +1824,7 @@ public class CopilotRuntimeTests
         Assert.Equal(typeof(InvalidOperationException).FullName, copy.OriginalTypeName);
         Assert.Equal("connection lost (start <redacted>, session <redacted>)", copy.Message);
         Assert.Equal(typeof(AggregateException).FullName, Assert.IsType<CopilotRedactedException>(copy.InnerException?.InnerException).OriginalTypeName);
-        AssertNoSecretInChain(failure, startToken, sessionToken);
+        CopilotSignInTests.AssertNoSecretInChain(failure, startToken, sessionToken);
     }
 
     /// <summary>
@@ -1725,39 +1869,6 @@ public class CopilotRuntimeTests
         Assert.NotSame(cause, inner);
         Assert.Equal(cause.GetType().FullName, copy.OriginalTypeName);
         Assert.Equal(cause.Message ?? string.Empty, copy.Message);
-    }
-
-    /// <summary>
-    ///     Asserts that no exception in a failure's chain — every inner exception, and every inner
-    ///     exception of an aggregate — carries a secret in its message, its stack trace or its string
-    ///     form.
-    /// </summary>
-    /// <param name="failure">The failure.</param>
-    /// <param name="secrets">The secrets.</param>
-    private static void AssertNoSecretInChain(Exception failure, params string[] secrets)
-    {
-        var pending = new Stack<Exception>([failure]);
-        while (pending.TryPop(out var current))
-        {
-            foreach (var secret in secrets)
-            {
-                Assert.False(current.Message.Contains(secret, StringComparison.Ordinal), $"A {current.GetType().Name} message carries a secret.");
-                Assert.False((current.StackTrace ?? string.Empty).Contains(secret, StringComparison.Ordinal), $"A {current.GetType().Name} stack trace carries a secret.");
-                Assert.False(current.ToString().Contains(secret, StringComparison.Ordinal), $"A {current.GetType().Name} string form carries a secret.");
-            }
-
-            if (current is AggregateException aggregate)
-            {
-                foreach (var each in aggregate.InnerExceptions)
-                {
-                    pending.Push(each);
-                }
-            }
-            else if (current.InnerException is { } inner)
-            {
-                pending.Push(inner);
-            }
-        }
     }
 
     /// <summary>

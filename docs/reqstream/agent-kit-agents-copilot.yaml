@@ -331,7 +331,7 @@ sections:
           that was not provisioned, or a runtime that is not signed in, listing what each sign-in
           source found — with the runtime's own error
           where there is one and the likely cause and remedy, and shall pass a canceled start through
-          unchanged.
+          as a cancellation, unchanged unless it carries a cause or a token to redact.
         justification: |
           Each of these failures otherwise surfaces as an error that names neither the cause nor the
           remedy: a missing file, an SDK handshake failure that tells the user to update the SDK, or
@@ -492,8 +492,9 @@ sections:
           token, in any exception it raises or keeps as a cause: the runtime's start failure and its
           redacted cause, a session error that fails an agent's run, a turn the runtime or the SDK
           fails on an agent, a provider session or a consolidation, a session the runtime or the SDK
-          fails to create or resume for an agent, a provider session or a consolidation, a provider
-          session's refusals, and a model listing failure and its redacted cause.
+          fails to create or resume for an agent, a provider session or a consolidation, a session the
+          host asks the runtime to delete, a canceled start's cause, a provider session's refusals,
+          and a model listing failure and its redacted cause.
         tags: [security]
         justification: |
           An exception is built to be shown, logged and attached to crash reports, which print its
@@ -510,6 +511,8 @@ sections:
           - AgentKitAgentsCopilot-CopilotSignIn-KeepsOnlyARedactedCause
           - AgentKitAgentsCopilot-CopilotSignIn-RelaysFailuresRedacted
           - AgentKitAgentsCopilot-CopilotRuntime-ExplainsAMissingRuntime
+          - AgentKitAgentsCopilot-CopilotRuntime-RelaysDeletionFailuresRedacted
+          - AgentKitAgentsCopilot-CopilotRuntime-PassesCancellationThrough
           - AgentKitAgentsCopilot-CopilotAgent-ReportsRuntimeErrors
           - AgentKitAgentsCopilot-CopilotProviderSession-RefusesASilentSession
           - AgentKitAgentsCopilot-CopilotProviderSession-EndsOnATurnItCouldNotRecord

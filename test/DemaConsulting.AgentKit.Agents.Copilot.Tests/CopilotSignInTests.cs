@@ -1,4 +1,5 @@
 using System.Collections;
+using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Copilot;
@@ -1461,6 +1462,68 @@ public sealed class CopilotSignInTests : IDisposable
     }
 
     /// <summary>
+    ///     Proves a task cancellation carrying a secret in its inner exception is rebuilt as a
+    ///     <see cref="TaskCanceledException"/>, a new instance keeping its token, with a redacted copy
+    ///     as its cause and nothing in its chain carrying the secret.
+    /// </summary>
+    [Fact]
+    public void CopilotSignIn_RedactRelayed_TaskCancellationCarryingASecret_StaysATaskCancellation()
+    {
+        // Arrange
+        const string secret = "s3cr3t-task-cancel-xyz";
+        var plan = PlanKnowing(secret);
+        using var source = new CancellationTokenSource();
+        var canceled = new TaskCanceledException("canceled", new IOException($"pipe {secret}"), source.Token);
+
+        // Act
+        var relayed = CopilotSignIn.RedactRelayed(canceled, plan);
+
+        // Assert
+        var rebuilt = Assert.IsType<TaskCanceledException>(relayed);
+        Assert.NotSame(canceled, rebuilt);
+        Assert.Equal(source.Token, rebuilt.CancellationToken);
+        Assert.Equal("canceled", rebuilt.Message);
+        var cause = Assert.IsType<CopilotRedactedException>(rebuilt.InnerException);
+        Assert.Equal(typeof(TaskCanceledException).FullName, cause.OriginalTypeName);
+        AssertNoSecretInChain(rebuilt, secret);
+    }
+
+    /// <summary>
+    ///     Proves secrets an original failure holds only in its <see cref="Exception.Data"/> — in a key
+    ///     or a value, at any level of its chain — are never copied: the shared chain walk detects such
+    ///     a secret, and neither the redacted copy nor the relayed exception carries any data.
+    /// </summary>
+    [Fact]
+    public void CopilotSignIn_RedactFailure_DataQuotingASecret_IsNotCopied()
+    {
+        // Arrange: messages that are clean, with the secrets held only in data
+        const string secret = "s3cr3t-data-xyz";
+        var plan = PlanKnowing(secret);
+        var inner = new IOException("pipe broke");
+        inner.Data["detail"] = $"pipe {secret}";
+        var original = new InvalidOperationException("refused", inner);
+        original.Data[secret] = secret;
+        original.Data["token"] = SentinelToken;
+        var failure = Thrown(original);
+
+        // Act
+        var copy = CopilotSignIn.RedactFailure(failure, plan);
+        var relayed = CopilotSignIn.RedactRelayed(failure, plan);
+
+        // Assert: the walk sees data, and neither result keeps any
+        Assert.ThrowsAny<Xunit.Sdk.XunitException>(() => AssertNoSecretInChain(failure, secret));
+        foreach (var result in new Exception[] { copy, relayed })
+        {
+            for (Exception? current = result; current is not null; current = current.InnerException)
+            {
+                Assert.Empty(current.Data);
+            }
+
+            AssertNoSecretInChain(result, secret, SentinelToken);
+        }
+    }
+
+    /// <summary>
     ///     Proves a failure AgentKit already built around a redacted copy is returned unchanged, so
     ///     relaying twice changes nothing.
     /// </summary>
@@ -1622,8 +1685,9 @@ public sealed class CopilotSignInTests : IDisposable
 
     /// <summary>
     ///     Asserts that no exception in a failure's chain — every inner exception, and every inner
-    ///     exception of an aggregate — carries a secret in its message, its stack trace or its string
-    ///     form. Shared by every test that proves a failure reaches a host without a secret.
+    ///     exception of an aggregate — carries a secret in its message, its stack trace, its string
+    ///     form or any key or value of its <see cref="Exception.Data"/>. Shared by every test that
+    ///     proves a failure reaches a host without a secret.
     /// </summary>
     /// <param name="failure">The failure.</param>
     /// <param name="secrets">The secrets.</param>
@@ -1637,6 +1701,14 @@ public sealed class CopilotSignInTests : IDisposable
                 Assert.False(current.Message.Contains(secret, StringComparison.Ordinal), $"A {current.GetType().Name} message carries a secret.");
                 Assert.False((current.StackTrace ?? string.Empty).Contains(secret, StringComparison.Ordinal), $"A {current.GetType().Name} stack trace carries a secret.");
                 Assert.False(current.ToString().Contains(secret, StringComparison.Ordinal), $"A {current.GetType().Name} string form carries a secret.");
+                foreach (DictionaryEntry entry in current.Data)
+                {
+                    var key = Convert.ToString(entry.Key, CultureInfo.InvariantCulture) ?? string.Empty;
+                    var value = Convert.ToString(entry.Value, CultureInfo.InvariantCulture) ?? string.Empty;
+                    Assert.False(
+                        key.Contains(secret, StringComparison.Ordinal) || value.Contains(secret, StringComparison.Ordinal),
+                        $"A {current.GetType().Name} data entry carries a secret.");
+                }
             }
 
             if (current is AggregateException aggregate)

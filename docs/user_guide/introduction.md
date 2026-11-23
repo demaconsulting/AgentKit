@@ -1273,10 +1273,12 @@ messages — a failed start, a session error that fails an agent's run, a provid
 shaped like a GitHub token. When AgentKit keeps a runtime or SDK failure as an inner exception, it keeps a redacted
 copy: the original's type name, message and stack trace, with the same text removed, so no exception in the chain
 carries a token. When a runtime or SDK failure reaches you — a turn that fails on an agent or a provider session, a
-consolidation that fails, a session the runtime fails to create or resume, or a model listing that fails other than for
-a lost or unsigned connection — it arrives as a new exception of the same kind (`IOException`, `TimeoutException` or
-`InvalidOperationException`; any other type as `InvalidOperationException`), with the message redacted and that
-redacted copy as its inner exception. A cancellation or disposal that carries nothing to redact reaches you unchanged.
+consolidation that fails, a session the runtime fails to create, resume or delete, or a model listing that fails other
+than for a lost or unsigned connection — it arrives as a new exception of the same kind (`IOException`,
+`TimeoutException` or `InvalidOperationException`; any other type as `InvalidOperationException`), with the message
+redacted and that redacted copy as its inner exception. A cancellation or disposal that carries nothing to redact
+reaches you unchanged. A cancellation that carries a cause or a token, including a canceled runtime start, is rebuilt
+with the same token, a redacted message and that redacted copy as its cause; a `TaskCanceledException` stays one.
 
 **GitHub Enterprise Cloud hosts.** Each source is used with its own host. The Copilot CLI sign-in
 uses its account's host. A token needs its host too: GitHub refuses a token for a `*.ghe.com` account
@@ -1613,15 +1615,17 @@ GitHub host:
   stack trace with any token removed; the outer exception is still an `InvalidOperationException`.
   Code that tested the inner exception's type, for example for a `FileNotFoundException`, should read
   its message or `ToString()`, which starts with the original type name.
-- **A failed turn, consolidation, session opening or model listing raises a redacted copy, not the
-  SDK's exception.** A turn that fails on an agent or a provider session, a consolidation that fails,
-  a session the runtime fails to create or resume, and a model listing that fails other than for a
+- **A failed turn, consolidation, session opening or deletion or model listing raises a redacted
+  copy, not the SDK's exception.** A turn that fails on an agent or a provider session, a consolidation that fails,
+  a session the runtime fails to create, resume or delete, and a model listing that fails other than for a
   lost or unsigned connection now raise a new exception of the same kind with the message redacted
   and a redacted copy of the SDK's exception as the inner exception. An `IOException`,
   `TimeoutException` or `InvalidOperationException` keeps its type; any other type — for example the
-  RPC transport's `RemoteInvocationException` — now arrives as an `InvalidOperationException`. Code
-  that caught such a type should catch `InvalidOperationException` and read the inner exception's
-  `ToString()`, which starts with the original type name.
+  SDK's RPC error, `Microsoft.Copilot.RemoteRpcException` — now arrives as an `InvalidOperationException`.
+  Code that caught such a type should catch `InvalidOperationException` and read the inner exception's
+  `ToString()`, which starts with the original type name. In particular, `runtime.DeleteSessionAsync`
+  now reports a session the runtime does not hold as an `InvalidOperationException`, not the SDK's
+  `RemoteRpcException`.
 
 ### Migrating from the Earlier Adapter
 

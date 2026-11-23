@@ -212,16 +212,18 @@ sections:
             tests:
               - CopilotSignIn_RedactFailure_ChainQuotingKnownSecrets_CarriesNoSecret
               - CopilotSignIn_RedactFailure_KeepsTheTypeNameMessageAndStackTrace
+              - CopilotSignIn_RedactFailure_DataQuotingASecret_IsNotCopied
 
           - id: AgentKitAgentsCopilot-CopilotSignIn-RelaysFailuresRedacted
             title: >-
               The sign-in shall provide, for a runtime or SDK failure AgentKit relays to a host, a new
               exception of the same kind — an I/O failure, a timeout or an invalid operation as its own
-              type, a cancellation with its token, a disposal, and any other type as an invalid
-              operation — whose message has every token the sign-in knows and any text shaped like a
-              GitHub token redacted and whose cause is the failure's redacted copy; shall return a
-              cancellation or disposal that has no cause and nothing to redact unchanged; and shall
-              return a failure already built around a redacted copy unchanged.
+              type, a cancellation with its token, a task cancellation as its own type, a disposal, and
+              any other type as an invalid operation — whose message has every token the sign-in knows
+              and any text shaped like a GitHub token redacted and whose cause is the failure's
+              redacted copy; shall return a cancellation or disposal that has no cause and nothing to
+              redact unchanged; and shall return a failure already built around a redacted copy
+              unchanged.
             tags: [security]
             justification: |
               A failure the runtime or the SDK raises can quote a token in its message, its chain or
@@ -238,5 +240,6 @@ sections:
               - CopilotSignIn_RedactRelayed_KeepsTheKindAHostCatches
               - CopilotSignIn_RedactRelayed_CleanCancellationOrDisposal_PassesUnchanged
               - CopilotSignIn_RedactRelayed_CancellationOrDisposalCarryingASecret_IsRebuiltRedacted
+              - CopilotSignIn_RedactRelayed_TaskCancellationCarryingASecret_StaysATaskCancellation
               - CopilotSignIn_RedactRelayed_AlreadyRelayed_IsReturnedUnchanged
               - CopilotSignIn_RelayAsync_FailureThrownEitherWay_IsRelayedRedacted

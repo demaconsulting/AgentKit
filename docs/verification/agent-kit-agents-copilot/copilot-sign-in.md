@@ -24,7 +24,8 @@ Copilot runtime, reads the real user's Copilot CLI home or touches a credential 
 - **`ExplainUnauthenticated`, `Classify`, `NormalizeHost`, `CreateSessionTokenProvider`, `RedactFailure`,
   `RedactRelayed`, `RelayAsync` and `Report`** are pure, or take a fabricated `GetAuthStatusResponse`, SDK
   token-provider arguments, a fabricated exception chain, and a logger that keeps every entry. The redacted copy's and
-  the relayed failure's tests walk the whole exception chain, every inner exception of an aggregate included.
+  the relayed failure's tests walk the whole exception chain, every inner exception of an aggregate included, and the
+  shared chain walk also checks every key and value of each exception's `Exception.Data`.
 
 A sentinel token is used wherever a token appears, and the tests assert it never appears in a
 finding, a message, a log entry or a string form. The redaction tests also use secrets that are not
@@ -272,6 +273,7 @@ token is still reduced to its prefix and `<redacted>`.
 
 - `CopilotSignIn_RedactFailure_ChainQuotingKnownSecrets_CarriesNoSecret`
 - `CopilotSignIn_RedactFailure_KeepsTheTypeNameMessageAndStackTrace`
+- `CopilotSignIn_RedactFailure_DataQuotingASecret_IsNotCopied`
 
 Error paths and boundaries. A thrown failure quoting a known secret, the plan's token and a
 GitHub-shaped token, chaining an inner exception that chains an aggregate of two exceptions — the
@@ -283,7 +285,11 @@ nor in the string form of an outer exception carrying the copy. The aggregate's 
 both inner messages, is redacted. A thrown `FileNotFoundException` with data attached is copied with
 its type name, message, stack trace and `HResult` unchanged, a string form laid out as an exception's
 and led by the type name, and no data; a failure never thrown has no stack trace; and a chain of
-twenty exceptions is copied to `MaximumDepth`, sixteen.
+twenty exceptions is copied to `MaximumDepth`, sixteen. A thrown `InvalidOperationException` with a clean message,
+holding a known secret and a GitHub-shaped token only in its `Data` — as a key and as values — and chaining an
+`IOException` whose `Data` quotes the secret, is first shown to fail the shared chain walk, proving the walk reads
+data; its redacted copy and its relayed exception then carry no `Data` at any level of the chain, and the walk finds
+neither value.
 
 #### AgentKitAgentsCopilot-CopilotSignIn-RelaysFailuresRedacted: A Relayed Failure Is a New, Redacted Exception
 
@@ -293,6 +299,7 @@ twenty exceptions is copied to `MaximumDepth`, sixteen.
 - `CopilotSignIn_RedactRelayed_KeepsTheKindAHostCatches`
 - `CopilotSignIn_RedactRelayed_CleanCancellationOrDisposal_PassesUnchanged`
 - `CopilotSignIn_RedactRelayed_CancellationOrDisposalCarryingASecret_IsRebuiltRedacted`
+- `CopilotSignIn_RedactRelayed_TaskCancellationCarryingASecret_StaysATaskCancellation`
 - `CopilotSignIn_RedactRelayed_AlreadyRelayed_IsReturnedUnchanged`
 - `CopilotSignIn_RelayAsync_FailureThrownEitherWay_IsRelayedRedacted`
 
@@ -316,7 +323,10 @@ and an `ObjectDisposedException`, none with a cause or anything to redact, come 
 instance. The fourth relays an `OperationCanceledException` whose cause quotes a secret and an
 `ObjectDisposedException` whose message and cause quote secrets: each is rebuilt as the same type —
 not the same instance — the cancellation keeping its token, the disposal's message redacted, and both
-chains clean. The fifth asserts that a failure already built around a redacted copy, and a failure
+chains clean. `CopilotSignIn_RedactRelayed_TaskCancellationCarryingASecret_StaysATaskCancellation` relays a
+`TaskCanceledException` whose cause quotes a secret: it is rebuilt as a new `TaskCanceledException` of exactly that
+type, keeping its token and message, with a redacted copy naming `TaskCanceledException` as its cause and a clean
+chain. The fifth asserts that a failure already built around a redacted copy, and a failure
 relayed once, are each returned unchanged, so relaying twice changes nothing.
 
 The sixth runs operations through `RelayAsync`: one that throws an `IOException` quoting a secret

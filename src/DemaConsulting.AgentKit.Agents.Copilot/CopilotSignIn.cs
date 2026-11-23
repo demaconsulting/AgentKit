@@ -1042,16 +1042,18 @@ internal static partial class CopilotSignIn
     ///         <item>
     ///             An <see cref="OperationCanceledException"/> or <see cref="ObjectDisposedException"/>
     ///             with no inner exception and nothing in its message to redact is returned unchanged,
-    ///             keeping its type, token and object name. Otherwise it is rebuilt as the same kind
-    ///             (an <see cref="OperationCanceledException"/> keeps its token).
+    ///             keeping its type, token and object name. Otherwise it is rebuilt as the same kind: a
+    ///             <see cref="TaskCanceledException"/> stays a <see cref="TaskCanceledException"/>, any
+    ///             other cancellation becomes an <see cref="OperationCanceledException"/>, and both keep
+    ///             their token.
     ///         </item>
     ///         <item>An <see cref="InvalidOperationException"/> becomes a new <see cref="InvalidOperationException"/>.</item>
     ///         <item>An <see cref="IOException"/> becomes a new <see cref="IOException"/>.</item>
     ///         <item>A <see cref="TimeoutException"/> becomes a new <see cref="TimeoutException"/>.</item>
     ///         <item>
-    ///             Anything else, such as an RPC error of the SDK's transport, becomes a new
-    ///             <see cref="InvalidOperationException"/>: a host cannot catch a type it does not
-    ///             reference, and the original type's name is kept in the redacted copy.
+    ///             Anything else, such as the SDK's RPC error <c>Microsoft.Copilot.RemoteRpcException</c>,
+    ///             becomes a new <see cref="InvalidOperationException"/>: a host cannot catch a type it
+    ///             does not reference, and the original type's name is kept in the redacted copy.
     ///         </item>
     ///     </list>
     ///     <para>
@@ -1083,6 +1085,8 @@ internal static partial class CopilotSignIn
         {
             OperationCanceledException when clean => failure,
             ObjectDisposedException when clean => failure,
+            TaskCanceledException canceled =>
+                new TaskCanceledException(message, RedactFailure(failure, plan), canceled.CancellationToken),
             OperationCanceledException canceled =>
                 new OperationCanceledException(message, RedactFailure(failure, plan), canceled.CancellationToken),
             ObjectDisposedException => new ObjectDisposedException(message, RedactFailure(failure, plan)),

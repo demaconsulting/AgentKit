@@ -344,7 +344,10 @@ its launch and sign-in plan; the turn channel's discovery, which starts a client
 using its RPC surface, passes no launch and the runtime's `SignIn`. An overload without the launch
 and plan passes `null` for both.
 
-**Algorithm:** Await the start. An `OperationCanceledException` propagates unchanged. Any other
+**Algorithm:** Await the start. An `OperationCanceledException` goes through
+`CopilotSignIn.RedactRelayed` with the plan: one with no cause and nothing in its message to redact
+propagates unchanged, with its stack; any other is rebuilt with the same token, the redacted message
+and a redacted copy as its cause, a `TaskCanceledException` staying one. Any other
 exception is rethrown as an `InvalidOperationException` whose message is `ExplainStartFailure` of it,
 the launch and the plan, and whose `InnerException` is `CopilotSignIn.RedactFailure` of it and the
 plan: a `CopilotRedactedException` carrying the original's type name, message and stack trace, each
@@ -392,8 +395,22 @@ replace the start's) and rethrow.
 needs — without handing out the client, through which a session could be opened outside the
 confinement.
 
-**Algorithm:** Reject a null, empty or whitespace identifier; ask the client to delete the session.
-The SDK's own exception for a session the runtime does not hold propagates unchanged.
+**Algorithm:** Reject a null, empty or whitespace identifier; read `Client`, so a disposed runtime
+throws `ObjectDisposedException` before any relay; then delegate to `RelayDeleteSessionAsync` with the
+client's deletion. A session the runtime does not hold is reported by the SDK's RPC error,
+`Microsoft.Copilot.RemoteRpcException`, which therefore reaches the host as an
+`InvalidOperationException`.
+
+#### RelayDeleteSessionAsync(Func&lt;string, CancellationToken, Task&gt; delete, string sessionId, CancellationToken cancellationToken)
+
+**Purpose:** Relay a deletion's failure redacted, never as the SDK's own exception. The deletion is
+injected because the SDK's client cannot be made to fail on demand without a runtime.
+
+**Algorithm:** Run the deletion with the session identifier and token through
+`CopilotSignIn.RelayAsync` with the runtime's `SignIn`: a failure, thrown synchronously or carried
+by the task, becomes a new exception of the same kind (an RPC error becomes an
+`InvalidOperationException`) with a redacted message and a redacted copy as its cause; a clean
+cancellation propagates unchanged.
 
 #### ThrowIfDisposed()
 
@@ -439,18 +456,19 @@ for that open. Disposal is not serialized against open runs, as is usual for `IA
 | Non-empty data directory without the marker | `InvalidOperationException` naming the directory |
 | Directory or marker cannot be created | `IOException` or `UnauthorizedAccessException` propagates |
 | Runtime fails to start | client disposed; `InvalidOperationException`, redacted copy of the error as cause |
-| Start canceled | client disposed; `OperationCanceledException` propagates unchanged |
+| Start canceled | client disposed; clean: unchanged; else rebuilt redacted, same token |
 | Runtime used after disposal | `ObjectDisposedException` from `Client` |
 | Built-on object used after disposal | `ObjectDisposedException` on its next open or resume; nothing started |
 | Null or blank session identifier to delete | `ArgumentNullException` or `ArgumentException` |
+| Runtime refuses or fails a deletion | relayed redacted; RPC error as `InvalidOperationException` |
 
 ### Dependencies
 
 - **CopilotCli** — discovery of the installed CLI, the version probe and policy, and the guidance its
   refusals carry; see *CopilotCli Unit Design*.
-- **CopilotSignIn** — the sign-in resolution, the token-fetch helper, the refusal's text, the
-  classification of the runtime's sign-in, the session token provider, and the redaction of a start
-  failure's text and cause; see *CopilotSignIn Unit Design*.
+- **CopilotSignIn** — the sign-in resolution, the token-fetch helper, the refusal's text, the classification of the
+  runtime's sign-in, the session token provider, the redaction of a start failure's text and cause, and the relay of a
+  deletion failure and of a start cancellation; see *CopilotSignIn Unit Design*.
 - **Microsoft.Copilot.SDK** — supplies `CopilotClient`, its options, the spawned stdio connection,
   the status and authentication reads, the protocol handshake and the provisioned runtime; see
   *Microsoft.Copilot.SDK Design*.

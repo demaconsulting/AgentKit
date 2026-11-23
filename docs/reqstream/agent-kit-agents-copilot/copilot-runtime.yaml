@@ -259,12 +259,19 @@ sections:
 
           - id: AgentKitAgentsCopilot-CopilotRuntime-PassesCancellationThrough
             title: >-
-              The runtime shall propagate a canceled start unchanged.
+              The runtime shall propagate a canceled start that carries no cause and nothing to redact
+              unchanged, and shall rebuild any other canceled start as a cancellation of the same kind
+              where the base class library allows, keeping its token, with a redacted message and the
+              redacted copy as its cause.
+            tags: [security]
             justification: |
               A cancellation is the caller's own decision, not a fault to explain; wrapping it would
-              defeat the caller's handling of cancellation.
+              defeat the caller's handling of cancellation. A cancellation can still carry the
+              runtime's text in its message or cause, so one that does is rebuilt like any relayed
+              failure, keeping its kind and token so the caller's handling is unchanged.
             tests:
               - CopilotRuntime_StartClient_Canceled_PropagatesUnchanged
+              - CopilotRuntime_StartClient_CanceledCarryingASecret_IsRebuiltRedacted
 
           - id: AgentKitAgentsCopilot-CopilotRuntime-LeavesNoRuntimeBehind
             title: >-
@@ -304,6 +311,22 @@ sections:
             tests:
               - CopilotRuntime_DeleteSessionAsync_BlankSessionId_Throws
               - CopilotRuntime_DeleteSessionAsync_AfterDisposal_Throws
+
+          - id: AgentKitAgentsCopilot-CopilotRuntime-RelaysDeletionFailuresRedacted
+            title: >-
+              The runtime shall relay a failure the runtime or SDK raises while deleting a session as a
+              new exception of the same kind with a redacted message and the redacted copy as its
+              cause, and a clean cancellation unchanged.
+            tags: [security]
+            justification: |
+              The runtime reports a session it does not hold, or a deletion it fails, through the SDK's
+              own exception, whose message and RPC error data AgentKit cannot vouch for and whose type
+              a host does not reference. Relaying it as a new exception of a base class library type,
+              redacted and with only a redacted copy as its cause, keeps tokens out of the host's
+              hands on this path as on every other relayed path.
+            tests:
+              - CopilotRuntime_DeleteSessionAsync_RuntimeFailureQuotingASecret_IsRelayedRedacted
+              - CopilotRuntime_DeleteSessionAsync_CleanCancellation_PassesUnchanged
 
           - id: AgentKitAgentsCopilot-CopilotRuntime-RejectsInvalidOptions
             title: >-
