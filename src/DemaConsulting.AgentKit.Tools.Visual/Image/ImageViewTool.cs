@@ -301,7 +301,8 @@ public static class ImageViewTool
                     + "-byte limit for drawing a file."));
             }
 
-            var data = new byte[length];
+            // Bounded by the int ceiling above, so the narrowing is exact.
+            var data = new byte[(int)length];
             await stream.ReadExactlyAsync(data, cancellationToken).ConfigureAwait(false);
             return (data, null);
         }

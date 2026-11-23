@@ -66,5 +66,5 @@ None beyond the Base Class Library.
 
 ### Callers
 
-A host constructs one and passes it to `ImagePack(VisualOptions?)`, or sets it
-as`n`DiagramPackOptions.Visual`. The pack's `VisualRenderer` reads every value; see *VisualRenderer Unit Design*.
+A host constructs one and passes it to `ImagePack(VisualOptions?)`, or sets it as
+`DiagramPackOptions.Visual`. The pack's `VisualRenderer` reads every value; see *VisualRenderer Unit Design*.

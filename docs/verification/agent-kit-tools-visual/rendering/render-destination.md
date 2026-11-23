@@ -22,10 +22,11 @@ Unit tests reside in `Rendering/RenderDestinationTests.cs` within the
 
 #### Acceptance Criteria
 
-A unit test run passes when all six scenarios below pass without error or exception beyond those
+A unit test run passes when all seven scenarios below pass without error or exception beyond those
 explicitly asserted. A non-PNG name accepted, a write the policy refuses accepted, a directory or a
-missing parent accepted, a directory created, an existing picture not replaced, or a temporary file
-left behind each constitute a failure.
+missing parent accepted, a directory created, an existing picture not replaced, a temporary file
+left behind, or a name with surrounding whitespace checked, written or reported under another name
+each constitute a failure.
 
 #### Test Scenarios
 
@@ -67,3 +68,10 @@ An earlier file at `figure.png` is replaced by the new bytes, the destination is
 
 After resolution, the target is replaced by a non-empty directory, so the move is refused; the write
 reports failure and the folder holds no file.
+
+##### AgentKitToolsVisual-Rendering-RenderDestination-SurroundingWhitespace: Surrounding Whitespace Is Read as the Policy Reads It
+
+**Test**: `RenderDestination_TryResolve_SurroundingWhitespace_IsReadAsThePolicyReadsIt`
+
+`" flow.png "` is resolved and written; the destination is reported as `flow.png`, and the folder
+holds exactly one file, named `flow.png`, with the written bytes.

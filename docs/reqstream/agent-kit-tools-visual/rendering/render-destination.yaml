@@ -72,3 +72,15 @@ sections:
                   and cannot explain.
                 tests:
                   - RenderDestination_TryWriteAsync_FileSystemRefuses_LeavesNoTemporaryFile
+
+              - id: AgentKitToolsVisual-Rendering-RenderDestination-SurroundingWhitespace
+                title: >-
+                  The render destination shall read the destination with surrounding whitespace
+                  removed, as the access policy reads it, for the suffix check, the write decision,
+                  the write and the reported form.
+                justification: |
+                  Two readings of one input could check one name and write another. Reading it once,
+                  the way the policy reads every path, keeps the name checked, the file written and
+                  the name reported the same.
+                tests:
+                  - RenderDestination_TryResolve_SurroundingWhitespace_IsReadAsThePolicyReadsIt

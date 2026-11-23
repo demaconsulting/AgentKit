@@ -141,4 +141,28 @@ public class RenderDestinationTests
         Assert.False(written);
         Assert.Empty(Directory.GetFiles(fixture.Root));
     }
+
+    /// <summary>
+    ///     Proves a destination with surrounding whitespace is read as the policy reads it, so the
+    ///     name checked, the file written and the name reported are one and the same.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task RenderDestination_TryResolve_SurroundingWhitespace_IsReadAsThePolicyReadsIt()
+    {
+        // Arrange: a writable workspace
+        using var fixture = new TempDirectoryFixture();
+        var policy = RenderSamples.Policy(fixture.Root);
+
+        // Act: name a destination with whitespace around it, and write to it
+        Assert.True(RenderDestination.TryResolve(policy, " flow.png ", out var destination, out _));
+        var written = await RenderDestination.TryWriteAsync(Picture, destination, TestContext.Current.CancellationToken);
+
+        // Assert: reported and written under exactly the trimmed name
+        Assert.True(written);
+        Assert.Equal("flow.png", destination.Reported);
+        var file = Assert.Single(Directory.GetFiles(fixture.Root));
+        Assert.Equal("flow.png", Path.GetFileName(file));
+        Assert.Equal(Picture, await System.IO.File.ReadAllBytesAsync(file, TestContext.Current.CancellationToken));
+    }
 }

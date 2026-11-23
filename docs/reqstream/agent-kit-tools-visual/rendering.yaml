@@ -106,5 +106,6 @@ sections:
               - AgentKitToolsVisual-Rendering-RenderDestination-ParentMustExist
               - AgentKitToolsVisual-Rendering-RenderDestination-ReplacesAtomically
               - AgentKitToolsVisual-Rendering-RenderDestination-NoTemporaryLeftOnFailure
+              - AgentKitToolsVisual-Rendering-RenderDestination-SurroundingWhitespace
             tests:
               - Rendering_Pipeline_DrawnPicture_IsSavedToAPermittedDestination

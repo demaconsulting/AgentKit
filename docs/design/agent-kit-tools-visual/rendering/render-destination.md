@@ -21,7 +21,8 @@ form a confirmation reports it in.
 
 ##### TryResolve(PathPolicy policy, string destination, out Destination? resolved, out object? denial)
 
-**Algorithm,** in this order:
+**Algorithm,** in this order. The destination is trimmed once, as `PathPolicy` trims every request,
+and that one value is used by every later step, the write and the reported form:
 
 1. The name must end in `.png` (case-insensitive), because the bytes are always PNG; otherwise
    `InvalidRequest`. This contradiction is in the request, so it is refused before any policy

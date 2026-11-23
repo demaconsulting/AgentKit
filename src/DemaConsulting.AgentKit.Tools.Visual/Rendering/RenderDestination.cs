@@ -17,8 +17,10 @@ namespace DemaConsulting.AgentKit.Tools.Visual.Rendering;
 ///     <c>text_file_write</c> replace a file's content governs it.
 ///     </para>
 ///     <para>
-///     <b>The checks, in order.</b> The name must end in <c>.png</c>, because the bytes are
-///     always PNG (<see cref="DenialReason.InvalidRequest"/>); the policy's write decision must
+///     <b>The checks, in order.</b> The destination is read as the policy reads it, with
+///     surrounding whitespace removed once, and that one value is used by every check, the write
+///     and the reported form. The name must end in <c>.png</c>, because the bytes are always PNG
+///     (<see cref="DenialReason.InvalidRequest"/>); the policy's write decision must
 ///     permit it, and its own refusal is returned unchanged so that it can name the writable
 ///     locations (<see cref="DenialReason.PathNotPermitted"/>); it must not name a directory
 ///     (<see cref="DenialReason.InvalidRequest"/>); and its parent directory must already exist,
@@ -77,15 +79,18 @@ internal static class RenderDestination
 
         resolved = null;
 
+        // Read as the policy reads it: surrounding whitespace removed once, used everywhere.
+        var requested = destination.Trim();
+
         // A request-shape contradiction is refused before any policy decision is taken.
-        if (!destination.Trim().EndsWith(".png", StringComparison.OrdinalIgnoreCase))
+        if (!requested.EndsWith(".png", StringComparison.OrdinalIgnoreCase))
         {
             denial = ToolResult.Denied(DenialReason.InvalidRequest, MustBePng);
             return false;
         }
 
         // The write decision alone; its refusal names the writable locations.
-        if (!policy.TryResolveWrite(destination, out var realPath, out var denialMessage))
+        if (!policy.TryResolveWrite(requested, out var realPath, out var denialMessage))
         {
             denial = ToolResult.Denied(DenialReason.PathNotPermitted, denialMessage);
             return false;
@@ -109,7 +114,7 @@ internal static class RenderDestination
         // cannot disagree about which file was meant.
         resolved = new Destination(
             realPath,
-            policy.EmitRelative(realPath, destination)
+            policy.EmitRelative(realPath, requested)
                 ? Path.GetRelativePath(policy.WorkingDirectory, realPath)
                 : realPath);
         denial = null;

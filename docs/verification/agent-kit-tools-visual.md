@@ -38,7 +38,7 @@ real API by `XmlDocExampleTests.cs` in the same project.
   tree, including a directory junction (Windows) or symbolic link (elsewhere); the composition
   scenarios run entirely in memory
 - **Network**: The network scenario starts an HTTP listener on a free loopback port and counts the
-  requests it receives; nothing leaves the machine
+  connections it receives; nothing leaves the machine
 - **Isolation**: Each test method constructs its own policy, builder and fixture; no state is
   shared between tests
 
