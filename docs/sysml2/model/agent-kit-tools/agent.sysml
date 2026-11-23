@@ -1,8 +1,8 @@
 package AgentKitTools_AgentSubsystem {
     private import SoftwareItemMetadata::*;
-    private import AgentKitTools_AgentProfile::*;
-    private import AgentKitTools_AgentRunTool::*;
-    private import AgentKitTools_AgentPack::*;
+    public import AgentKitTools_AgentProfile::*;
+    public import AgentKitTools_AgentRunTool::*;
+    public import AgentKitTools_AgentPack::*;
 
     part def Agent {
         doc /* The agent tool family: application-authored delegation from one agent to another, published as one pack under the agent family prefix, gated on the host's delegation capability, and bounded by the agent depth ceiling so that a child's tools are always composed from the child's own state rather than filtered from the parent's. */

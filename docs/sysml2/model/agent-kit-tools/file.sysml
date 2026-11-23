@@ -1,13 +1,13 @@
 package AgentKitTools_FileSubsystem {
     private import SoftwareItemMetadata::*;
-    private import AgentKitTools_FileListTool::*;
-    private import AgentKitTools_FileCopyTool::*;
-    private import AgentKitTools_FileMoveTool::*;
-    private import AgentKitTools_FileDeleteTool::*;
-    private import AgentKitTools_FileCreateDirectoryTool::*;
-    private import AgentKitTools_FileMoveDirectoryTool::*;
-    private import AgentKitTools_FileDeleteDirectoryTool::*;
-    private import AgentKitTools_FilePack::*;
+    public import AgentKitTools_FileListTool::*;
+    public import AgentKitTools_FileCopyTool::*;
+    public import AgentKitTools_FileMoveTool::*;
+    public import AgentKitTools_FileDeleteTool::*;
+    public import AgentKitTools_FileCreateDirectoryTool::*;
+    public import AgentKitTools_FileMoveDirectoryTool::*;
+    public import AgentKitTools_FileDeleteDirectoryTool::*;
+    public import AgentKitTools_FilePack::*;
 
     part def File {
         doc /* The type-agnostic file tool family: policy-governed listing, copying, moving and deletion of files of any type, and creation, moving and recursive deletion of the directories that hold them, published as one pack under the file family prefix. */

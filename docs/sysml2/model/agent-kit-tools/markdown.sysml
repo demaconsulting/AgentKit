@@ -1,7 +1,7 @@
 package AgentKitTools_MarkdownSubsystem {
     private import SoftwareItemMetadata::*;
-    private import AgentKitTools_MarkdownOutlineTool::*;
-    private import AgentKitTools_MarkdownPack::*;
+    public import AgentKitTools_MarkdownOutlineTool::*;
+    public import AgentKitTools_MarkdownPack::*;
 
     part def Markdown {
         doc /* The markdown tool family: policy-governed reporting of a Markdown file's heading structure as sections with line ranges, published as one pack under the markdown family prefix. */

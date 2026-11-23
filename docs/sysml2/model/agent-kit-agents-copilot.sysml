@@ -1,16 +1,16 @@
 package AgentKitAgentsCopilot {
     private import SoftwareItemMetadata::*;
-    private import AgentKitAgentsCopilot_CopilotAgent::*;
-    private import AgentKitAgentsCopilot_CopilotAgentFactory::*;
-    private import AgentKitAgentsCopilot_CopilotCli::*;
-    private import AgentKitAgentsCopilot_CopilotModelCatalog::*;
-    private import AgentKitAgentsCopilot_CopilotProviderSession::*;
-    private import AgentKitAgentsCopilot_CopilotProviderSessionFactory::*;
-    private import AgentKitAgentsCopilot_CopilotRuntime::*;
-    private import AgentKitAgentsCopilot_CopilotSessionObserver::*;
-    private import AgentKitAgentsCopilot_CopilotSignIn::*;
-    private import AgentKitAgentsCopilot_CopilotSummarizer::*;
-    private import AgentKitAgentsCopilot_CopilotTurnChannel::*;
+    public import AgentKitAgentsCopilot_CopilotAgent::*;
+    public import AgentKitAgentsCopilot_CopilotAgentFactory::*;
+    public import AgentKitAgentsCopilot_CopilotCli::*;
+    public import AgentKitAgentsCopilot_CopilotModelCatalog::*;
+    public import AgentKitAgentsCopilot_CopilotProviderSession::*;
+    public import AgentKitAgentsCopilot_CopilotProviderSessionFactory::*;
+    public import AgentKitAgentsCopilot_CopilotRuntime::*;
+    public import AgentKitAgentsCopilot_CopilotSessionObserver::*;
+    public import AgentKitAgentsCopilot_CopilotSignIn::*;
+    public import AgentKitAgentsCopilot_CopilotSummarizer::*;
+    public import AgentKitAgentsCopilot_CopilotTurnChannel::*;
 
     doc
     /*
