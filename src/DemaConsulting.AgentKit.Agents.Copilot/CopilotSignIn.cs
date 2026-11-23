@@ -72,7 +72,9 @@ namespace DemaConsulting.AgentKit.Agents.Copilot;
 ///     (<see cref="CopilotRedactedException"/>): its type name, message and stack trace, each
 ///     redacted, with every chained exception copied the same way and nothing else of the original.
 ///     A runtime or SDK failure AgentKit relays to a host is a new exception of the same kind, with
-///     a redacted message and that copy as its cause (<see cref="RedactRelayed"/>).
+///     a redacted message and that copy as its cause (<see cref="RedactRelayed"/>); a disposal with
+///     no cause instead keeps its object name, redacted. A cancellation or disposal that AgentKit
+///     can fully inspect and that carries nothing to redact passes unchanged.
 ///     Only the host's own token provider's exception is kept unchanged: the host's code raised it,
 ///     AgentKit quotes none of it, and the host can then recognize its own failure.
 ///     </para>
@@ -1082,7 +1084,8 @@ internal static partial class CopilotSignIn
     /// <summary>
     ///     Makes the exception AgentKit relays to a host in place of a runtime or SDK failure: a new
     ///     exception of the same kind, whose message is redacted and whose inner exception is the
-    ///     redacted copy of the failure.
+    ///     redacted copy of the failure, except that a disposal with no inner exception keeps its
+    ///     redacted object name instead.
     /// </summary>
     /// <remarks>
     ///     <para>
@@ -1095,12 +1098,19 @@ internal static partial class CopilotSignIn
     ///             so relaying twice changes nothing.
     ///         </item>
     ///         <item>
-    ///             An <see cref="OperationCanceledException"/> or <see cref="ObjectDisposedException"/>
-    ///             with no inner exception and nothing in its message to redact is returned unchanged,
-    ///             keeping its type, token and object name. Otherwise it is rebuilt as the same kind: a
-    ///             <see cref="TaskCanceledException"/> stays a <see cref="TaskCanceledException"/>, any
-    ///             other cancellation becomes an <see cref="OperationCanceledException"/>, and both keep
-    ///             their token.
+    ///             An <see cref="OperationCanceledException"/>, <see cref="TaskCanceledException"/> or
+    ///             <see cref="ObjectDisposedException"/> of exactly that type, with no inner exception, no
+    ///             <see cref="Exception.Data"/>, no task state, and nothing to redact in its message,
+    ///             source, help link, stack trace text or object name, is returned unchanged, keeping its
+    ///             instance, stack, token and object name. Anything AgentKit cannot fully inspect fails
+    ///             closed and is rebuilt as the same kind: a <see cref="TaskCanceledException"/> stays a
+    ///             <see cref="TaskCanceledException"/> and any other cancellation becomes an
+    ///             <see cref="OperationCanceledException"/>, both keeping their token. A disposal with no
+    ///             inner exception becomes a new <see cref="ObjectDisposedException"/> with its object
+    ///             name and message each redacted and no cause, as it had none. A disposal with an inner
+    ///             exception becomes a new <see cref="ObjectDisposedException"/> with the redacted copy as
+    ///             its cause; .NET has no public constructor taking both an object name and an inner
+    ///             exception, so its object name survives only as redacted text in its message.
     ///         </item>
     ///         <item>An <see cref="InvalidOperationException"/> becomes a new <see cref="InvalidOperationException"/>.</item>
     ///         <item>An <see cref="IOException"/> becomes a new <see cref="IOException"/>.</item>
@@ -1112,8 +1122,8 @@ internal static partial class CopilotSignIn
     ///         </item>
     ///     </list>
     ///     <para>
-    ///     The original is never kept, whether or not a secret was spotted: properties AgentKit cannot
-    ///     inspect, such as an RPC error's data, never pass through. Disposal is tested before
+    ///     Under the last four rules the original is never kept, whether or not a secret was spotted:
+    ///     properties AgentKit cannot inspect, such as an RPC error's data, never pass through. Disposal is tested before
     ///     <see cref="InvalidOperationException"/>, from which it derives.
     ///     </para>
     /// </remarks>
@@ -1123,8 +1133,8 @@ internal static partial class CopilotSignIn
     ///     only.
     /// </param>
     /// <returns>
-    ///     The exception to throw: <paramref name="failure"/> itself when it carries nothing to redact
-    ///     under the first two rules, which a caller then rethrows with <c>throw;</c> to keep its stack.
+    ///     The exception to throw: <paramref name="failure"/> itself when the first two rules pass it
+    ///     unchanged, which a caller then rethrows with <c>throw;</c> to keep its stack.
     /// </returns>
     internal static Exception RedactRelayed(Exception failure, CopilotSignInPlan? plan)
     {
@@ -1134,24 +1144,105 @@ internal static partial class CopilotSignIn
             return failure;
         }
 
-        // One redactor for the message and the whole copied chain
+        // One redactor for every text checked, the message and the whole copied chain
         var redact = Redactor(plan);
+        if (PassesUnchanged(failure, redact))
+        {
+            return failure;
+        }
+
         var message = redact(failure.Message);
-        var clean = failure.InnerException is null && string.Equals(message, failure.Message, StringComparison.Ordinal);
         return failure switch
         {
-            OperationCanceledException when clean => failure,
-            ObjectDisposedException when clean => failure,
             TaskCanceledException canceled =>
                 new TaskCanceledException(message, CopilotRedactedException.Copy(failure, redact, depth: 1), canceled.CancellationToken),
             OperationCanceledException canceled =>
                 new OperationCanceledException(message, CopilotRedactedException.Copy(failure, redact, depth: 1), canceled.CancellationToken),
+            ObjectDisposedException { InnerException: null } disposed =>
+                new ObjectDisposedException(NameOrNull(redact(disposed.ObjectName)), redact(DisposalMessage(disposed))),
             ObjectDisposedException => new ObjectDisposedException(message, CopilotRedactedException.Copy(failure, redact, depth: 1)),
             IOException => new IOException(message, CopilotRedactedException.Copy(failure, redact, depth: 1)),
             TimeoutException => new TimeoutException(message, CopilotRedactedException.Copy(failure, redact, depth: 1)),
             _ => new InvalidOperationException(message, CopilotRedactedException.Copy(failure, redact, depth: 1)),
         };
     }
+
+    /// <summary>
+    ///     Tells whether a failure is a cancellation or a disposal that <see cref="RedactRelayed"/> can
+    ///     return unchanged because nothing a host can read from it needs redacting.
+    /// </summary>
+    /// <remarks>
+    ///     It fails closed: anything AgentKit cannot fully inspect is rebuilt. That rules out a subclass,
+    ///     which can add properties of its own; an inner exception; any <see cref="Exception.Data"/>,
+    ///     whose values are objects a host can cast and read whatever their text shows; and a task
+    ///     cancellation's task state, which is also an object. What remains must be unchanged by the
+    ///     redactor in its message, source, help link, stack trace text and, for a disposal, object name.
+    /// </remarks>
+    /// <param name="failure">The failure the runtime or the SDK raised.</param>
+    /// <param name="redact">The redactor.</param>
+    /// <returns><see langword="true"/> when the failure can be relayed unchanged.</returns>
+    private static bool PassesUnchanged(Exception failure, Func<string?, string> redact)
+    {
+        // Exactly a base kind: a subclass's own properties cannot be inspected
+        var type = failure.GetType();
+        if (type != typeof(OperationCanceledException)
+            && type != typeof(TaskCanceledException)
+            && type != typeof(ObjectDisposedException))
+        {
+            return false;
+        }
+
+        // No cause, no data and no task state, each of which can hold any object
+        if (failure.InnerException is not null
+            || failure.Data.Count != 0
+            || failure is TaskCanceledException { Task.AsyncState: not null })
+        {
+            return false;
+        }
+
+        // Every text a host can read is already free of anything to redact
+        return Unchanged(failure.Message)
+               && Unchanged(failure.Source)
+               && Unchanged(failure.HelpLink)
+               && Unchanged(failure.StackTrace)
+               && (failure is not ObjectDisposedException disposed || Unchanged(disposed.ObjectName));
+
+        bool Unchanged(string? text) => text is null || string.Equals(redact(text), text, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Gets a disposal's own message, without the object name line that
+    ///     <see cref="ObjectDisposedException.Message"/> appends, so a rebuilt disposal does not name
+    ///     the object twice.
+    /// </summary>
+    /// <param name="disposed">The disposal.</param>
+    /// <returns>
+    ///     The message without the object name line, or the whole message when the line is not found,
+    ///     such as for a subclass that words its message differently.
+    /// </returns>
+    private static string DisposalMessage(ObjectDisposedException disposed)
+    {
+        // No name: the message has no name line
+        var message = disposed.Message;
+        if (string.IsNullOrEmpty(disposed.ObjectName))
+        {
+            return message;
+        }
+
+        // The line .NET appends, in the current culture, found by naming the object with an empty message
+        var nameLine = new ObjectDisposedException(disposed.ObjectName, string.Empty).Message;
+        return message.EndsWith(nameLine, StringComparison.Ordinal)
+            ? message[..^nameLine.Length]
+            : message;
+    }
+
+    /// <summary>
+    ///     Gets an object name to pass to <see cref="ObjectDisposedException"/>, or
+    ///     <see langword="null"/> when there is none.
+    /// </summary>
+    /// <param name="name">The object name, possibly empty.</param>
+    /// <returns>The name, or <see langword="null"/> when it is empty.</returns>
+    private static string? NameOrNull(string name) => name.Length == 0 ? null : name;
 
     /// <summary>
     ///     Runs a runtime or SDK operation, relaying its failure as <see cref="RedactRelayed"/> builds it.

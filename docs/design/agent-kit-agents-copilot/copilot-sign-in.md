@@ -260,7 +260,7 @@ symbolic link or junction to the data directory is not recognized as the data di
 
 **Postconditions:** A token, or none with a problem. Never throws but for the caller's cancellation:
 the SDK's cancellation may carry the helper's text and a cause, so it is relayed as `RedactRelayed`
-relays it — unchanged only when it carries nothing to redact.
+relays it — unchanged only when it is fully verified clean.
 
 #### AskProviderAsync and CreateSessionTokenProvider
 
@@ -342,12 +342,21 @@ exception that reaches a host holds the original or a token.
 1. A failure whose inner exception is already a `CopilotRedactedException` is returned unchanged. Only
    AgentKit builds that type, and always with the outer message already redacted — the start wrap,
    `ExplainListFailure`, or an earlier relay — so relaying twice changes nothing.
-2. An `OperationCanceledException` (including `TaskCanceledException`) or an `ObjectDisposedException` with no inner
-   exception and nothing in its message to redact is returned unchanged, keeping its type, `CancellationToken` and
-   `ObjectName`. Otherwise it is rebuilt as a `TaskCanceledException` for a `TaskCanceledException`, an
-   `OperationCanceledException` for any other cancellation (both with the same token), or an `ObjectDisposedException`,
-   with the redacted message and `RedactFailure(failure, plan)` as its cause. Disposal is tested before rule 3 because
-   `ObjectDisposedException` derives from `InvalidOperationException`.
+2. An `OperationCanceledException`, `TaskCanceledException` or `ObjectDisposedException` passes unchanged only when it
+   is fully verified clean: its type is exactly one of those three (a subclass can add properties AgentKit cannot
+   inspect), it has no inner exception, its `Data` is empty (a value is an object a host can cast and read, whatever its
+   text shows), a `TaskCanceledException`'s `Task.AsyncState` is null, and the redactor changes none of its `Message`,
+   `Source`, `HelpLink`, `StackTrace` text or, for a disposal, `ObjectName`. Passing unchanged keeps its instance,
+   stack, `CancellationToken` and `ObjectName`. Anything else fails closed and is rebuilt as the same kind: a
+   `TaskCanceledException` for a `TaskCanceledException` and an `OperationCanceledException` for any other
+   cancellation, both with the same token, the redacted message and `RedactFailure(failure, plan)` as their cause (the
+   `Task` is not kept). A disposal with no inner exception becomes `new ObjectDisposedException(redacted ObjectName,
+   redacted message)`, keeping its object name redacted; its message is the original's without the object name line
+   .NET appends, so the name appears once, and it has no cause because the original had none. A disposal with an inner
+   exception becomes `new ObjectDisposedException(redacted message, RedactFailure(failure, plan))`: .NET has no public
+   constructor taking both an object name and an inner exception, so keeping the cause as a redacted copy wins and the
+   object name survives only as redacted text in the message, with `ObjectName` empty. Disposal is tested before
+   rule 3 because `ObjectDisposedException` derives from `InvalidOperationException`.
 3. An `InvalidOperationException` becomes a new `InvalidOperationException`.
 4. An `IOException`, including a subclass, becomes a new `IOException`.
 5. A `TimeoutException` becomes a new `TimeoutException`.

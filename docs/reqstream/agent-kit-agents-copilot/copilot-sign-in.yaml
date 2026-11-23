@@ -270,9 +270,11 @@ sections:
               type, a cancellation with its token, a task cancellation as its own type, a disposal, and
               any other type as an invalid operation — whose message has every token the sign-in knows
               and any text shaped like a GitHub token redacted and whose cause is the failure's
-              redacted copy; shall return a cancellation or disposal that has no cause and nothing to
-              redact unchanged; and shall return a failure already built around a redacted copy
-              unchanged.
+              redacted copy, except that a disposal with no cause keeps its object name, redacted, and
+              no cause; shall return unchanged a cancellation or disposal of exactly its base type with
+              no cause, no data, no task state and nothing to redact in its message, source, help link,
+              stack trace or object name; and shall return a failure already built around a redacted
+              copy unchanged.
             tags: [security]
             justification: |
               A failure the runtime or the SDK raises can quote a token in its message, its chain or
@@ -282,13 +284,22 @@ sections:
               the kind means a host still catches what it caught before; a type outside the base class
               library becomes an invalid operation because a host cannot catch a type it does not
               reference, and the original type's name is kept in the cause. A clean cancellation or
-              disposal passes unchanged so its token and object name survive, and a failure AgentKit
-              already built around a redacted copy is left alone so relaying twice changes nothing.
+              disposal passes unchanged so its instance, stack, token and object name survive. Its data
+              values, a task cancellation's task state and a subclass's own properties are objects
+              AgentKit cannot inspect, so any of them fails closed and the exception is rebuilt. A
+              rebuilt disposal keeps its object name, redacted, when it has no cause; .NET has no public
+              constructor taking both an object name and a cause, so a disposal with a cause keeps the
+              cause as a redacted copy and its object name only as redacted text in its message. A
+              failure AgentKit already built around a redacted copy is left alone so relaying twice
+              changes nothing.
             tests:
               - CopilotSignIn_RedactRelayed_SessionErrorQuotingATokenAndRpcData_IsRelayedRedacted
               - CopilotSignIn_RedactRelayed_KeepsTheKindAHostCatches
               - CopilotSignIn_RedactRelayed_CleanCancellationOrDisposal_PassesUnchanged
               - CopilotSignIn_RedactRelayed_CancellationOrDisposalCarryingASecret_IsRebuiltRedacted
+              - CopilotSignIn_RedactRelayed_CancellationOrDisposalCarryingASecretOutsideItsMessage_IsRebuiltRedacted
+              - CopilotSignIn_RedactRelayed_DisposalNamingASecret_IsRebuiltWithTheNameRedacted
+              - CopilotSignIn_RedactRelayed_CancellationItCannotInspect_IsRebuilt
               - CopilotSignIn_RedactRelayed_TaskCancellationCarryingASecret_StaysATaskCancellation
               - CopilotSignIn_RedactRelayed_AlreadyRelayed_IsReturnedUnchanged
               - CopilotSignIn_RelayAsync_FailureThrownEitherWay_IsRelayedRedacted

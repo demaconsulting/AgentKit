@@ -379,6 +379,9 @@ neither value.
 - `CopilotSignIn_RedactRelayed_KeepsTheKindAHostCatches`
 - `CopilotSignIn_RedactRelayed_CleanCancellationOrDisposal_PassesUnchanged`
 - `CopilotSignIn_RedactRelayed_CancellationOrDisposalCarryingASecret_IsRebuiltRedacted`
+- `CopilotSignIn_RedactRelayed_CancellationOrDisposalCarryingASecretOutsideItsMessage_IsRebuiltRedacted`
+- `CopilotSignIn_RedactRelayed_DisposalNamingASecret_IsRebuiltWithTheNameRedacted`
+- `CopilotSignIn_RedactRelayed_CancellationItCannotInspect_IsRebuilt`
 - `CopilotSignIn_RedactRelayed_TaskCancellationCarryingASecret_StaysATaskCancellation`
 - `CopilotSignIn_RedactRelayed_AlreadyRelayed_IsReturnedUnchanged`
 - `CopilotSignIn_RelayAsync_FailureThrownEitherWay_IsRelayedRedacted`
@@ -400,15 +403,38 @@ naming the original type, and a clean chain.
 
 The third asserts that an `OperationCanceledException` carrying a token, a `TaskCanceledException`
 and an `ObjectDisposedException`, none with a cause or anything to redact, come back as the same
-instance. The fourth relays an `OperationCanceledException` whose cause quotes a secret and an
+instance, and so does a thrown `OperationCanceledException` whose stack trace and source the relay
+also checks. The fourth relays an `OperationCanceledException` whose cause quotes a secret and an
 `ObjectDisposedException` whose message and cause quote secrets: each is rebuilt as the same type —
 not the same instance — the cancellation keeping its token, the disposal's message redacted, and both
-chains clean. The fifth relays a `TaskCanceledException` whose cause quotes a secret: it is rebuilt as a new
+chains clean.
+
+The fifth, a theory, relays an `OperationCanceledException` and a `TaskCanceledException`, each with a
+token, and an `ObjectDisposedException` naming `CopilotClient`, each with a clean message but a secret
+in a data key, a data value, its source or its help link. It first proves the walk sees the secret on
+the original, then asserts the result is exactly the same type and not the same instance, that a
+cancellation keeps its token and has a `CopilotRedactedException` cause, that the disposal keeps its
+object name and has no cause, that no exception in the result's chain carries data, and that the
+chain is clean.
+
+The sixth relays an `ObjectDisposedException` with no cause whose object name quotes a secret: it is
+rebuilt with the object name `client-<redacted>`, a message naming it exactly once, no cause and a clean
+chain. It also relays an `ObjectDisposedException` whose message quotes a secret and which has a cause:
+it is rebuilt with the redacted message and a `CopilotRedactedException` cause naming
+`ObjectDisposedException`, with a clean chain.
+
+The seventh relays two cancellations with clean messages that AgentKit cannot fully inspect. The first
+is a subclass holding a secret in a property of its own, which the walk sees on the original; it is
+rebuilt as exactly an `OperationCanceledException`, keeping its token and with a redacted-copy cause.
+The second is a `TaskCanceledException` over a canceled task whose state is a secret; it is rebuilt as
+a `TaskCanceledException` without the task and with a redacted-copy cause. Both chains are clean.
+
+The eighth relays a `TaskCanceledException` whose cause quotes a secret: it is rebuilt as a new
 `TaskCanceledException` of exactly that type, keeping its token and message, with a redacted copy naming
-`TaskCanceledException` as its cause and a clean chain. The sixth asserts that a failure already built around a
+`TaskCanceledException` as its cause and a clean chain. The ninth asserts that a failure already built around a
 redacted copy, and a failure relayed once, are each returned unchanged, so relaying twice changes nothing.
 
-The seventh runs operations through `RelayAsync`: one that throws an `IOException` quoting a secret
+The tenth runs operations through `RelayAsync`: one that throws an `IOException` quoting a secret
 synchronously, before any task exists, and one whose task carries a `JsonException` quoting it, are
 relayed as a new `IOException` and a new `InvalidOperationException` reading `<redacted>` in its place
 with clean chains; a clean `OperationCanceledException` arrives as the same instance; and a

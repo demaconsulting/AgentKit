@@ -1875,8 +1875,9 @@ public sealed class CopilotSignInTests : IDisposable
     }
 
     /// <summary>
-    ///     Proves a cancellation or a disposal carrying nothing to redact passes unchanged, keeping its
-    ///     instance, type and token.
+    ///     Proves a cancellation or a disposal of exactly its base type carrying nothing to redact passes
+    ///     unchanged, keeping its instance, type and token, including a thrown cancellation whose stack
+    ///     trace and source the relay also checks.
     /// </summary>
     [Fact]
     public void CopilotSignIn_RedactRelayed_CleanCancellationOrDisposal_PassesUnchanged()
@@ -1886,11 +1887,162 @@ public sealed class CopilotSignInTests : IDisposable
         var canceled = new OperationCanceledException("canceled", source.Token);
         var taskCanceled = new TaskCanceledException("task canceled");
         var disposed = new ObjectDisposedException("CopilotRuntime");
+        var thrown = Thrown(new OperationCanceledException("canceled", source.Token));
 
         // Act and assert
         Assert.Same(canceled, CopilotSignIn.RedactRelayed(canceled, PlanKnowing("s3cr3t-unused")));
         Assert.Same(taskCanceled, CopilotSignIn.RedactRelayed(taskCanceled, plan: null));
         Assert.Same(disposed, CopilotSignIn.RedactRelayed(disposed, plan: null));
+        Assert.NotNull(thrown.StackTrace);
+        Assert.NotNull(thrown.Source);
+        Assert.Same(thrown, CopilotSignIn.RedactRelayed(thrown, PlanKnowing("s3cr3t-unused")));
+    }
+
+    /// <summary>
+    ///     Proves a cancellation or a disposal whose message is clean but which carries a secret
+    ///     elsewhere a host can read — a data key or value, its source or its help link — is rebuilt as
+    ///     exactly the same type, keeping a cancellation's token and a disposal's object name, with no
+    ///     data and nothing in its chain carrying the secret.
+    /// </summary>
+    /// <param name="kind">The failure the SDK raised.</param>
+    /// <param name="where">Where the failure carries the secret.</param>
+    [Theory]
+    [InlineData("oce", "data-key")]
+    [InlineData("oce", "data-value")]
+    [InlineData("oce", "source")]
+    [InlineData("task", "data-value")]
+    [InlineData("task", "help-link")]
+    [InlineData("disposed", "data-key")]
+    [InlineData("disposed", "source")]
+    [InlineData("disposed", "help-link")]
+    public void CopilotSignIn_RedactRelayed_CancellationOrDisposalCarryingASecretOutsideItsMessage_IsRebuiltRedacted(
+        string kind,
+        string where)
+    {
+        // Arrange: a clean message, with the secret held only where the message check cannot see it
+        const string secret = "s3cr3t-outside-xyz";
+        var plan = PlanKnowing(secret);
+        using var source = new CancellationTokenSource();
+        Exception failure = kind switch
+        {
+            "oce" => new OperationCanceledException("canceled", source.Token),
+            "task" => new TaskCanceledException("task canceled", null, source.Token),
+            _ => new ObjectDisposedException("CopilotClient"),
+        };
+        switch (where)
+        {
+            case "data-key":
+                failure.Data[secret] = "detail";
+                break;
+            case "data-value":
+                failure.Data["detail"] = secret;
+                break;
+            case "source":
+                failure.Source = secret;
+                break;
+            default:
+                failure.HelpLink = $"https://example.invalid/{secret}";
+                break;
+        }
+
+        // Act
+        var relayed = CopilotSignIn.RedactRelayed(failure, plan);
+
+        // Assert: the original exposes the secret, the relayed exception is a clean rebuild of the same type
+        Assert.ThrowsAny<Xunit.Sdk.XunitException>(() => SecretAssert.NoSecret(failure, secret));
+        Assert.Equal(failure.GetType(), relayed.GetType());
+        Assert.NotSame(failure, relayed);
+        if (relayed is OperationCanceledException canceled)
+        {
+            Assert.Equal(source.Token, canceled.CancellationToken);
+            Assert.IsType<CopilotRedactedException>(relayed.InnerException);
+        }
+        else
+        {
+            var disposal = Assert.IsType<ObjectDisposedException>(relayed);
+            Assert.Equal("CopilotClient", disposal.ObjectName);
+            Assert.Null(disposal.InnerException);
+        }
+
+        for (Exception? current = relayed; current is not null; current = current.InnerException)
+        {
+            Assert.Empty(current.Data);
+        }
+
+        SecretAssert.NoSecret(relayed, secret);
+    }
+
+    /// <summary>
+    ///     Proves a disposal with no inner exception whose object name quotes a secret is rebuilt as an
+    ///     <see cref="ObjectDisposedException"/> keeping its object name redacted and naming it once, and
+    ///     that a disposal with an inner exception is rebuilt with the redacted copy as its cause; neither
+    ///     carries the secret.
+    /// </summary>
+    [Fact]
+    public void CopilotSignIn_RedactRelayed_DisposalNamingASecret_IsRebuiltWithTheNameRedacted()
+    {
+        // Arrange
+        const string secret = "s3cr3t-disposed-xyz";
+        var plan = PlanKnowing(secret);
+        var named = new ObjectDisposedException($"client-{secret}");
+        var caused = new ObjectDisposedException($"Cannot access client-{secret}.", new IOException($"pipe {secret}"));
+
+        // Act
+        var relayedNamed = CopilotSignIn.RedactRelayed(named, plan);
+        var relayedCaused = CopilotSignIn.RedactRelayed(caused, plan);
+
+        // Assert: the name is kept redacted, with the message naming it once
+        var disposal = Assert.IsType<ObjectDisposedException>(relayedNamed);
+        Assert.NotSame(named, disposal);
+        Assert.Equal("client-<redacted>", disposal.ObjectName);
+        Assert.Equal(new ObjectDisposedException("client-<redacted>").Message, disposal.Message);
+        Assert.Null(disposal.InnerException);
+        SecretAssert.NoSecret(disposal, secret);
+
+        // Assert: a disposal with a cause keeps the redacted copy as its cause
+        var withCause = Assert.IsType<ObjectDisposedException>(relayedCaused);
+        Assert.NotSame(caused, withCause);
+        Assert.Equal("Cannot access client-<redacted>.", withCause.Message);
+        var cause = Assert.IsType<CopilotRedactedException>(withCause.InnerException);
+        Assert.Equal(typeof(ObjectDisposedException).FullName, cause.OriginalTypeName);
+        SecretAssert.NoSecret(withCause, secret);
+    }
+
+    /// <summary>
+    ///     Proves a cancellation AgentKit cannot fully inspect is rebuilt even when its message is clean:
+    ///     a subclass holding a secret in a property of its own becomes exactly an
+    ///     <see cref="OperationCanceledException"/>, and a task cancellation whose task state is a secret
+    ///     stays a <see cref="TaskCanceledException"/> without the task; neither carries the secret.
+    /// </summary>
+    [Fact]
+    public void CopilotSignIn_RedactRelayed_CancellationItCannotInspect_IsRebuilt()
+    {
+        // Arrange
+        const string secret = "s3cr3t-hidden-xyz";
+        var plan = PlanKnowing(secret);
+        using var source = new CancellationTokenSource();
+        var subclass = new SecretHoldingCancellationException("canceled", secret, source.Token);
+        var completion = new TaskCompletionSource(secret);
+        completion.SetCanceled(TestContext.Current.CancellationToken);
+        var taskCanceled = new TaskCanceledException(completion.Task);
+
+        // Act
+        var relayedSubclass = CopilotSignIn.RedactRelayed(subclass, plan);
+        var relayedTask = CopilotSignIn.RedactRelayed(taskCanceled, plan);
+
+        // Assert: the subclass becomes its base kind, keeping its token
+        Assert.ThrowsAny<Xunit.Sdk.XunitException>(() => SecretAssert.NoSecret(subclass, secret));
+        Assert.Equal(typeof(OperationCanceledException), relayedSubclass.GetType());
+        Assert.Equal(source.Token, ((OperationCanceledException)relayedSubclass).CancellationToken);
+        Assert.IsType<CopilotRedactedException>(relayedSubclass.InnerException);
+        SecretAssert.NoSecret(relayedSubclass, secret);
+
+        // Assert: the task cancellation stays one, without the task holding the state
+        var rebuilt = Assert.IsType<TaskCanceledException>(relayedTask);
+        Assert.NotSame(taskCanceled, rebuilt);
+        Assert.Null(rebuilt.Task);
+        Assert.IsType<CopilotRedactedException>(rebuilt.InnerException);
+        SecretAssert.NoSecret(rebuilt, secret);
     }
 
     /// <summary>
@@ -2145,6 +2297,21 @@ public sealed class CopilotSignInTests : IDisposable
         {
             return caught;
         }
+    }
+
+    /// <summary>
+    ///     A cancellation holding a value in a property of its own, as an SDK's subclass could.
+    /// </summary>
+    /// <param name="message">The message.</param>
+    /// <param name="detail">The value it holds.</param>
+    /// <param name="token">The cancellation token.</param>
+    public sealed class SecretHoldingCancellationException(string message, string detail, CancellationToken token)
+        : OperationCanceledException(message, token)
+    {
+        /// <summary>
+        ///     Gets the value it holds.
+        /// </summary>
+        public string Detail { get; } = detail;
     }
 
     /// <summary>

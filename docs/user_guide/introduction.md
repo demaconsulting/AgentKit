@@ -1276,9 +1276,11 @@ carries a token. When a runtime or SDK failure reaches you — a turn that fails
 consolidation that fails, a session the runtime fails to create, resume or delete, or a model listing that fails other
 than for a lost or unsigned connection — it arrives as a new exception of the same kind (`IOException`,
 `TimeoutException` or `InvalidOperationException`; any other type as `InvalidOperationException`), with the message
-redacted and that redacted copy as its inner exception. A cancellation or disposal that carries nothing to redact
-reaches you unchanged. A cancellation that carries a cause or a token, including a canceled runtime start, is rebuilt
-with the same token, a redacted message and that redacted copy as its cause; a `TaskCanceledException` stays one. A
+redacted and that redacted copy as its inner exception. A cancellation or disposal of exactly its base type that carries
+no cause, no data and nothing to redact reaches you unchanged. Any other cancellation, including a canceled runtime
+start, is rebuilt with the same token, a redacted message and that redacted copy as its cause; a `TaskCanceledException`
+stays one. A disposal with no cause is rebuilt with its object name and message redacted; one with a cause keeps the
+redacted copy as its cause, and its object name appears only in its redacted message. A
 failed read of a started runtime's status is relayed the same way.
 
 **What your logger receives.** Every entry AgentKit writes to the logger you pass, and every entry the SDK writes to
