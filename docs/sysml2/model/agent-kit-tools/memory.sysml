@@ -1,13 +1,13 @@
 package AgentKitTools_MemorySubsystem {
     private import SoftwareItemMetadata::*;
-    private import AgentKitTools_MemoryOptions::*;
-    private import AgentKitTools_MemoryStore::*;
-    private import AgentKitTools_MemoryFileTool::*;
-    private import AgentKitTools_MemoryRecallTool::*;
-    private import AgentKitTools_MemoryUpdateTool::*;
-    private import AgentKitTools_MemoryReviseTool::*;
-    private import AgentKitTools_MemoryForgetTool::*;
-    private import AgentKitTools_MemoryPack::*;
+    public import AgentKitTools_MemoryOptions::*;
+    public import AgentKitTools_MemoryStore::*;
+    public import AgentKitTools_MemoryFileTool::*;
+    public import AgentKitTools_MemoryRecallTool::*;
+    public import AgentKitTools_MemoryUpdateTool::*;
+    public import AgentKitTools_MemoryReviseTool::*;
+    public import AgentKitTools_MemoryForgetTool::*;
+    public import AgentKitTools_MemoryPack::*;
 
     part def Memory {
         doc /* The memory tool family: a searchable record of what an agent has learned, each memory a short embedded descriptor with a richer unembedded detail payload and its provenance, filed with deterministic near-duplicate detection, recalled whole by vector search, corrected with or without re-embedding, and forgotten one at a time. Published as one pack under the memory family prefix, requiring no host capability, consulting no path policy, and taking its embedding generator, its controls and its persistence from the composing application. */

@@ -1,15 +1,15 @@
 package AgentKitTools_TextFileSubsystem {
     private import SoftwareItemMetadata::*;
-    private import AgentKitTools_TextFileSearchTool::*;
-    private import AgentKitTools_TextFileReadTool::*;
-    private import AgentKitTools_TextFileCreateTool::*;
-    private import AgentKitTools_TextFileWriteTool::*;
-    private import AgentKitTools_TextFileReplaceTool::*;
-    private import AgentKitTools_TextFileCutLinesTool::*;
-    private import AgentKitTools_TextFileCopyLinesTool::*;
-    private import AgentKitTools_TextFilePasteLinesTool::*;
-    private import AgentKitTools_TextFileLineBuffers::*;
-    private import AgentKitTools_TextFilePack::*;
+    public import AgentKitTools_TextFileSearchTool::*;
+    public import AgentKitTools_TextFileReadTool::*;
+    public import AgentKitTools_TextFileCreateTool::*;
+    public import AgentKitTools_TextFileWriteTool::*;
+    public import AgentKitTools_TextFileReplaceTool::*;
+    public import AgentKitTools_TextFileCutLinesTool::*;
+    public import AgentKitTools_TextFileCopyLinesTool::*;
+    public import AgentKitTools_TextFilePasteLinesTool::*;
+    public import AgentKitTools_TextFileLineBuffers::*;
+    public import AgentKitTools_TextFilePack::*;
 
     part def TextFile {
         doc /* The text file tool family: policy-governed searching, reading and editing of the contents of text files, published as one pack under the text_file family prefix. */

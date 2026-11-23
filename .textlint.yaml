@@ -51,6 +51,10 @@ words:
   - thirdparty
   - venv
   - yamlfix
+  # SysML v2 tooling and rule names cited by the sysml2-modeling standard.
+  - distinguishability
+  - Sensmetry
+  - Syside
   - apimark
   - docstats
   - inspectable

@@ -1,9 +1,9 @@
 package AgentKitToolsVisual {
     private import SoftwareItemMetadata::*;
-    private import AgentKitToolsVisual_ImageSubsystem::*;
-    private import AgentKitToolsVisual_DiagramSubsystem::*;
-    private import AgentKitToolsVisual_RenderingSubsystem::*;
-    private import AgentKitToolsVisual_VisualOptions::*;
+    public import AgentKitToolsVisual_ImageSubsystem::*;
+    public import AgentKitToolsVisual_DiagramSubsystem::*;
+    public import AgentKitToolsVisual_RenderingSubsystem::*;
+    public import AgentKitToolsVisual_VisualOptions::*;
 
     doc
     /*

@@ -1,9 +1,10 @@
 // Views rendered into docs/design/generated/ for the Design document.
-// One repository-level views package imports each system and subsystem package so every
-// 'expose' statement can reference its target part def directly. Per SysML2Tools syntax,
-// 'expose' is only valid inside a named 'view' usage (not a 'view def' definition), and it -
-// not 'render' - is what scopes the rendered diagram content. SoftwareStructureView is an
-// InterconnectionView overview: each system renders as a frame with its direct members.
+// One repository-level views package imports each system facade, which re-exports its
+// subsystem and unit packages, so every 'expose' statement can reference its target part def
+// directly. Per SysML2Tools syntax, 'expose' is only valid inside a named 'view' usage (not a
+// 'view def' definition), and it - not 'render' - is what scopes the rendered diagram content.
+// SoftwareStructureView is an InterconnectionView overview: each system renders as a frame
+// with its direct members.
 // The per-system and per-subsystem views expose the container and its direct children and
 // render as interconnection diagrams so nested composition renders correctly.
 package AgentKitDesignViews {
@@ -15,15 +16,7 @@ package AgentKitDesignViews {
     private import AgentKitAgentsChatClient::*;
     private import AgentKitAgentsCopilot::*;
     private import AgentKitAgentsOllama::*;
-    private import AgentKitTools_TextFileSubsystem::*;
-    private import AgentKitTools_FileSubsystem::*;
-    private import AgentKitTools_MarkdownSubsystem::*;
-    private import AgentKitTools_TodoSubsystem::*;
-    private import AgentKitTools_MemorySubsystem::*;
-    private import AgentKitTools_AgentSubsystem::*;
-    private import AgentKitToolsVisual_ImageSubsystem::*;
-    private import AgentKitToolsVisual_DiagramSubsystem::*;
-    private import AgentKitToolsVisual_RenderingSubsystem::*;
+    // Each system facade re-exports every subsystem and unit package beneath it.
 
     view SoftwareStructureView : InterconnectionView {
         expose AgentKitCore::AgentKitCoreSystem;
@@ -102,9 +95,9 @@ package AgentKitDesignViews {
     }
 
     view RenderingView {
-        // Qualified: the standard Views library also declares a 'Rendering'.
-        expose AgentKitToolsVisual_RenderingSubsystem::Rendering;
-        expose AgentKitToolsVisual_RenderingSubsystem::Rendering::*;
+        // Qualified through the system facade: the standard Views library also declares a 'Rendering'.
+        expose AgentKitToolsVisual::Rendering;
+        expose AgentKitToolsVisual::Rendering::*;
         render asInterconnectionDiagram;
     }
 
