@@ -160,6 +160,7 @@ helper home is gone.
 **Tests**:
 
 - `CopilotSignIn_ResolveAsync_HelperFails_FallsThroughWithAFinding`
+- `CopilotSignIn_ResolveAsync_HelperCannotBeCreated_FallsThroughWithAFinding`
 - `CopilotSignIn_ResolveAsync_HelperTimesOut_FallsThroughWithAFinding`
 - `CopilotSignIn_ResolveAsync_AccountListFails_FallsThroughWithAFinding`
 - `CopilotSignIn_ResolveAsync_HelperNotSignedInAsTheAccount_DoesNotReadTheAccountList`
@@ -169,7 +170,9 @@ helper home is gone.
 Error paths. A helper whose start throws (with a token-shaped string in its message), one that never
 answers within a 100 ms limit, and an account list that throws the SDK's own deserialization error
 each leave the plan to the runtime's fallbacks with a finding — redacted, for the start failure —
-rather than failing. The caller's cancellation while the helper runs propagates.
+rather than failing. A helper client whose construction throws (again with a token-shaped string in
+its message) likewise leaves a redacted finding, with nothing to dispose and its home deleted. The
+caller's cancellation while the helper runs propagates.
 
 #### AgentKitAgentsCopilot-CopilotSignIn-AsksTheHostsTokenProvider: The Host's Provider, at Start and per Session
 

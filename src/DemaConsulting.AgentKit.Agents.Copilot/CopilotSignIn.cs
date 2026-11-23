@@ -922,9 +922,12 @@ internal static partial class CopilotSignIn
     {
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(context.HelperTimeout);
-        var helper = context.CreateHelper(options);
+        ICopilotSignInHelper? helper = null;
         try
         {
+            // Created inside the guard: a client that cannot be constructed is a finding, not a failed start
+            helper = context.CreateHelper(options);
+
             // Signed in through a stored sign-in as exactly this account, before the account list is read
             await helper.StartAsync(timeout.Token).ConfigureAwait(false);
             var status = await helper.GetAuthStatusAsync(timeout.Token).ConfigureAwait(false);
@@ -971,13 +974,16 @@ internal static partial class CopilotSignIn
         }
         finally
         {
-            try
+            if (helper is not null)
             {
-                await helper.DisposeAsync().ConfigureAwait(false);
-            }
-            catch (Exception)
-            {
-                // Intentionally swallowed: stopping the helper must not replace the step's outcome.
+                try
+                {
+                    await helper.DisposeAsync().ConfigureAwait(false);
+                }
+                catch (Exception)
+                {
+                    // Intentionally swallowed: stopping the helper must not replace the step's outcome.
+                }
             }
         }
     }

@@ -143,7 +143,8 @@ level and the logger:
 `COPILOT_GITHUB_TOKEN`, `GH_TOKEN` and `GITHUB_TOKEN` environment variables, or an explicit token.
 AgentKit sets an explicit token when the host, its token provider or the user's Copilot CLI sign-in
 supplies one, and the GitHub host through `COPILOT_GH_HOST` in the replacement environment, as a bare
-host name, the form the runtime reads.
+host name, the form the runtime reads. There is no client-level working directory; AgentKit's
+factories carry one per session.
 
 **The keychain switch cannot be turned back on in Empty mode.** For every runtime the SDK spawns in
 Empty mode it sets the variable that disables the system keychain after the caller's replacement environment; no client,
@@ -163,7 +164,7 @@ for status everywhere, calls `GetAllUsersAsync` only in the helper, only after t
 stored sign-in as the expected account, with every token variable withheld and the GitHub CLI hidden
 from the helper's `PATH` (an empty `GH_CONFIG_DIR` alone does not hide a GitHub CLI that keeps its
 token in the system credential store), and treats a failure as a finding.
-There is no client-level working directory; AgentKit's factories carry one per session.
+
 **Session options are built fresh for every session.** The SDK mutates the options object it is
 handed when it applies its mode defaults, and `Clone()` is shallow — it shares the infinite-session
 configuration, the hooks and the delegates — so AgentKit never reuses or clones an options object; it

@@ -365,6 +365,30 @@ public sealed class CopilotSignInTests : IDisposable
     }
 
     /// <summary>
+    ///     Proves a helper client that cannot be constructed leaves a redacted finding and falls
+    ///     through to the runtime's fallbacks, with nothing to dispose and its home deleted.
+    /// </summary>
+    [Fact]
+    public async Task CopilotSignIn_ResolveAsync_HelperCannotBeCreated_FallsThroughWithAFinding()
+    {
+        // Arrange
+        WriteUserConfiguration(UserConfiguration);
+        Helper.CreateFailure = new InvalidOperationException($"bad options; stray {SentinelToken}");
+
+        // Act
+        var plan = await ResolveAsync(new CopilotRuntimeOptions(DataDirectory), new Hashtable());
+
+        // Assert
+        Assert.Null(plan.Source);
+        Assert.Null(plan.Token);
+        Assert.Contains("could not be run", plan.CopilotCliFinding, StringComparison.Ordinal);
+        Assert.DoesNotContain(SentinelToken, plan.CopilotCliFinding, StringComparison.Ordinal);
+        Assert.Equal(1, Helper.Created);
+        Assert.False(Helper.Disposed);
+        Assert.All(_helperHomes, home => Assert.False(Directory.Exists(home)));
+    }
+
+    /// <summary>
     ///     Proves a helper that does not answer within its time limit leaves a finding and falls
     ///     through, with the helper disposed and its home deleted.
     /// </summary>
@@ -1051,6 +1075,11 @@ public sealed class CopilotSignInTests : IDisposable
             [new AccountAllUsers { AuthInfo = new AuthInfoUser { Host = AccountHost, Login = AccountLogin }, Token = SentinelToken }];
 
         /// <summary>
+        ///     Gets or sets the failure creating the helper raises.
+        /// </summary>
+        public Exception? CreateFailure { get; set; }
+
+        /// <summary>
         ///     Gets or sets the failure the start raises.
         /// </summary>
         public Exception? StartFailure { get; set; }
@@ -1084,6 +1113,11 @@ public sealed class CopilotSignInTests : IDisposable
         {
             Created++;
             Disposed = false;
+            if (CreateFailure is not null)
+            {
+                throw CreateFailure;
+            }
+
             _home = Assert.IsType<SpawnedStdioRuntimeConnection>(options.Runtime).BaseDirectory;
             return this;
         }

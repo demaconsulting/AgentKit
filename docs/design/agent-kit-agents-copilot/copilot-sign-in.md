@@ -162,9 +162,10 @@ is a `Problem` naming the file.
    authenticated through a stored sign-in (`authType` `user`) as exactly the account's host and login
    (login compared case-insensitively). Only then read the account list, guarded, and take the token
    of the `AuthInfoUser` entry with the account's host and login.
-5. Always dispose the helper (stopping its process), then delete the temporary home by its exact path
-   (`DeleteHelperHome`, retrying briefly while a stopped process releases its files); a home that
-   cannot be deleted is logged as a warning naming the path.
+5. Always dispose the helper, if one was created (stopping its process; the SDK bounds the stop),
+   then delete the temporary home by its exact path (`DeleteHelperHome`, retrying briefly while a
+   stopped process releases its files); a home that cannot be deleted is logged as a warning naming
+   the path.
 
 **Postconditions:** A token, or none with a problem. Never throws but for the caller's cancellation.
 
@@ -219,7 +220,7 @@ name; the result is lower case. `HostName` strips the scheme. `NormalizeHost` th
 | No, unreadable, oversized or malformed Copilot CLI configuration; no or invalid account | Finding; next source |
 | Copilot CLI account on another host than the one requested | Finding; next source |
 | Helper home cannot be created or written | Finding; next source |
-| Helper fails to start, or does not answer within the time limit | Finding; next source |
+| Helper cannot be created or fails to start, or does not answer within the time limit | Finding; next source |
 | Helper not signed in, or signed in as another account or kind | Finding; account list not read; next source |
 | Account list cannot be read (SDK defect) | Finding; next source |
 | No token for the account | Finding; next source |

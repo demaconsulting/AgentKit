@@ -112,6 +112,7 @@ sections:
               sign-in, so that failure is a finding too.
             tests:
               - CopilotSignIn_ResolveAsync_HelperFails_FallsThroughWithAFinding
+              - CopilotSignIn_ResolveAsync_HelperCannotBeCreated_FallsThroughWithAFinding
               - CopilotSignIn_ResolveAsync_HelperTimesOut_FallsThroughWithAFinding
               - CopilotSignIn_ResolveAsync_AccountListFails_FallsThroughWithAFinding
               - CopilotSignIn_ResolveAsync_HelperNotSignedInAsTheAccount_DoesNotReadTheAccountList

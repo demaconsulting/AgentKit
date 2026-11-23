@@ -1267,7 +1267,8 @@ and deletes the folder afterwards. The CLI reads the token from the system crede
 `copilot login` put it; AgentKit never reads the credential store itself. The runtime then receives
 the token and the host, nothing else: none of the user's MCP servers, hooks, agents, skills, plugins,
 instructions, settings or history, and its data directory stays private. The token is kept in memory
-only — AgentKit does not write or log it. This adds a second or two to the start.
+and handed only to the runtime process, in its environment; AgentKit never writes or logs it. This
+adds a second or two to the start.
 
 **GitHub Enterprise Cloud hosts.** Each source is used with its own host. The Copilot CLI sign-in
 uses its account's host. A token needs its host too: GitHub refuses a token for a `*.ghe.com` account
