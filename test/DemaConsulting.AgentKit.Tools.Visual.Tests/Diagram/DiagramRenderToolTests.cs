@@ -430,14 +430,14 @@ public class DiagramRenderToolTests
     [Fact]
     public async Task DiagramRenderTool_Render_BeyondTheTimeout_IsReportedAsATimeout()
     {
-        // Arrange: a 100-millisecond timeout and a model far heavier than that
+        // Arrange: a 100-millisecond timeout and a model that loops far longer than that
         var tool = CreateTool(
             DiagramPreview.Image,
             new PathPolicy(Path.GetTempPath(), [PathRule.Unrestricted(AccessLevel.ReadOnly)], new ToolLimits(maxReadBytes: 1024 * 1024)),
             options: new VisualOptions { RenderTimeout = TimeSpan.FromMilliseconds(100) });
 
         // Act: draw it
-        var result = Assert.IsType<string>(await InvokeAsync(tool, new() { ["format"] = "openscad", ["source"] = RenderSamples.HeavyScad() }));
+        var result = Assert.IsType<string>(await InvokeAsync(tool, new() { ["format"] = "openscad", ["source"] = RenderSamples.EndlessScad() }));
 
         // Assert: reported as a timeout, with advice
         Assert.StartsWith("Render failed (render-timeout)", result, StringComparison.Ordinal);

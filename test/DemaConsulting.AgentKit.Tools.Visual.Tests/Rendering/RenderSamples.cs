@@ -161,22 +161,15 @@ internal static class RenderSamples
     }
 
     /// <summary>
-    ///     Builds an OpenSCAD model heavy enough that no render of it finishes within a fraction
-    ///     of a second: 1,600 finely tessellated spheres.
+    ///     Builds an OpenSCAD model that loops for tens of millions of evaluation steps without
+    ///     drawing, so no render of it finishes within a fraction of a second; the final cube is
+    ///     reached only if the loop completes.
     /// </summary>
     /// <returns>The OpenSCAD source.</returns>
-    internal static string HeavyScad()
+    internal static string EndlessScad()
     {
-        var source = new StringBuilder();
-        for (var x = 0; x < 40; x++)
-        {
-            for (var y = 0; y < 40; y++)
-            {
-                source.Append("translate([").Append(x * 3).Append(',').Append(y * 3).Append(",0]) sphere(1.4, $fn = 48);\n");
-            }
-        }
-
-        return source.ToString();
+        return "for (i = [0:9999]) for (j = [0:9999]) if (pow(sin(i * j), 2) + cos(i + j) < -5) cube(1);\n"
+            + "cube(1);\n";
     }
 
     /// <summary>

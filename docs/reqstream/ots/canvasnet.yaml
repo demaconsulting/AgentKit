@@ -185,7 +185,8 @@ sections:
             justification: |
               The render timeout is first a cancellation the library honors; the abandonment
               after a grace period is defense in depth behind it. AgentKit's own test renders a
-              model far heavier than the timeout allows and observes the timeout outcome.
+              model that loops far longer than the timeout allows, polling the token on every
+              loop turn, and observes the timeout outcome.
             tags: [ots]
             tests:
               - VisualRenderer_RenderAsync_RenderBeyondTheTimeout_FailsAsRenderTimeout

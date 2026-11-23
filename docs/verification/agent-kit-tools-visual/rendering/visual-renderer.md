@@ -10,10 +10,10 @@ outcomes it promotes — and a substitute library would verify none of it. Sizes
 because they are deterministic for a vector source of a known size.
 
 **No scenario asserts a duration.** The timeout scenario asserts the `render-timeout` outcome only,
-for a model far heavier than its 100 ms timeout. The render a scenario must hold in progress is held
-**deterministically** by a file-access delegate that blocks until the test releases it, ignoring the
-render's token — so the grace-period abandonment and the gate are exercised by a render that is
-known not to stop, rather than by one assumed to be slow.
+for a model that loops without drawing far longer than its 100 ms timeout. The render a scenario
+must hold in progress is held **deterministically** by a file-access delegate that blocks until the
+test releases it, ignoring the render's token — so the grace-period abandonment and the gate are
+exercised by a render that is known not to stop, rather than by one assumed to be slow.
 
 Unit tests reside in `Rendering/VisualRendererTests.cs` within the
 `DemaConsulting.AgentKit.Tools.Visual.Tests` project, using `Rendering/RenderSamples.cs` and
@@ -86,7 +86,8 @@ naming the limit — so the configured limit, not the model, decided.
 
 **Test**: `VisualRenderer_RenderAsync_RenderBeyondTheTimeout_FailsAsRenderTimeout`
 
-1,600 finely tessellated spheres under a 100 ms timeout fail as `render-timeout`.
+An OpenSCAD model that loops tens of millions of times without drawing fails as `render-timeout`
+under a 100 ms timeout.
 
 ##### AgentKitToolsVisual-Rendering-VisualRenderer-AbandonAndGate: A Render Ignoring Cancellation Is Abandoned and Holds the Gate
 

@@ -188,13 +188,13 @@ public class VisualRendererTests
     [Fact]
     public async Task VisualRenderer_RenderAsync_RenderBeyondTheTimeout_FailsAsRenderTimeout()
     {
-        // Arrange: a model far heavier than a 100 ms timeout allows
+        // Arrange: a model that loops far longer than a 100 ms timeout allows
         using var fixture = new TempDirectoryFixture();
         var renderer = new VisualRenderer(new VisualOptions { RenderTimeout = TimeSpan.FromMilliseconds(100) });
 
         // Act: draw it
         var outcome = await renderer.RenderAsync(
-            RenderSamples.Request(RenderSamples.HeavyScad(), "model.scad", RenderSamples.Policy(fixture.Root)),
+            RenderSamples.Request(RenderSamples.EndlessScad(), "model.scad", RenderSamples.Policy(fixture.Root)),
             TestContext.Current.CancellationToken);
 
         // Assert: a timeout the model can act on

@@ -153,5 +153,6 @@ asked for at 5000 is drawn at 400 by 200.
 
 **Test**: `DiagramRenderTool_Render_BeyondTheTimeout_IsReportedAsATimeout`
 
-With a 100-millisecond timeout, an OpenSCAD model of 1,600 finely tessellated spheres is reported as
-`render-timeout` with advice to simplify the source. Only the outcome is asserted, never a duration.
+With a 100-millisecond timeout, an OpenSCAD model that loops tens of millions of times without
+drawing is reported as `render-timeout` with advice to simplify the source. Only the outcome is
+asserted, never a duration.
