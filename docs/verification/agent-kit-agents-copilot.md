@@ -331,8 +331,9 @@ every run the same tool instances, so a reference outlives the run that produced
 
 Starts the bundled runtime with a start that fails the way the SDK does when no runtime was
 provisioned — an error naming the runtime wrapper it did not find. Asserts the failure reaching the host carries the
-runtime's error, names the remedy, a `PackageReference` to `Microsoft.Copilot.SDK`, and keeps the
-original failure as its inner exception. The pass-through of a cancellation and the disposal of a
+runtime's error, names the remedy, a `PackageReference` to `Microsoft.Copilot.SDK`, and keeps a
+redacted copy of the original failure, carrying its type name and message, as its inner exception. The pass-through of
+a cancellation and the disposal of a
 client whose start failed are asserted in *CopilotRuntime Unit Verification Design*.
 
 ### Runtime Startup: An Unsupported Installed CLI Is Refused With Upgrade Guidance
@@ -370,6 +371,19 @@ turned off, the runtime's own fallbacks decide; and the helper ran exactly once.
 runtime's client options then carry the Copilot CLI's token, `COPILOT_GH_HOST=example.ghe.com`, Empty
 mode and AgentKit's data directory, and the helper's home held exactly the account entry, though the
 user's configuration also configures an MCP server.
+
+### Runtime: No Token Reaches an Exception
+
+**Test**: `AgentKitAgentsCopilot_Runtime_FailureQuotingAToken_ReachesNoException`
+
+Verifies `AgentKitAgentsCopilot-Runtime-KeepsTokensOutOfFailures`. With a sign-in whose token is not
+shaped like a GitHub token, a start failure quoting it, chaining an aggregate of two exceptions that
+quote it and a `gho_` token, is explained through `StartClientAsync`; and an agent built with the same
+sign-in runs a turn on a scripted runtime that reports a session error quoting both values. Each
+failure reaching the host is walked through its whole chain of inner exceptions: no exception carries
+either value in its string form, no aggregate survives (each is copied), the start failure's cause is
+a redacted copy, and the session error reads `<redacted>` in their places. The redaction of the
+provider session's refusals and the model listing's cause is asserted in their unit verification.
 
 ### Runtime: The Installed Copilot CLI Is the Default
 
@@ -424,6 +438,7 @@ on either path, any missing runtime that is accepted, any runtime client options
 runtime source, any default that does not run the installed CLI, any unsupported CLI or unauthenticated runtime that is
 accepted or refused without its guidance, any sign-in source that wins out of order or with another source's host, any
 helper home holding more than the account entry, any refusal that omits a source's finding or carries a token, any
+exception reaching the host, or cause it keeps, that carries a token the sign-in knows, any
 foreign data directory that is accepted, any occupancy figure that is not
 the one the runtime reported, any rotation that fails to seed the consolidated record, any part of a seeded record
 appearing in a session's system message, any rotation that costs more than the one request the engine was already

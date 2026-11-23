@@ -340,8 +340,8 @@ public sealed class CopilotModelCatalogTests
     }
 
     /// <summary>
-    ///     Proves a runtime whose client cannot answer fails with the sign-in message, keeping the
-    ///     SDK's own failure as the cause.
+    ///     Proves a runtime whose client cannot answer fails with the sign-in message, keeping a
+    ///     redacted copy of the SDK's own failure, with its type name, as the cause.
     /// </summary>
     [Fact]
     public async Task CopilotModelCatalog_ListAsync_ClientNotConnected_FailsWithTheSignInMessage()
@@ -359,7 +359,38 @@ public sealed class CopilotModelCatalogTests
         Assert.Contains("gh auth login", failure.Message, StringComparison.Ordinal);
         Assert.Contains("copilot login", failure.Message, StringComparison.Ordinal);
         Assert.Contains("gitHubHost", failure.Message, StringComparison.Ordinal);
-        Assert.IsType<InvalidOperationException>(failure.InnerException, exactMatch: false);
+        var cause = Assert.IsType<CopilotRedactedException>(failure.InnerException);
+        Assert.False(string.IsNullOrEmpty(cause.OriginalTypeName), "The cause does not name the SDK's exception type.");
+    }
+
+    /// <summary>
+    ///     Proves a listing failure whose text quotes a token the runtime's sign-in knows, or one shaped
+    ///     like a GitHub token, keeps only a redacted copy of it as the cause: no exception in the
+    ///     chain carries either token, and the copy keeps the original's type name.
+    /// </summary>
+    [Fact]
+    public void CopilotModelCatalog_ExplainListFailure_QuotingAToken_KeepsOnlyARedactedCause()
+    {
+        // Arrange: a sign-in that knows a token of no GitHub shape, and a failure quoting it and a gho_ token
+        const string secret = "s3cr3t-catalog-xyz";
+        const string shaped = "gho_CatalogSecret123";
+        var plan = new CopilotSignInPlan { Source = CopilotSignInSource.GitHubToken, Token = secret };
+        var original = new InvalidOperationException($"not connected ({secret})", new IOException($"pipe closed for {shaped}"));
+
+        // Act
+        var failure = CopilotModelCatalog.ExplainListFailure(original, plan);
+
+        // Assert
+        Assert.Equal(CopilotModelCatalog.SignInMessage, failure.Message);
+        var cause = Assert.IsType<CopilotRedactedException>(failure.InnerException);
+        Assert.NotSame(original, failure.InnerException);
+        Assert.Equal(typeof(InvalidOperationException).FullName, cause.OriginalTypeName);
+        Assert.Equal("not connected (<redacted>)", cause.Message);
+        var inner = Assert.IsType<CopilotRedactedException>(cause.InnerException);
+        Assert.Equal(typeof(IOException).FullName, inner.OriginalTypeName);
+        Assert.Equal("pipe closed for gho_<redacted>", inner.Message);
+        Assert.DoesNotContain(secret, failure.ToString(), StringComparison.Ordinal);
+        Assert.DoesNotContain(shaped, failure.ToString(), StringComparison.Ordinal);
     }
 
     /// <summary>

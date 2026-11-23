@@ -21,9 +21,11 @@ Copilot runtime, reads the real user's Copilot CLI home or touches a credential 
 - **`BuildHelperEnvironment` and `BuildHelperOptions`** take the host environment and a fake machine
   for the GitHub CLI and `node` lookups, and return the environment and the SDK client options, which
   the tests inspect.
-- **`ExplainUnauthenticated`, `Classify`, `NormalizeHost`, `CreateSessionTokenProvider` and
-  `Report`** are pure, or take a fabricated `GetAuthStatusResponse`, SDK token-provider arguments, and
-  a logger that keeps every entry.
+- **`ExplainUnauthenticated`, `Classify`, `NormalizeHost`, `CreateSessionTokenProvider`,
+  `RedactFailure` and `Report`** are pure, or take a fabricated `GetAuthStatusResponse`, SDK
+  token-provider arguments, a fabricated exception chain, and a logger that keeps every entry. The
+  redacted copy's tests walk the whole exception chain, every inner exception of an aggregate
+  included.
 
 A sentinel token is used wherever a token appears, and the tests assert it never appears in a
 finding, a message, a log entry or a string form. The redaction tests also use secrets that are not
@@ -68,8 +70,9 @@ failure, time-out or account-list failure that fails the start; a helper not dis
 not deleted on any outcome; a configuration with comments and trailing commas not read; an unusable
 configuration that yields an account; a refusal missing a source, its finding or a remedy; a token
 in any finding, message, log entry or string form; a known token of any shape left in quoted runtime,
-SDK or exception text; or a lifetime of more than one hour reported to the runtime as one hour or less
-constitutes a failure.
+SDK or exception text; a cause copy that keeps the original, loses its type name, message or stack
+trace, carries its data, or leaves a token anywhere in its chain; or a lifetime of more than one hour
+reported to the runtime as one hour or less constitutes a failure.
 
 ### Test Scenarios
 
@@ -229,3 +232,22 @@ environment step apply) leaves a finding with `<redacted>` in its place. A token
 returns for a session is recorded, so text redacted afterwards no longer carries it. Overlapping
 secrets are removed whole, longest first; `null` and blank values are ignored; and a GitHub-shaped
 token is still reduced to its prefix and `<redacted>`.
+
+#### AgentKitAgentsCopilot-CopilotSignIn-KeepsOnlyARedactedCause: A Cause Is a Redacted Copy
+
+**Tests**:
+
+- `CopilotSignIn_RedactFailure_ChainQuotingKnownSecrets_CarriesNoSecret`
+- `CopilotSignIn_RedactFailure_KeepsTheTypeNameMessageAndStackTrace`
+
+Error paths and boundaries. A thrown failure quoting a known secret, the plan's token and a
+GitHub-shaped token, chaining an inner exception that chains an aggregate of two exceptions — the
+first with a stack trace that quotes two of the secrets — is copied whole: the outer copy, the inner
+copy, the aggregate's copy and the copy of the aggregate's first inner exception each carry the
+original's type name, and the test walks every exception in the chain, every inner exception of any
+aggregate included, and finds none of the three values in a message, a stack trace or a string form,
+nor in the string form of an outer exception carrying the copy. The aggregate's message, which lists
+both inner messages, is redacted. A thrown `FileNotFoundException` with data attached is copied with
+its type name, message, stack trace and `HResult` unchanged, a string form laid out as an exception's
+and led by the type name, and no data; a failure never thrown has no stack trace; and a chain of
+twenty exceptions is copied to `MaximumDepth`, sixteen.

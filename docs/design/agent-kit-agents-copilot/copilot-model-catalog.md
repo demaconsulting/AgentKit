@@ -169,14 +169,24 @@ Design* for the lifetime and the clock.
 **Algorithm:** Reject a null runtime, check it is not disposed (`CopilotRuntime.ThrowIfDisposed`),
 and build the production read: at each read, check the runtime again, read its `Client`, call
 `Rpc.Models.ListAsync` and return its `Models`, or an empty list when there are none. An
-`InvalidOperationException` from the client — other than `ObjectDisposedException` — is wrapped in
-an `InvalidOperationException` carrying `SignInMessage`, keeping the SDK's failure as its cause:
-the SDK raises it for a client that is not connected or not authenticated, and a runtime AgentKit
-started was already refused at start if it was not signed in.
+`InvalidOperationException` from the client — other than `ObjectDisposedException` — becomes
+`ExplainListFailure` of it and the runtime's `SignIn`: an `InvalidOperationException` carrying
+`SignInMessage`, whose cause is a redacted copy of the SDK's failure (`CopilotSignIn.RedactFailure`:
+its type name, message and stack trace, with every token the runtime's sign-in knows removed), never
+the original. The SDK raises it for a client that is not connected or not authenticated, and a
+runtime AgentKit started was already refused at start if it was not signed in.
 
 **Preconditions:** `runtime` is not null and not disposed; `lifetime`, when supplied, is positive.
 
 **Postconditions:** The catalog never disposes the runtime.
+
+#### ExplainListFailure(InvalidOperationException failure, CopilotSignInPlan? signIn)
+
+**Purpose:** Build the failure a read the client cannot make fails with. Internal, so the redaction
+can be tested without a live service.
+
+**Algorithm:** Return a new `InvalidOperationException` with `SignInMessage` and
+`CopilotSignIn.RedactFailure(failure, signIn)` as its inner exception.
 
 #### CopilotModelCatalog(Func&lt;CancellationToken, Task&lt;IList&lt;Rpc.Model&gt;&gt;&gt;, TimeSpan?, TimeProvider?)
 
@@ -210,7 +220,7 @@ additional properties — each as the tables above give.
 | Null `runtime` or `read` | `ArgumentNullException` propagates |
 | Runtime disposed before construction | `ObjectDisposedException` propagates |
 | Runtime disposed after construction | `ObjectDisposedException` from the next read; nothing restarted |
-| Client not connected or not signed in | `InvalidOperationException` with `SignInMessage`; not cached |
+| Client not connected or not signed in | `InvalidOperationException`, `SignInMessage`; redacted cause; not cached |
 | Any other failure, including a cancellation no caller requested | Propagates unchanged; not cached |
 | Zero or negative lifetime | `ArgumentOutOfRangeException` propagates |
 | A null or unnamed entry in the listing | Skipped |
@@ -222,8 +232,10 @@ additional properties — each as the tables above give.
 - **ModelInfo** — supplies `ModelInfo`, `ModelCapabilities`, `ModelAdjustments`,
   `ModelReasoningEffort`, `ModelContextTier`, `ModelNotice` and `ModelNoticeKind`; see *ModelInfo
   Unit Design*.
-- **CopilotRuntime** — supplies the client the listing is read through, and `ThrowIfDisposed`; see
-  *CopilotRuntime Unit Design*.
+- **CopilotRuntime** — supplies the client the listing is read through, its sign-in, and
+  `ThrowIfDisposed`; see *CopilotRuntime Unit Design*.
+- **CopilotSignIn** — makes the redacted copy of the client's failure kept as the cause
+  (`RedactFailure`); see *CopilotSignIn Unit Design*.
 - **Microsoft.Copilot.SDK** — supplies `CopilotClient` and the `Rpc` model types; see
   *Microsoft.Copilot.SDK Design*.
 - **Microsoft.Extensions.AI.Abstractions** — supplies `ReasoningEffort` and

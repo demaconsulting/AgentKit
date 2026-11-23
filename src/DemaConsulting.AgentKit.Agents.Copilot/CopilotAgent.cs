@@ -37,8 +37,10 @@ namespace DemaConsulting.AgentKit.Agents.Copilot;
 ///     assistant message is carried as raw content only, so its text is not duplicated, unless no
 ///     delta arrived for it. Tool starts and completions become <see cref="FunctionCallContent"/> and
 ///     <see cref="FunctionResultContent"/>; the runtime's per-request usage becomes
-///     <see cref="UsageContent"/>; a session error fails the run. Events a sub-agent produced, and
-///     every other kind of event, are not streamed.
+///     <see cref="UsageContent"/>; a session error fails the run, its text redacted of every token
+///     the runtime's sign-in knows. Events a sub-agent produced, and every other kind of event, are
+///     not streamed. Tool results and the SDK's own exceptions are passed on as the runtime
+///     produced them: the model already received the former, and AgentKit wraps neither.
 ///     </para>
 ///     <para>
 ///     <b>Input.</b> The text of every input message is joined with a newline into one prompt, and
@@ -102,6 +104,12 @@ internal sealed class CopilotAgent : AIAgent
     private readonly string? _name;
 
     /// <summary>
+    ///     The sign-in of the runtime the agent's sessions run on, whose tokens are redacted from a
+    ///     session error, or <see langword="null"/> to redact token-shaped text only.
+    /// </summary>
+    private readonly CopilotSignInPlan? _signIn;
+
+    /// <summary>
     ///     Initializes a new instance of the <see cref="CopilotAgent"/> class.
     /// </summary>
     /// <remarks>
@@ -118,6 +126,10 @@ internal sealed class CopilotAgent : AIAgent
     /// </param>
     /// <param name="resumer">Resumes a recorded runtime session.</param>
     /// <param name="name">The agent's name, or <see langword="null"/>/blank for <see cref="DefaultName"/>.</param>
+    /// <param name="signIn">
+    ///     The sign-in of the runtime the sessions run on, whose tokens are redacted from a session
+    ///     error, or <see langword="null"/> to redact token-shaped text only.
+    /// </param>
     /// <exception cref="ArgumentNullException">Any delegate is <see langword="null"/>.</exception>
     internal CopilotAgent(
         Func<CreateSessionOptions> createOptions,
@@ -125,7 +137,8 @@ internal sealed class CopilotAgent : AIAgent
         CopilotChannelOpener opener,
         CopilotChannelOpener ephemeralOpener,
         CopilotChannelResumer resumer,
-        string? name)
+        string? name,
+        CopilotSignInPlan? signIn = null)
     {
         ArgumentNullException.ThrowIfNull(createOptions);
         ArgumentNullException.ThrowIfNull(resumeOptions);
@@ -139,6 +152,7 @@ internal sealed class CopilotAgent : AIAgent
         _ephemeralOpener = ephemeralOpener;
         _resumer = resumer;
         _name = string.IsNullOrWhiteSpace(name) ? null : name;
+        _signIn = signIn;
     }
 
     /// <inheritdoc/>
@@ -237,7 +251,7 @@ internal sealed class CopilotAgent : AIAgent
             using var runCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             var updates = Channel.CreateUnbounded<AgentResponseUpdate>(
                 new UnboundedChannelOptions { SingleReader = true });
-            var mapper = new UpdateMapper(Id, Name, updates.Writer);
+            var mapper = new UpdateMapper(Id, Name, updates.Writer, _signIn);
 
             var channel = await OpenAsync(conversation, ephemeral, mapper.OnEvent, runCancellation.Token).ConfigureAwait(false);
             Task? send = null;
@@ -472,16 +486,24 @@ internal sealed class CopilotAgent : AIAgent
         private readonly HashSet<string> _streamed = new(StringComparer.Ordinal);
 
         /// <summary>
+        ///     The runtime's sign-in, whose tokens are redacted from a session error, or
+        ///     <see langword="null"/> to redact token-shaped text only.
+        /// </summary>
+        private readonly CopilotSignInPlan? _signIn;
+
+        /// <summary>
         ///     Initializes a new instance of the <see cref="UpdateMapper"/> class.
         /// </summary>
         /// <param name="agentId">The agent's identifier.</param>
         /// <param name="authorName">The agent's name.</param>
         /// <param name="writer">The run's update stream.</param>
-        internal UpdateMapper(string agentId, string? authorName, ChannelWriter<AgentResponseUpdate> writer)
+        /// <param name="signIn">The runtime's sign-in, or <see langword="null"/>.</param>
+        internal UpdateMapper(string agentId, string? authorName, ChannelWriter<AgentResponseUpdate> writer, CopilotSignInPlan? signIn)
         {
             _agentId = agentId;
             _authorName = authorName;
             _writer = writer;
+            _signIn = signIn;
         }
 
         /// <summary>
@@ -489,8 +511,10 @@ internal sealed class CopilotAgent : AIAgent
         /// </summary>
         /// <remarks>
         ///     A root-agent session error ends the stream with that error, so the run fails naming
-        ///     it rather than ending as though the turn had succeeded. Events a sub-agent produced
-        ///     are skipped: they were never part of this conversation.
+        ///     it rather than ending as though the turn had succeeded. The runtime's error text is
+        ///     quoted redacted: every token the runtime's sign-in knows, and any text shaped like a
+        ///     GitHub token, is removed, and no cause is attached. Events a sub-agent produced are
+        ///     skipped: they were never part of this conversation.
         /// </remarks>
         /// <param name="sessionEvent">The event the runtime dispatched.</param>
         internal void OnEvent(SessionEvent sessionEvent)
@@ -502,7 +526,7 @@ internal sealed class CopilotAgent : AIAgent
 
             if (sessionEvent is SessionErrorEvent { Data: { } error })
             {
-                _writer.TryComplete(new InvalidOperationException($"Session error: {error.Message}"));
+                _writer.TryComplete(new InvalidOperationException($"Session error: {CopilotSignIn.Redact(_signIn, error.Message)}"));
                 return;
             }
 

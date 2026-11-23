@@ -61,7 +61,10 @@ session's event handler would answer turns and report no occupancy at all. See
   it exactly once. Held rather than configured because a record charged to the engine's overhead
   makes its accounting drift; see *CopilotProviderSessionFactory Unit Design*.
 - **`_unusableReason`** (`string?`) — Why this session may no longer be used, or null while it may.
-  Invariant: it latches — once set, never cleared.
+  Invariant: it latches — once set, never cleared. The failure's text it quotes is redacted.
+- **`_signIn`** (`CopilotSignInPlan?`) — The sign-in of the runtime the session runs on, whose tokens
+  are redacted from the runtime text a refusal quotes, or null to redact token-shaped text only.
+  Supplied by `CopilotProviderSessionFactory` (`runtime.SignIn` in production).
 - **`IsReleased`** (`bool`) — Whether this session has been released. Invariant: once true, never
   false again.
 - **`ProvisionalWindowTokens`** (`const int`, one) — The window reported before the runtime has
@@ -69,13 +72,14 @@ session's event handler would answer turns and report no occupancy at all. See
 
 ### Key Methods
 
-#### The CopilotProviderSession Constructor (ICopilotTurnChannel, CopilotSessionObserver, int?, string?)
+#### The CopilotProviderSession Constructor (ICopilotTurnChannel, CopilotSessionObserver, int?, string?, CopilotSignInPlan?)
 
 **Purpose:** Take ownership of one runtime session and the observer watching it, and hold what the
 seed produced until the first turn carries it.
 
 **Algorithm:** Reject a null channel and a null observer, and record both, along with the window
-ceiling where the host stated one and the composed history preamble where the seed carried history.
+ceiling where the host stated one, the composed history preamble where the seed carried history, and
+the runtime's sign-in, whose tokens the session's refusals redact.
 There is nothing else to do: the confinement and the instructions were settled when the session was
 created, so a constructed session is ready to take its first turn.
 
@@ -134,8 +138,11 @@ record where one is still pending — send it through the channel as the prompt 
 carrying no attachments, wait for the session to become idle, and hand what came back to
 `CompleteTurn`, which in order refuses three conditions and, only if none holds, builds the turn from
 the runtime's answer and the entries the observer collected. Any failure out of that guard — the
-send's own, or `CompleteTurn`'s — is recorded as the reason this session may no longer be used, and
-then rethrown.
+send's own, or `CompleteTurn`'s — is recorded as the reason this session may no longer be used, its
+message redacted with `CopilotSignIn.Redact(signIn, text)`, and then rethrown unchanged: the send's
+own failure is the SDK's exception, which AgentKit neither composes nor wraps, so wrapping it would
+change the type a caller catches, and `CompleteTurn`'s refusals are composed from text already
+redacted.
 
 The three refusals are ordered because the first invalidates the others:
 
@@ -147,8 +154,9 @@ The three refusals are ordered because the first invalidates the others:
    Own Compaction Is Held Clear of Rotation* in *AgentKitAgentsCopilot System Design*.
 2. **The session went idle without producing an assistant message.** The runtime's wait returns
    nothing in that case, which means the turn failed rather than that the model had nothing to say.
-   The message names the runtime's own error where one was reported, because a refusal an
-   application cannot act on is little better than a silent empty answer.
+   The message names the runtime's own error where one was reported, redacted of every token the
+   runtime's sign-in knows, because a refusal an application cannot act on is little better than a
+   silent empty answer.
 3. **The runtime answered without reporting its occupancy.** Knowing when the window is filling is
    the one thing the engine needs a token count for, and Copilot reports both figures itself — so an
    absent reading means something an application can see and fix.
@@ -280,7 +288,9 @@ on the next attempt. Each is detected at or after the point where the prompt was
 runtime, so each may leave the runtime holding a turn the transcript does not; the session therefore
 latches unusable and names the original failure rather than reporting a fresh one. The failure
 surfaces twice — once where it happened, once on every later attempt — because a host that retries
-must be refused as clearly as the turn that failed.
+must be refused as clearly as the turn that failed. Where it happened it is the original exception,
+unchanged; on every later attempt it is quoted with every token the runtime's sign-in knows, and any
+text shaped like a GitHub token, redacted.
 
 ### Dependencies
 
@@ -288,6 +298,8 @@ must be refused as clearly as the turn that failed.
   `ContextUsage`; see *ProviderSession Unit Design* and *ContextUsage Unit Design*.
 - **CopilotSessionObserver** — holds the occupancy reading and the turn's entries; see
   *CopilotSessionObserver Unit Design*.
+- **CopilotSignIn** — redacts the runtime text a refusal quotes with the runtime's sign-in
+  (`Redact(plan, text)`); see *CopilotSignIn Unit Design*.
 - **CopilotTurnChannel** — carries the turn and owns the runtime session; see *CopilotTurnChannel
   Unit Design*.
 - **Microsoft.Copilot.SDK** — supplies `MessageOptions` and the assistant-message event a turn

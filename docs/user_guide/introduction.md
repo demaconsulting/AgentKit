@@ -1269,7 +1269,11 @@ the token and the host, nothing else: none of the user's MCP servers, hooks, age
 instructions, settings or history, and its data directory stays private. The token is kept in memory
 and handed only to the runtime process, in its environment; AgentKit never writes or logs it. This
 adds a second or two to the start. Any token AgentKit was given or obtained, or that your token
-provider returns, is also removed from the runtime and SDK text AgentKit quotes in its own messages.
+provider returns, is also removed from the runtime and SDK text AgentKit quotes in its own messages —
+a failed start, a session error that fails an agent's run, a provider session's refusal — along with
+any text shaped like a GitHub token. When AgentKit keeps a runtime or SDK failure as an inner
+exception, it keeps a redacted copy: the original's type name, message and stack trace, with the
+same text removed, so no exception in the chain carries a token.
 
 **GitHub Enterprise Cloud hosts.** Each source is used with its own host. The Copilot CLI sign-in
 uses its account's host. A token needs its host too: GitHub refuses a token for a `*.ghe.com` account
@@ -1507,9 +1511,12 @@ for answer quality across a long conversation, not to save money.
   not); on macOS, allow access to the keychain item if asked. AgentKit moves on to the GitHub CLI
   meanwhile.
 - **`InvalidOperationException`: the runtime "could not list models".** The runtime's connection was
-  lost or its sign-in lapsed; start a new runtime, signed in as above.
+  lost or its sign-in lapsed; start a new runtime, signed in as above. The inner exception is a
+  redacted copy of the SDK's error: its `ToString()` starts with the original type name.
 - **The runtime fails to start.** `CopilotRuntime.StartAsync` raises an `InvalidOperationException`
-  carrying the runtime's own error. On the installed CLI the message names the CLI and its version.
+  carrying the runtime's own error, redacted. The inner exception is a redacted copy of the runtime's
+  failure — its type name, message and stack trace, with any token removed — so read its message or
+  `ToString()` rather than its type. On the installed CLI the message names the CLI and its version.
   On the bundled runtime the runtime is most often missing from the application's output: the host
   project does not reference `Microsoft.Copilot.SDK` directly, `CopilotSkipCliDownload` is set for the
   host, or the platform is one the runtime does not support — it is published for `win-x64`,
@@ -1582,6 +1589,11 @@ GitHub host:
   reads the account's token.
 - **The "not signed in" message has changed.** It now lists what each source found. Code that matched
   its earlier text should match the exception type instead.
+- **A failed start's and a failed model listing's inner exception is a redacted copy.** It is no
+  longer the runtime's or the SDK's own exception, but a copy carrying its type name, message and
+  stack trace with any token removed; the outer exception is still an `InvalidOperationException`.
+  Code that tested the inner exception's type, for example for a `FileNotFoundException`, should read
+  its message or `ToString()`, which starts with the original type name.
 
 ### Migrating from the Earlier Adapter
 

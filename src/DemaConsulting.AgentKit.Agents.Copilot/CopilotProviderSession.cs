@@ -103,6 +103,12 @@ public sealed class CopilotProviderSession : IProviderSession
     private string? _unusableReason;
 
     /// <summary>
+    ///     The sign-in of the runtime this session runs on, whose tokens are redacted from the runtime
+    ///     text a refusal quotes, or <see langword="null"/> to redact token-shaped text only.
+    /// </summary>
+    private readonly CopilotSignInPlan? _signIn;
+
+    /// <summary>
     ///     Initializes a new instance of the <see cref="CopilotProviderSession"/> class.
     /// </summary>
     /// <remarks>
@@ -123,6 +129,10 @@ public sealed class CopilotProviderSession : IProviderSession
     ///     The seeded conversation record to carry ahead of the first message, or
     ///     <see langword="null"/> when the seed held no history.
     /// </param>
+    /// <param name="signIn">
+    ///     The sign-in of the runtime the session runs on, whose tokens are redacted from the runtime
+    ///     text a refusal quotes, or <see langword="null"/> to redact token-shaped text only.
+    /// </param>
     /// <exception cref="ArgumentNullException">
     ///     <paramref name="channel"/> or <paramref name="observer"/> is <see langword="null"/>.
     /// </exception>
@@ -130,7 +140,8 @@ public sealed class CopilotProviderSession : IProviderSession
         ICopilotTurnChannel channel,
         CopilotSessionObserver observer,
         int? maxWindowTokens = null,
-        string? historyPreamble = null)
+        string? historyPreamble = null,
+        CopilotSignInPlan? signIn = null)
     {
         ArgumentNullException.ThrowIfNull(channel);
         ArgumentNullException.ThrowIfNull(observer);
@@ -140,6 +151,7 @@ public sealed class CopilotProviderSession : IProviderSession
         _observer = observer;
         _maxWindowTokens = maxWindowTokens;
         _historyPreamble = historyPreamble;
+        _signIn = signIn;
     }
 
     /// <summary>
@@ -256,11 +268,14 @@ public sealed class CopilotProviderSession : IProviderSession
         }
         catch (Exception failure)
         {
+            // The failure's text is quoted redacted in the later refusal. The failure itself is
+            // rethrown unchanged: it is the SDK's own exception, or a refusal composed below from
+            // text already redacted, and wrapping it would change the type a caller catches.
             _unusableReason =
                 "A turn was sent to the Copilot runtime but could not be recorded, so the runtime "
                 + "may hold a turn this session's transcript does not - and where the turn carried a "
                 + "seeded record, that record has been sent and will not be sent again. The session "
-                + $"was abandoned rather than reused. The turn failed because: {failure.Message}";
+                + $"was abandoned rather than reused. The turn failed because: {CopilotSignIn.Redact(_signIn, failure.Message)}";
             throw;
         }
     }
@@ -294,7 +309,8 @@ public sealed class CopilotProviderSession : IProviderSession
         // reported - when it reported one - is named instead. A message carrying no text is the same
         // silence expressed differently, and is judged the same way: the observer already declines to
         // record one as an entry, so accepting it here would produce a turn with no text and no
-        // entries, seeded forward as though the model had answered.
+        // entries, seeded forward as though the model had answered. The runtime's error is quoted
+        // redacted of every token the runtime's sign-in knows.
         if (answer?.Data is not { Content: { Length: > 0 } content })
         {
             var reported = _observer.LastErrorMessage;
@@ -303,7 +319,7 @@ public sealed class CopilotProviderSession : IProviderSession
                     ? "The Copilot session went idle without producing an assistant message, and "
                       + "reported no error explaining why."
                     : $"The Copilot session went idle without producing an assistant message. The "
-                      + $"runtime reported: {reported}");
+                      + $"runtime reported: {CopilotSignIn.Redact(_signIn, reported)}");
         }
 
         // Knowing when the window is filling is the one thing the session engine needs a token count

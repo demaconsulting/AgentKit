@@ -31,4 +31,7 @@ package AgentKitAgentsCopilot_CopilotAgentFactory {
     // Every session an agent creates or resumes is configured from a validated model selection when
     // the host supplies one.
     dependency CopilotAgentFactory to AgentKitCore_ModelSettings::ModelSettings;
+
+    // Create hands the agent the runtime's sign-in, whose tokens a session error is redacted of.
+    dependency CopilotAgentFactory to AgentKitAgentsCopilot_CopilotSignIn::CopilotSignIn;
 }

@@ -433,8 +433,9 @@ public sealed class CopilotRuntime : IAsyncDisposable
     ///     not exist, its version could not be read or is older than
     ///     <see cref="CopilotCli.MinimumVersion"/> — the message says where AgentKit looked, which
     ///     version it found and how to install or upgrade the CLI; or the runtime failed to start —
-    ///     the message reports the runtime's own error and the likely cause, and the original failure
-    ///     is the <see cref="Exception.InnerException"/>; or the started runtime is not signed in —
+    ///     the message reports the runtime's own error, redacted, and the likely cause, and a redacted
+    ///     copy of the original failure — its type name, message and stack trace — is the
+    ///     <see cref="Exception.InnerException"/>; or the started runtime is not signed in —
     ///     the message lists what each sign-in source found and how to sign in; or the host's token
     ///     provider failed or returned no token — a failure is the <see cref="Exception.InnerException"/>.
     /// </exception>
@@ -1127,8 +1128,8 @@ public sealed class CopilotRuntime : IAsyncDisposable
     /// <param name="cancellationToken">Cancels the start.</param>
     /// <returns>A task that completes when the start has completed.</returns>
     /// <exception cref="InvalidOperationException">
-    ///     The start failed. The message reports the runtime's own error and the likely cause; the
-    ///     original failure is the <see cref="Exception.InnerException"/>.
+    ///     The start failed. The message reports the runtime's own error, redacted, and the likely
+    ///     cause; a redacted copy of the original failure is the <see cref="Exception.InnerException"/>.
     /// </exception>
     /// <exception cref="OperationCanceledException">The start was canceled. It propagates unchanged.</exception>
     internal static Task StartClientAsync(Func<CancellationToken, Task> start, CancellationToken cancellationToken) =>
@@ -1152,7 +1153,8 @@ public sealed class CopilotRuntime : IAsyncDisposable
     /// <returns>A task that completes when the start has completed.</returns>
     /// <exception cref="InvalidOperationException">
     ///     The start failed. The message reports the runtime's own error, redacted, and the likely
-    ///     cause; the original failure, unmodified, is the <see cref="Exception.InnerException"/>.
+    ///     cause; a redacted copy of the original failure (<see cref="CopilotRedactedException"/>:
+    ///     its type name, message and stack trace) is the <see cref="Exception.InnerException"/>.
     /// </exception>
     /// <exception cref="OperationCanceledException">The start was canceled. It propagates unchanged.</exception>
     internal static async Task StartClientAsync(
@@ -1167,7 +1169,8 @@ public sealed class CopilotRuntime : IAsyncDisposable
         }
         catch (Exception failure) when (failure is not OperationCanceledException)
         {
-            throw new InvalidOperationException(ExplainStartFailure(failure, launch, signIn), failure);
+            // The runtime's error is quoted redacted, and kept as the cause only as a redacted copy
+            throw new InvalidOperationException(ExplainStartFailure(failure, launch, signIn), CopilotSignIn.RedactFailure(failure, signIn));
         }
     }
 
@@ -1201,7 +1204,7 @@ public sealed class CopilotRuntime : IAsyncDisposable
     internal static string ExplainStartFailure(Exception failure, CopilotRuntimeLaunch? launch, CopilotSignInPlan? signIn)
     {
         var message = failure.Message;
-        var quoted = message is null ? string.Empty : signIn?.Redact(message) ?? CopilotSignIn.Redact(message);
+        var quoted = CopilotSignIn.Redact(signIn, message);
         string cause;
         if (launch?.Source != CopilotRuntimeSource.Bundled && CopilotCli.IsProtocolMismatch(message))
         {
@@ -1227,7 +1230,7 @@ public sealed class CopilotRuntime : IAsyncDisposable
             + string.Join(", ", PassThroughVariables.Order(StringComparer.Ordinal)) + "; it signs in with, in order, "
             + "CopilotRuntimeOptions' gitHubToken or gitHubTokenProvider, COPILOT_GITHUB_TOKEN, GH_TOKEN or GITHUB_TOKEN, "
             + "the user's Copilot CLI sign-in, a sign-in stored in its data directory, or the signed-in GitHub CLI user. "
-            + "The inner exception carries the runtime's own error.";
+            + "The inner exception carries the runtime's own error, redacted, with its type name and stack trace.";
     }
 
     /// <summary>

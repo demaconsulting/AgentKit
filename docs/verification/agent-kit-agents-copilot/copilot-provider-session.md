@@ -202,12 +202,16 @@ the same way and are refused through the same check.
 
 - `CopilotProviderSession_Send_NoAssistantMessage_ThrowsNamingTheRuntimeError`
 - `CopilotProviderSession_Send_NoAssistantMessageAndNoError_ThrowsSayingSo`
+- `CopilotProviderSession_Send_NoAssistantMessageQuotingAToken_IsRedacted`
 
 Error paths. The first scripts a runtime that reports an error and produces no assistant message, and
 asserts the refusal carries the runtime's own message — recording an empty answer there would present
 a runtime failure as a model with nothing to say, and the engine would seed the next session from a
 turn that never happened. The second is the boundary: a session that went idle with no answer and no
-error is still refused, and says so rather than naming a cause it does not have.
+error is still refused, and says so rather than naming a cause it does not have. The third opens the
+session with a sign-in that knows a secret of no GitHub token shape, scripts the runtime's error
+quoting that secret and a `gho_` token, and asserts the refusal reads
+`The runtime reported: refused <redacted> and gho_<redacted>` with neither value in its string form.
 
 That the named cause belongs to *this* turn needs no scenario here: the observer discards the last
 turn's reported error when a turn begins — asserted directly in *CopilotSessionObserver Unit
@@ -220,6 +224,7 @@ on this session that could inherit a stale cause.
 
 - `CopilotProviderSession_Send_AfterATurnItCouldNotRecord_RefusesWithoutSending`
 - `CopilotProviderSession_Send_ChannelFails_EndsTheSessionAndHandsNothingBack`
+- `CopilotProviderSession_Send_ChannelFailureQuotingAToken_LaterRefusalIsRedacted`
 
 Error paths, and the ones that distinguish refusing from merely reporting. The first scripts a turn
 the runtime answers normally while reporting no usage — so the turn is refused *after* the runtime
@@ -244,6 +249,13 @@ wrong and ends the session the same way.
 Scripting the first failure as an unreported usage rather than as a rewrite is deliberate: it proves
 the rule is about *where the failure happened* rather than about which condition held, which is what
 makes one latch correct for every cause.
+
+The third, `CopilotProviderSession_Send_ChannelFailureQuotingAToken_LaterRefusalIsRedacted`, opens the
+session with a sign-in that knows a secret of no GitHub token shape and scripts the send failing with
+an `IOException` quoting that secret and a `gho_` token. The first send rethrows that very exception,
+unchanged — it is the SDK's, which AgentKit neither composes nor wraps — and the later refusal, which
+AgentKit composes, quotes the failure with `<redacted>` in place of each value and carries neither in
+its string form.
 
 #### AgentKitAgentsCopilot-CopilotProviderSession-RejectsInvalidArguments: Bad Arguments Are Refused
 

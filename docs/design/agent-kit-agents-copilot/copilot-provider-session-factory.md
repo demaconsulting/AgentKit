@@ -140,6 +140,9 @@ rather than asserted.
   given, or null or blank to leave it to the runtime.
 - **`_selection`** (`ModelSelection?`) — The validated model selection every session is configured
   with, or null when the host named a model, or none, instead.
+- **`_signIn`** (`CopilotSignInPlan?`) — The sign-in of the runtime the sessions run on
+  (`runtime.SignIn` in production), handed to every session so its refusals redact the runtime's
+  tokens, or null to redact token-shaped text only.
 - **`RecordOpening`**, **`RecordClosing`** (`const string`) — The fixed lines opening and closing a
   seeded record. Plain text rather than generated tokens, so the rendering is deterministic and a
   test can assert on it exactly.
@@ -163,7 +166,8 @@ host had disposed back to life. Record the model name without
 checking it: only the runtime knows which models the signed-in user may use, so an unrecognized name
 is refused at session creation rather than here. Record the window ceiling through `Ceiling`, and the
 working directory without checking it: the runtime resolves it when a session is created. Record the
-selection.
+selection, and the runtime's sign-in (`runtime.SignIn`), which every session redacts its refusals
+with.
 
 **The selection's window is the ceiling.** `Ceiling(maxWindowTokens, selection)` returns the ceiling
 stated directly or the selection's `ContextWindowTokens`, and refuses both with `ArgumentException`
@@ -182,13 +186,13 @@ model is named at most once and a ceiling stated at most once.
 
 **Postconditions:** A factory ready to create sessions, owning nothing disposable.
 
-#### The CopilotProviderSessionFactory Constructor (CopilotChannelOpener, string?, int?, string?, ModelSelection?)
+#### The CopilotProviderSessionFactory Constructor (CopilotChannelOpener, string?, int?, string?, ModelSelection?, CopilotSignInPlan?)
 
 **Purpose:** The test seam.
 
 **Algorithm:** Reject a null opener, refuse an ambiguous selection as the public constructor does,
-and record the opener, the model, the ceiling, the working directory and the selection. The SDK's
-session type is sealed with a non-public
+and record the opener, the model, the ceiling, the working directory, the selection and the optional
+sign-in. The SDK's session type is sealed with a non-public
 constructor and no virtual members, and its client type is sealed, so nothing above them can be
 exercised without a live runtime and credentials unless the opening of a session is injectable. See
 *Why a Turn-Channel Seam Exists* in *AgentKitAgentsCopilot System Design*.
@@ -206,7 +210,8 @@ the session options, together with the model, the working directory and the sele
 the session before the create request is issued and the very first turn's events are caught. Open
 the session — the only awaited allocation. Then, under a guard, check cancellation once more and
 construct the provider session, handing it the composed history preamble so the first message it
-sends carries the record; on any failure, release the session that was opened and rethrow.
+sends carries the record, and the sign-in its refusals redact with; on any failure, release the
+session that was opened and rethrow.
 
 **The order is what keeps nothing unowned.** Between the create request returning and the provider
 session taking ownership there is a window in which the runtime holds a session nothing references,
@@ -298,7 +303,9 @@ asserts on it directly — the configuration no longer carries it.
 - **CopilotTurnChannel** — opens and owns each runtime session; see *CopilotTurnChannel Unit
   Design*.
 - **CopilotRuntime** — the runtime every session runs on, whose client the opener reads at each open
-  and release; see *CopilotRuntime Unit Design*.
+  and release, and whose sign-in every session redacts its refusals with; see *CopilotRuntime Unit
+  Design*.
+- **CopilotSignIn** — the sign-in plan type handed to every session; see *CopilotSignIn Unit Design*.
 - **Microsoft.Copilot.SDK** — supplies `CopilotClient`, `CreateSessionOptions` and the session event
   type; see *Microsoft.Copilot.SDK Design*.
 

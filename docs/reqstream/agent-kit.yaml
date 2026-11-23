@@ -48,6 +48,7 @@ sections:
           - AgentKitAgentsCopilot-Runtime-OwnedAndConfined
           - AgentKitAgentsCopilot-Runtime-InstalledCliByDefault
           - AgentKitAgentsCopilot-Runtime-SignsInAsTheUser
+          - AgentKitAgentsCopilot-Runtime-KeepsTokensOutOfFailures
           - AgentKit-OTS-MicrosoftCopilotSDK-SessionOptions
           - AgentKit-OTS-MicrosoftCopilotSDK-PermissionRpc
           - AgentKit-OTS-MicrosoftCopilotSDK-SessionLifecycle

@@ -19,4 +19,8 @@ package AgentKitAgentsCopilot_CopilotModelCatalog {
     dependency CopilotModelCatalog to AgentKitCore_ModelCatalog::ModelCatalog;
     dependency CopilotModelCatalog to AgentKitCore_ModelInfo::ModelInfo;
     dependency CopilotModelCatalog to CopilotRuntime;
+
+    // A listing failure keeps only a redacted copy of the client's failure as its cause, made with
+    // the runtime's sign-in.
+    dependency CopilotModelCatalog to AgentKitAgentsCopilot_CopilotSignIn::CopilotSignIn;
 }

@@ -116,7 +116,8 @@ bundled runtime or when its output named none). It travels from `ResolveLaunchAs
 - **`SignIn`** (`CopilotSignInPlan?`, internal) — the sign-in plan the runtime started with, or `null`
   for a runtime built without one. Its `Redact` removes the start token, the environment's token
   values and every session token the host's provider has returned from text AgentKit quotes, such as
-  a failed reconnect's.
+  a failed reconnect's, and from the redacted copy of a failure kept as its cause. The agent, provider
+  session and model catalog built on the runtime redact with it too.
 - **`_sessionTokenProvider`** — the SDK session token provider built from the plan's token provider
   (`CopilotSignIn.CreateSessionTokenProvider`, given the plan's `Secrets`, into which it records each
   session token), or `null` when the runtime was not started with one.
@@ -342,7 +343,10 @@ and plan passes `null` for both.
 
 **Algorithm:** Await the start. An `OperationCanceledException` propagates unchanged. Any other
 exception is rethrown as an `InvalidOperationException` whose message is `ExplainStartFailure` of it,
-the launch and the plan, and whose `InnerException` is the original, unmodified.
+the launch and the plan, and whose `InnerException` is `CopilotSignIn.RedactFailure` of it and the
+plan: a `CopilotRedactedException` carrying the original's type name, message and stack trace, each
+redacted, with every chained exception copied the same way. The original is never kept, so no
+exception in the chain carries a token; the outer exception's type is unchanged.
 
 #### ExplainStartFailure(Exception failure, CopilotRuntimeLaunch? launch, CopilotSignInPlan? signIn)
 
@@ -368,8 +372,8 @@ Then the pass-through set and the sign-in sources, in order — the host's `gitH
 `gitHubTokenProvider`, `COPILOT_GITHUB_TOKEN`, `GH_TOKEN` or `GITHUB_TOKEN`, the user's Copilot CLI
 sign-in, a sign-in stored in the data directory and the signed-in GitHub CLI user — so an
 authentication or network failure can be traced. A runtime path override can no longer be the cause,
-because `COPILOT_CLI_PATH` is withheld. A null message is tolerated. The original exception, kept as
-the inner exception, is not modified and may still carry whatever the SDK put in it.
+because `COPILOT_CLI_PATH` is withheld. A null message is tolerated. The explanation ends by saying
+the inner exception carries the runtime's own error, redacted, with its type name and stack trace.
 
 #### StartOwnedAsync&lt;T&gt;(create, start, dispose, cancellationToken)
 
@@ -430,7 +434,7 @@ for that open. Disposal is not serialized against open runs, as is usual for `IA
 | Data directory path names a file | `InvalidOperationException` naming the path |
 | Non-empty data directory without the marker | `InvalidOperationException` naming the directory |
 | Directory or marker cannot be created | `IOException` or `UnauthorizedAccessException` propagates |
-| Runtime fails to start | client disposed; `InvalidOperationException` with the runtime's error as cause |
+| Runtime fails to start | client disposed; `InvalidOperationException`, redacted copy of the error as cause |
 | Start canceled | client disposed; `OperationCanceledException` propagates unchanged |
 | Runtime used after disposal | `ObjectDisposedException` from `Client` |
 | Built-on object used after disposal | `ObjectDisposedException` on its next open or resume; nothing started |
@@ -441,8 +445,8 @@ for that open. Disposal is not serialized against open runs, as is usual for `IA
 - **CopilotCli** — discovery of the installed CLI, the version probe and policy, and the guidance its
   refusals carry; see *CopilotCli Unit Design*.
 - **CopilotSignIn** — the sign-in resolution, the token-fetch helper, the refusal's text, the
-  classification of the runtime's sign-in and the session token provider; see *CopilotSignIn Unit
-  Design*.
+  classification of the runtime's sign-in, the session token provider, and the redaction of a start
+  failure's text and cause; see *CopilotSignIn Unit Design*.
 - **Microsoft.Copilot.SDK** — supplies `CopilotClient`, its options, the spawned stdio connection,
   the status and authentication reads, the protocol handshake and the provisioned runtime; see
   *Microsoft.Copilot.SDK Design*.

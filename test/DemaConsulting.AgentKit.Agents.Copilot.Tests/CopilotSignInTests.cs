@@ -1094,6 +1094,89 @@ public sealed class CopilotSignInTests : IDisposable
     }
 
     /// <summary>
+    ///     Proves the redacted copy of a failure carries no token the sign-in knows, nor any text
+    ///     shaped like a GitHub token, anywhere in its chain: not in a message, a stack trace or a
+    ///     string form, of a nested inner exception, an aggregate or any of the aggregate's inner
+    ///     exceptions.
+    /// </summary>
+    [Fact]
+    public void CopilotSignIn_RedactFailure_ChainQuotingKnownSecrets_CarriesNoSecret()
+    {
+        // Arrange: a chain quoting a known secret, the plan's token and a token-shaped value, with a
+        // stack trace that quotes one too
+        const string secret = "s3cr3t-chain-xyz";
+        const string token = "s3cr3t-token-abc";
+        var secrets = new CopilotSignInSecrets();
+        secrets.Add(secret);
+        var plan = new CopilotSignInPlan { Token = token, Secrets = secrets };
+        var aggregate = new AggregateException(
+            $"both failed for {secret}",
+            new StackQuotingException($"first {secret}", $"   at Fake.Connect({secret}, {token})"),
+            new IOException($"second {token} {SentinelToken}"));
+        var failure = Thrown(new InvalidOperationException(
+            $"outer {secret}",
+            new InvalidDataException($"middle {SentinelToken}", aggregate)));
+
+        // Act
+        var copy = CopilotSignIn.RedactFailure(failure, plan);
+
+        // Assert: the whole chain is copied, and none of it carries a secret
+        var middle = Assert.IsType<CopilotRedactedException>(copy.InnerException);
+        var copiedAggregate = Assert.IsType<CopilotRedactedException>(middle.InnerException);
+        var first = Assert.IsType<CopilotRedactedException>(copiedAggregate.InnerException);
+        Assert.Equal(typeof(AggregateException).FullName, copiedAggregate.OriginalTypeName);
+        Assert.Equal(typeof(StackQuotingException).FullName, first.OriginalTypeName);
+        Assert.Contains("<redacted>", first.StackTrace, StringComparison.Ordinal);
+        Assert.Contains("second <redacted> gho_<redacted>", copiedAggregate.Message, StringComparison.Ordinal);
+        AssertNoSecretInChain(copy, secret, token, SentinelToken);
+        AssertNoSecretInChain(new InvalidOperationException("outer", copy), secret, token, SentinelToken);
+    }
+
+    /// <summary>
+    ///     Proves the redacted copy of a failure keeps its type name, message, stack trace and
+    ///     HResult, lays out its string form as an exception's, never keeps the original's data, has
+    ///     no stack trace for a failure never thrown, and copies at most
+    ///     <see cref="CopilotRedactedException.MaximumDepth"/> exceptions of a chain.
+    /// </summary>
+    [Fact]
+    public void CopilotSignIn_RedactFailure_KeepsTheTypeNameMessageAndStackTrace()
+    {
+        // Arrange
+        var original = new FileNotFoundException("The runtime was not found.", "copilot");
+        original.Data["detail"] = "anything";
+        var failure = Thrown(original);
+        Exception deep = new InvalidOperationException("0");
+        for (var level = 1; level < 20; level++)
+        {
+            deep = new InvalidOperationException($"{level}", deep);
+        }
+
+        // Act
+        var copy = CopilotSignIn.RedactFailure(failure, plan: null);
+        var neverThrown = CopilotSignIn.RedactFailure(new InvalidOperationException("never thrown"), plan: null);
+        var capped = CopilotSignIn.RedactFailure(deep, plan: null);
+
+        // Assert
+        Assert.Equal(typeof(FileNotFoundException).FullName, copy.OriginalTypeName);
+        Assert.Equal(failure.Message, copy.Message);
+        Assert.NotNull(failure.StackTrace);
+        Assert.Equal(failure.StackTrace, copy.StackTrace);
+        Assert.Equal(failure.HResult, copy.HResult);
+        Assert.Equal($"{typeof(FileNotFoundException).FullName}: {failure.Message}{Environment.NewLine}{failure.StackTrace}", copy.ToString());
+        Assert.Empty(copy.Data);
+        Assert.Null(copy.InnerException);
+        Assert.Null(neverThrown.StackTrace);
+        Assert.Equal($"{typeof(InvalidOperationException).FullName}: never thrown", neverThrown.ToString());
+        var depth = 0;
+        for (Exception? current = capped; current is not null; current = current.InnerException)
+        {
+            depth++;
+        }
+
+        Assert.Equal(CopilotRedactedException.MaximumDepth, depth);
+    }
+
+    /// <summary>
     ///     Proves the runtime's sign-in is logged with its source, host and login, that a runtime on
     ///     another account than the Copilot CLI's is warned about, and that no token is logged.
     /// </summary>
@@ -1164,6 +1247,67 @@ public sealed class CopilotSignInTests : IDisposable
             Launch,
             context,
             cancellationToken ?? TestContext.Current.CancellationToken);
+    }
+
+    /// <summary>
+    ///     Throws an exception and returns it as caught, so it carries a real stack trace.
+    /// </summary>
+    /// <param name="exception">The exception.</param>
+    /// <returns>The exception, thrown.</returns>
+    private static Exception Thrown(Exception exception)
+    {
+        try
+        {
+            throw exception;
+        }
+        catch (Exception caught)
+        {
+            return caught;
+        }
+    }
+
+    /// <summary>
+    ///     Asserts that no exception in a failure's chain — every inner exception, and every inner
+    ///     exception of an aggregate — carries a secret in its message, its stack trace or its string
+    ///     form.
+    /// </summary>
+    /// <param name="failure">The failure.</param>
+    /// <param name="secrets">The secrets.</param>
+    private static void AssertNoSecretInChain(Exception failure, params string[] secrets)
+    {
+        var pending = new Stack<Exception>([failure]);
+        while (pending.TryPop(out var current))
+        {
+            foreach (var secret in secrets)
+            {
+                Assert.False(current.Message.Contains(secret, StringComparison.Ordinal), $"A {current.GetType().Name} message carries a secret.");
+                Assert.False((current.StackTrace ?? string.Empty).Contains(secret, StringComparison.Ordinal), $"A {current.GetType().Name} stack trace carries a secret.");
+                Assert.False(current.ToString().Contains(secret, StringComparison.Ordinal), $"A {current.GetType().Name} string form carries a secret.");
+            }
+
+            if (current is AggregateException aggregate)
+            {
+                foreach (var each in aggregate.InnerExceptions)
+                {
+                    pending.Push(each);
+                }
+            }
+            else if (current.InnerException is { } inner)
+            {
+                pending.Push(inner);
+            }
+        }
+    }
+
+    /// <summary>
+    ///     An exception whose stack trace text is supplied, as a runtime's error can quote anything.
+    /// </summary>
+    /// <param name="message">The message.</param>
+    /// <param name="stackTrace">The stack trace text.</param>
+    public sealed class StackQuotingException(string message, string stackTrace) : Exception(message)
+    {
+        /// <inheritdoc/>
+        public override string StackTrace => stackTrace;
     }
 
     /// <summary>

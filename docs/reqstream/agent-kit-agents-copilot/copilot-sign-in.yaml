@@ -165,3 +165,21 @@ sections:
               - CopilotSignIn_PlanRedact_LongestSecretFirstAndTokenShapes
               - CopilotSignIn_PlanToString_RedactsTheToken
               - CopilotSignIn_Report_LogsTheSignInAndWarnsOnAnotherAccount
+
+          - id: AgentKitAgentsCopilot-CopilotSignIn-KeepsOnlyARedactedCause
+            title: >-
+              The sign-in shall provide, for a runtime or SDK failure AgentKit keeps as an inner
+              exception, a copy that carries the original's type name, message and stack trace, each
+              with every token the sign-in knows and any text shaped like a GitHub token redacted, with
+              each chained exception, including an aggregate's first inner exception, copied the same
+              way, and nothing else of the original.
+            tags: [security]
+            justification: |
+              Redacting only the outer message leaves the original exception, and every exception it
+              chains, reachable through InnerException, where a log or crash report prints it whole. A
+              copy made every time, rather than only when a secret is spotted, fails closed: properties
+              AgentKit cannot inspect, such as an RPC error's data, never pass through, while the type
+              name, message and stack trace a host needs to diagnose the failure are kept.
+            tests:
+              - CopilotSignIn_RedactFailure_ChainQuotingKnownSecrets_CarriesNoSecret
+              - CopilotSignIn_RedactFailure_KeepsTheTypeNameMessageAndStackTrace

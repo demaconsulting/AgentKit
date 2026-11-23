@@ -61,10 +61,11 @@ namespace DemaConsulting.AgentKit.Agents.Copilot;
 ///     </para>
 ///     <para>
 ///     <b>Failures.</b> A client that cannot list models, for example because it is not connected,
-///     fails with an <see cref="InvalidOperationException"/> that carries the sign-in message, with the
-///     SDK's exception as the inner exception. A runtime disposed by its host fails with
-///     <see cref="ObjectDisposedException"/>. Any other failure, including a cancellation no caller
-///     requested, propagates unchanged. Nothing is cached.
+///     fails with an <see cref="InvalidOperationException"/> that carries the sign-in message, with a
+///     redacted copy of the SDK's exception — its type name, message and stack trace, with every
+///     token the runtime's sign-in knows removed — as the inner exception. A runtime disposed by its
+///     host fails with <see cref="ObjectDisposedException"/>. Any other failure, including a
+///     cancellation no caller requested, propagates unchanged. Nothing is cached.
 ///     </para>
 ///     <para>
 ///     Cached, single-flight and safe for concurrent use; see <see cref="CachingModelCatalog"/>.
@@ -283,10 +284,27 @@ public sealed class CopilotModelCatalog : CachingModelCatalog
             }
             catch (InvalidOperationException exception) when (exception is not ObjectDisposedException)
             {
-                throw new InvalidOperationException(SignInMessage, exception);
+                throw ExplainListFailure(exception, runtime.SignIn);
             }
         };
     }
+
+    /// <summary>
+    ///     Builds the failure a read that could not reach the service fails with.
+    /// </summary>
+    /// <remarks>
+    ///     The sign-in message, with a redacted copy of the client's failure as the inner exception:
+    ///     its type name, message and stack trace, with every token the runtime's sign-in knows and
+    ///     any text shaped like a GitHub token removed. The original is never kept.
+    /// </remarks>
+    /// <param name="failure">The client's failure.</param>
+    /// <param name="signIn">
+    ///     The runtime's sign-in, whose tokens are redacted, or <see langword="null"/> to redact
+    ///     token-shaped text only.
+    /// </param>
+    /// <returns>The failure to throw.</returns>
+    internal static InvalidOperationException ExplainListFailure(InvalidOperationException failure, CopilotSignInPlan? signIn) =>
+        new(SignInMessage, CopilotSignIn.RedactFailure(failure, signIn));
 
     /// <summary>
     ///     Builds the efforts from the service's identifiers, in its order.

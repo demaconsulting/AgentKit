@@ -419,8 +419,8 @@ public class AgentKitAgentsCopilotTests
 
     /// <summary>
     ///     Proves a host whose bundled Copilot runtime cannot start is told why — the runtime's own
-    ///     error and the missing direct SDK reference that most often causes it — with the original
-    ///     failure kept.
+    ///     error and the missing direct SDK reference that most often causes it — with a redacted
+    ///     copy of the original failure, carrying its type name and message, kept as the cause.
     /// </summary>
     [Fact]
     public async Task AgentKitAgentsCopilot_Runtime_FailedStart_IsExplained()
@@ -439,7 +439,65 @@ public class AgentKitAgentsCopilotTests
         // Assert
         Assert.Contains(cause.Message, failure.Message, StringComparison.Ordinal);
         Assert.Contains("PackageReference to Microsoft.Copilot.SDK", failure.Message, StringComparison.Ordinal);
-        Assert.Same(cause, failure.InnerException);
+        var copy = Assert.IsType<CopilotRedactedException>(failure.InnerException);
+        Assert.Equal(typeof(InvalidOperationException).FullName, copy.OriginalTypeName);
+        Assert.Equal(cause.Message, copy.Message);
+    }
+
+    /// <summary>
+    ///     Proves a token the runtime's sign-in knows reaches no exception the host sees: neither a
+    ///     start failure and its whole chain of causes, nor a session error that fails an agent's run.
+    /// </summary>
+    [Fact]
+    public async Task AgentKitAgentsCopilot_Runtime_FailureQuotingAToken_ReachesNoException()
+    {
+        // Arrange: a sign-in that knows a token of no GitHub shape; a start failure and a session
+        // error that quote it and a token-shaped value
+        const string secret = "s3cr3t-subsystem-xyz";
+        const string shaped = "gho_SubsystemSecret123";
+        var plan = new CopilotSignInPlan { Source = CopilotSignInSource.GitHubToken, Token = secret };
+        var cause = new InvalidOperationException(
+            $"start refused for {secret}",
+            new AggregateException(new IOException($"pipe closed for {shaped}"), new IOException($"again {secret}")));
+        var runtime = new FakeCopilotRuntime(_ => [new ScriptedTurn([CopilotEvents.Error($"session refused {secret} {shaped}")])]);
+        var agent = CopilotAgentFactory.CreateAgent(
+            [MakeTool("doc_read")],
+            instructions: null,
+            onPermissionRequest: null,
+            name: "document-assistant",
+            model: null,
+            workingDirectory: null,
+            runtime.Opener,
+            runtime.Resumer,
+            signIn: plan);
+
+        // Act
+        var startFailure = await Assert.ThrowsAsync<InvalidOperationException>(() => CopilotRuntime.StartClientAsync(
+            _ => Task.FromException(cause),
+            launch: null,
+            plan,
+            TestContext.Current.CancellationToken));
+        var runFailure = await Assert.ThrowsAsync<InvalidOperationException>(async () =>
+        {
+            await foreach (var update in agent.RunStreamingAsync("q", cancellationToken: TestContext.Current.CancellationToken))
+            {
+                Assert.NotNull(update);
+            }
+        });
+
+        // Assert: every exception in each chain is free of both values
+        foreach (var failure in new Exception[] { startFailure, runFailure })
+        {
+            for (Exception? current = failure; current is not null; current = current.InnerException)
+            {
+                Assert.False(current.ToString().Contains(secret, StringComparison.Ordinal), $"A {current.GetType().Name} carries the token.");
+                Assert.False(current.ToString().Contains(shaped, StringComparison.Ordinal), $"A {current.GetType().Name} carries the token-shaped value.");
+                Assert.IsNotType<AggregateException>(current);
+            }
+        }
+
+        Assert.IsType<CopilotRedactedException>(startFailure.InnerException);
+        Assert.Contains("<redacted>", runFailure.Message, StringComparison.Ordinal);
     }
 
     /// <summary>

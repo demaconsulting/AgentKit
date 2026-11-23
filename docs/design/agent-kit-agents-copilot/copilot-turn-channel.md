@@ -130,7 +130,8 @@ reads `runtime.Client` when it runs, so after the host disposes the runtime the 
 opt-in live suite also wraps hostile CodingAgent clients in a `CopilotRuntime` through its internal
 constructor and opens on them through this seam. A client not yet started, or whose connection was
 lost, is started on the first creation, through `CopilotRuntime.StartClientAsync` with the runtime's
-sign-in plan, so a start failure's explanation carries no token the runtime knows.
+sign-in plan, so neither a start failure's explanation nor its cause, a redacted copy of the
+runtime's failure, carries a token the runtime knows.
 
 **Postconditions:** An opener over that runtime; every session it creates went through
 `CreateConfinedSessionAsync`; on a disposed runtime it fails before any start.

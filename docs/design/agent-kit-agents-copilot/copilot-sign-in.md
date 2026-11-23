@@ -89,6 +89,26 @@ too short to be redacted: a secret's safety comes before the readability of the 
 The session token provider can add values while a start failure on another thread is being
 redacted, so the set is read under a lock.
 
+`CopilotRedactedException` (internal sealed exception, in `CopilotSignIn.cs`): the redacted copy of a
+runtime or SDK failure that AgentKit keeps as an inner exception in place of the original.
+
+- **`OriginalTypeName`** (`string`) — the original's full type name.
+- **`Message`** — the original's message, redacted; a `null` message becomes empty.
+- **`StackTrace`** (override) — the original's stack trace text, redacted; `null` when the original
+  was never thrown.
+- **`ToString()`** (override) — the layout of `Exception.ToString`, led by `OriginalTypeName`: the type
+  name and message, then `--->` and the inner copy's string with the end-of-inner marker, then the
+  stack trace.
+- **`InnerException`** — a copy of the original's inner exception, made the same way, down to
+  `MaximumDepth` (16) exceptions. For an `AggregateException` it is the copy of its first inner
+  exception; the aggregate's own message lists every inner exception's message, and is redacted.
+- **`HResult`** — copied. `Data`, `Source`, `HelpLink` and every property of the original's own type
+  are not copied, because they may hold anything.
+
+The copy is made every time, not only when a secret is spotted: that fails closed for properties
+AgentKit cannot inspect, such as an RPC error's data. It is internal: a host catches the outer
+exception, whose type never changes, and the copy is diagnostic text.
+
 `CopilotCliAccount` (internal record): `Host` (normalized `https://name`) and `Login`; never a token.
 
 `CopilotCliAccountLookup` (internal record): the `Account` found or `null`, the `ConfigurationPath`
@@ -239,6 +259,19 @@ allowed; a path, query, fragment, user name, port or backslash is refused; the n
 name; the result is lower case. `HostName` strips the scheme. `NormalizeHost` throws
 `ArgumentException` naming the option.
 
+#### Redact(plan, text) and RedactFailure(failure, plan)
+
+**Purpose:** Redact the runtime or SDK text that other units quote, and copy a failure they keep as a
+cause.
+
+**Algorithm:** `Redact(plan, text)` returns an empty string for a `null` text, `plan.Redact(text)`
+when there is a plan, and the token-shape `Redact(text)` otherwise (a client built outside
+`StartAsync`, such as a test's). `RedactFailure(failure, plan)` builds the `CopilotRedactedException`
+copy of `failure` and its chain, redacting each message and stack trace with `Redact(plan, text)`.
+
+**Known limitation.** Exact-value redaction cannot recognize a token the runtime transformed, for
+example by URL-encoding or truncating it; the token-shape pattern still applies to such text.
+
 ### Error Handling
 
 | Condition | Handling |
@@ -255,8 +288,11 @@ name; the result is lower case. `HostName` strips the scheme. `NormalizeHost` th
 | Helper home cannot be deleted | Warning logged naming the path; the start goes on |
 
 Every message and finding AgentKit composes from runtime, SDK or exception text is redacted with the
-plan's secrets and the token-shape pattern. An exception AgentKit keeps as an inner exception, such
-as the host provider's failure, is the original, unmodified.
+plan's secrets and the token-shape pattern. A runtime or SDK failure AgentKit keeps as an inner
+exception is a `CopilotRedactedException` copy (`RedactFailure`), never the original, so no exception
+in the chain carries a token. Only the host provider's own failure is kept unchanged as the cause of
+the provider refusal: the host's own code raised it, AgentKit quotes none of it, and keeping it lets
+the host recognize its own failure type.
 
 ### Dependencies
 
@@ -272,8 +308,11 @@ as the host provider's failure, is the original, unmodified.
 `CopilotRuntime.StartAsync` calls `ResolveAsync`, then `Report`; `CopilotRuntime.VerifyStartedAsync`
 calls `ExplainUnauthenticated`; the `CopilotRuntime` constructor calls `Classify` and
 `CreateSessionTokenProvider`, passing the plan's `Secrets`; `CopilotRuntime.ExplainStartFailure`, on
-`StartAsync`'s path and on the turn channel's discovery path, calls `CopilotSignInPlan.Redact`;
-`CopilotRuntimeOptions` calls `NormalizeHost`.
+`StartAsync`'s path and on the turn channel's discovery path, calls `Redact(plan, text)`, and
+`CopilotRuntime.StartClientAsync` calls `RedactFailure` for the cause; `CopilotModelCatalog`'s
+`ExplainListFailure` calls `RedactFailure`; `CopilotAgent` (a session error) and
+`CopilotProviderSession` (its refusals) call `Redact(plan, text)`; `CopilotRuntimeOptions` calls
+`NormalizeHost`.
 
 ### Untested Platforms
 

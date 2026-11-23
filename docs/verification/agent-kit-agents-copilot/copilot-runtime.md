@@ -91,7 +91,8 @@ link, a directory, the wrong size or the wrong content, or is found populated on
 written, or marked when refused; a marker written in
 any form other than the exact versioned bytes, or an existing marker overwritten;
 a failed bundled start whose explanation omits the runtime's error, the direct SDK reference or an
-authentication source, or loses the original failure, or a failed installed-CLI start whose
+authentication source, or keeps the original failure rather than a redacted copy of it as the cause, or leaves a
+token anywhere in the cause's chain, or a failed installed-CLI start whose
 explanation blames the SDK reference; a cancellation that is wrapped; a failed or canceled start that
 leaves the client
 undisposed; a disposal that is not idempotent or leaves the client usable; an agent, provider-session
@@ -302,13 +303,17 @@ it carries the token.
 Error path and normal operation. A bundled start failing with the SDK's runtime-not-found error is rethrown as an
 `InvalidOperationException` whose message carries the runtime's error and the remedy — a `PackageReference` to
 `Microsoft.Copilot.SDK` — and names every sign-in source, in order, from `gitHubToken` or `gitHubTokenProvider` to the
-user's Copilot CLI sign-in, and whose inner exception is the original, by reference; a failure whose message is null, on
+user's Copilot CLI sign-in, and whose inner exception is a redacted copy of the original — not the original — carrying
+its type name and message; a failure whose message is null, on
 a start whose launch is not known, is explained for both sources rather than masked. An installed CLI's failure names
-the CLI and its version, keeps the cause and an authentication source, and does not mention a package reference. A start
+the CLI and its version, keeps a redacted copy of the cause and an authentication source, and does not mention a package
+reference. A start
 that succeeds passes through. On a runtime started with a token provider, whose session provider has handed a session
 its token, a start failure quoting both the start token and the session token — neither shaped like a GitHub token —
-is explained with `<redacted>` in their places and neither value in the message, and the inner exception is still the
-original, by reference.
+and chaining an inner exception that chains an aggregate of two exceptions quoting them, is explained with `<redacted>`
+in their places and neither value in the message; the inner exception is a redacted copy carrying the original's type
+name and the redacted message, the aggregate is copied with its type name, and a walk of the whole chain, every inner
+exception of any aggregate included, finds neither value in any message, stack trace or string form.
 
 #### AgentKitAgentsCopilot-CopilotRuntime-PassesCancellationThrough: Cancellation Is Not a Fault
 

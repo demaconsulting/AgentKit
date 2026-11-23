@@ -79,12 +79,18 @@ choice or changes the service's order each constitute a failure.
 
 #### AgentKitAgentsCopilot-CopilotModelCatalog-ReadsTheServiceThroughTheRuntime: Sign-In Message on Failure
 
-**Test**: `CopilotModelCatalog_ListAsync_ClientNotConnected_FailsWithTheSignInMessage`
+**Tests**:
+
+- `CopilotModelCatalog_ListAsync_ClientNotConnected_FailsWithTheSignInMessage`
+- `CopilotModelCatalog_ExplainListFailure_QuotingAToken_KeepsOnlyARedactedCause`
 
 Error path through the real SDK. A runtime whose client was never connected fails the listing with
 `InvalidOperationException` carrying exactly the sign-in message, which names `copilot login`,
-`gh auth login` and `gitHubHost`, with the SDK's own `InvalidOperationException` kept
-as the inner exception.
+`gh auth login` and `gitHubHost`, with a redacted copy of the SDK's own failure, naming its type,
+kept as the inner exception. A client failure quoting a secret the runtime's sign-in knows, chaining
+an `IOException` quoting a `gho_` token, becomes the sign-in message with a redacted copy of the
+failure, not the failure itself, as its cause: the copy and its inner copy carry the original type
+names and `<redacted>` in place of each value, and neither value appears in the string form.
 
 #### AgentKitAgentsCopilot-CopilotModelCatalog-ReadsTheServiceThroughTheRuntime: Disposed Runtime Refused
 

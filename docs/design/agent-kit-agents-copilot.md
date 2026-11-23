@@ -849,6 +849,16 @@ so no path can acquire capability another path withholds.
   home deleted whatever happens; the confined runtime receives only the token and the host. The token
   stays in memory and in the runtime's environment: AgentKit never writes it, logs it or puts it in an
   exception message, and every string form of a sign-in plan or token redacts it.
+- **No token in any exception AgentKit raises or keeps as a cause.** Every place AgentKit composes
+  runtime or SDK text into its own exception — a start failure, a session error that fails an agent's
+  run, a provider session's refusals — redacts every token the runtime's sign-in knows and any text
+  shaped like a GitHub token, and a runtime or SDK failure kept as a cause (a start failure's, a model
+  listing failure's) is a redacted copy carrying the original's type name, message and stack trace,
+  never the original. The boundary is deliberate: the SDK's own exceptions that AgentKit passes
+  through without composing or wrapping them are left unchanged, because wrapping them would change
+  the exception types a host catches, and conversation content the model already received — tool
+  results and the event objects carried as raw representations — is not rewritten, because the
+  transcript must agree with the runtime's conversation.
 
 Two further measures protect the conversation rather than the machine: the runtime's own compaction
 threshold is held clear of the engine's rotation point, with every runtime rewrite of the

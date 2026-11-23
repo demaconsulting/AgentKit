@@ -838,9 +838,10 @@ public class CopilotRuntimeTests
     /// <summary>
     ///     Proves a start that fails on the bundled runtime is explained — the runtime's own error
     ///     first, then the missing direct SDK reference as the common cause of a runtime that was not
-    ///     found, then every source the runtime authenticates from — with the original failure kept as
-    ///     the cause, and that a start whose launch is not known, including one whose failure message
-    ///     is null, is explained for both sources.
+    ///     found, then every source the runtime authenticates from — with a redacted copy of the
+    ///     original failure, carrying its type name and message, kept as the cause, and that a start
+    ///     whose launch is not known, including one whose failure message is null, is explained for
+    ///     both sources.
     /// </summary>
     [Fact]
     public async Task CopilotRuntime_StartClient_FailedStart_ExplainsTheMissingRuntimeAndKeepsTheCause()
@@ -861,14 +862,14 @@ public class CopilotRuntimeTests
             TestContext.Current.CancellationToken));
 
         // Assert
-        Assert.Same(cause, failure.InnerException);
+        AssertRedactedCopyOf(cause, failure.InnerException);
         Assert.Contains(cause.Message, failure.Message, StringComparison.Ordinal);
         Assert.Contains("PackageReference to Microsoft.Copilot.SDK", failure.Message, StringComparison.Ordinal);
         Assert.Contains(
             "gitHubToken or gitHubTokenProvider, COPILOT_GITHUB_TOKEN, GH_TOKEN or GITHUB_TOKEN, the user's Copilot CLI sign-in",
             failure.Message,
             StringComparison.Ordinal);
-        Assert.Same(nullMessage, nullFailure.InnerException);
+        AssertRedactedCopyOf(nullMessage, nullFailure.InnerException);
         Assert.Contains("Microsoft.Copilot.SDK", nullFailure.Message, StringComparison.Ordinal);
         Assert.Contains("installed Copilot CLI", nullFailure.Message, StringComparison.Ordinal);
     }
@@ -892,7 +893,7 @@ public class CopilotRuntimeTests
             TestContext.Current.CancellationToken));
 
         // Assert
-        Assert.Same(cause, failure.InnerException);
+        AssertRedactedCopyOf(cause, failure.InnerException);
         Assert.Contains(cause.Message, failure.Message, StringComparison.Ordinal);
         Assert.Contains("'/fake/bin/copilot' (version 1.0.114)", failure.Message, StringComparison.Ordinal);
         Assert.DoesNotContain("PackageReference", failure.Message, StringComparison.Ordinal);
@@ -919,7 +920,7 @@ public class CopilotRuntimeTests
             TestContext.Current.CancellationToken));
 
         // Assert
-        Assert.Same(cause, failure.InnerException);
+        AssertRedactedCopyOf(cause, failure.InnerException);
         Assert.Contains(cause.Message, failure.Message, StringComparison.Ordinal);
         Assert.Contains("speaks SDK protocol version 3", failure.Message, StringComparison.Ordinal);
         Assert.Contains($"{CopilotCli.MinimumVersion} or later", failure.Message, StringComparison.Ordinal);
@@ -1635,7 +1636,9 @@ public class CopilotRuntimeTests
     /// <summary>
     ///     Proves a start failure that quotes the runtime's start token or a session token the host's
     ///     provider returned is explained without either, even when neither is shaped like a GitHub
-    ///     token, and that the original failure is kept, unmodified, as the cause.
+    ///     token, and that the cause kept is a redacted copy of the failure whose whole chain —
+    ///     including a nested inner exception and every inner exception of an aggregate — carries
+    ///     neither token.
     /// </summary>
     [Fact]
     public async Task CopilotRuntime_StartClient_FailureQuotingASignInToken_IsRedacted()
@@ -1654,7 +1657,13 @@ public class CopilotRuntimeTests
         var session = new CreateSessionOptions();
         runtime.ApplySessionSignIn(session);
         await session.GitHub.TokenProvider!(new GitHubTokenProviderArgs { Host = "https://example.ghe.com", Reason = GitHubTokenRequestReason.Initial });
-        var cause = new InvalidOperationException($"connection lost (start {startToken}, session {sessionToken})");
+        var aggregate = new AggregateException(
+            "both failed",
+            new IOException($"pipe broke on {startToken}"),
+            new UnauthorizedAccessException($"refused {sessionToken}"));
+        var cause = new InvalidOperationException(
+            $"connection lost (start {startToken}, session {sessionToken})",
+            new InvalidOperationException($"handshake with {sessionToken}", aggregate));
 
         // Act
         var failure = await Assert.ThrowsAsync<InvalidOperationException>(() => CopilotRuntime.StartClientAsync(
@@ -1667,7 +1676,11 @@ public class CopilotRuntimeTests
         Assert.False(failure.Message.Contains(startToken, StringComparison.Ordinal), "The explanation carries the start token.");
         Assert.False(failure.Message.Contains(sessionToken, StringComparison.Ordinal), "The explanation carries the session token.");
         Assert.Contains("connection lost (start <redacted>, session <redacted>)", failure.Message, StringComparison.Ordinal);
-        Assert.Same(cause, failure.InnerException);
+        var copy = Assert.IsType<CopilotRedactedException>(failure.InnerException);
+        Assert.Equal(typeof(InvalidOperationException).FullName, copy.OriginalTypeName);
+        Assert.Equal("connection lost (start <redacted>, session <redacted>)", copy.Message);
+        Assert.Equal(typeof(AggregateException).FullName, Assert.IsType<CopilotRedactedException>(copy.InnerException?.InnerException).OriginalTypeName);
+        AssertNoSecretInChain(failure, startToken, sessionToken);
     }
 
     /// <summary>
@@ -1699,6 +1712,53 @@ public class CopilotRuntimeTests
     /// <returns>The client.</returns>
     private static CopilotClient NewClient(string dataDirectory) =>
         new(CopilotRuntime.BuildClientOptions(new CopilotRuntimeOptions(dataDirectory), dataDirectory, new Hashtable()));
+
+    /// <summary>
+    ///     Asserts that an inner exception is the redacted copy of a cause, not the cause itself: its
+    ///     original type name and its message, which held no secret, are kept.
+    /// </summary>
+    /// <param name="cause">The failure the start raised.</param>
+    /// <param name="inner">The inner exception the explanation carries.</param>
+    private static void AssertRedactedCopyOf(Exception cause, Exception? inner)
+    {
+        var copy = Assert.IsType<CopilotRedactedException>(inner);
+        Assert.NotSame(cause, inner);
+        Assert.Equal(cause.GetType().FullName, copy.OriginalTypeName);
+        Assert.Equal(cause.Message ?? string.Empty, copy.Message);
+    }
+
+    /// <summary>
+    ///     Asserts that no exception in a failure's chain — every inner exception, and every inner
+    ///     exception of an aggregate — carries a secret in its message, its stack trace or its string
+    ///     form.
+    /// </summary>
+    /// <param name="failure">The failure.</param>
+    /// <param name="secrets">The secrets.</param>
+    private static void AssertNoSecretInChain(Exception failure, params string[] secrets)
+    {
+        var pending = new Stack<Exception>([failure]);
+        while (pending.TryPop(out var current))
+        {
+            foreach (var secret in secrets)
+            {
+                Assert.False(current.Message.Contains(secret, StringComparison.Ordinal), $"A {current.GetType().Name} message carries a secret.");
+                Assert.False((current.StackTrace ?? string.Empty).Contains(secret, StringComparison.Ordinal), $"A {current.GetType().Name} stack trace carries a secret.");
+                Assert.False(current.ToString().Contains(secret, StringComparison.Ordinal), $"A {current.GetType().Name} string form carries a secret.");
+            }
+
+            if (current is AggregateException aggregate)
+            {
+                foreach (var each in aggregate.InnerExceptions)
+                {
+                    pending.Push(each);
+                }
+            }
+            else if (current.InnerException is { } inner)
+            {
+                pending.Push(inner);
+            }
+        }
+    }
 
     /// <summary>
     ///     A fake data directory for launch resolution, which never touches it.

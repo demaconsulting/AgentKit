@@ -133,8 +133,9 @@ sections:
           - id: AgentKitAgentsCopilot-CopilotProviderSession-EndsOnATurnItCouldNotRecord
             title: >-
               The session shall accept no further turn, and shall send none, once a turn it handed to
-              the Copilot runtime could not be recorded, naming the original failure as the reason it
-              will not be used again.
+              the Copilot runtime could not be recorded, naming the original failure, with every token
+              the runtime's sign-in knows and any text shaped like a GitHub token redacted, as the
+              reason it will not be used again.
             justification: |
               Handing the prompt over is the dividing line. Past it the runtime may hold a turn the
               engine's transcript does not — a send that failed is as uncertain as a turn that came
@@ -151,15 +152,18 @@ sections:
               transcript, which is the state known to be good. Naming the original failure rather than
               inventing a fresh one is what lets an application act on the cause instead of on the
               symptom, and the rule is one rule for two causes — this and the runtime rewriting
-              history — because the consequence of each is identical.
+              history — because the consequence of each is identical. The failure's text may quote a
+              token the runtime was given, so the refusal quotes it redacted.
             tests:
               - CopilotProviderSession_Send_AfterATurnItCouldNotRecord_RefusesWithoutSending
               - CopilotProviderSession_Send_ChannelFails_EndsTheSessionAndHandsNothingBack
+              - CopilotProviderSession_Send_ChannelFailureQuotingAToken_LaterRefusalIsRedacted
 
           - id: AgentKitAgentsCopilot-CopilotProviderSession-RefusesASilentSession
             title: >-
               The session shall refuse a turn in which the runtime went idle without producing an
-              assistant message, naming the runtime's own error when one was reported.
+              assistant message, naming the runtime's own error when one was reported, with every
+              token the runtime's sign-in knows and any text shaped like a GitHub token redacted.
             justification: |
               The runtime's wait returns nothing when a session goes idle without answering, which
               happens when the turn failed rather than when the model had nothing to say. Recording an
@@ -169,10 +173,12 @@ sections:
               must be this turn's, since an error carried over from an earlier turn would name the
               wrong cause in the one message whose purpose is to name the right one. Each turn
               therefore begins by discarding the last one's reported error, and a turn that failed
-              ends the session, so no later turn can inherit either.
+              ends the session, so no later turn can inherit either. The runtime's error may quote a
+              token it was given, so it is named redacted.
             tests:
               - CopilotProviderSession_Send_NoAssistantMessage_ThrowsNamingTheRuntimeError
               - CopilotProviderSession_Send_NoAssistantMessageAndNoError_ThrowsSayingSo
+              - CopilotProviderSession_Send_NoAssistantMessageQuotingAToken_IsRedacted
 
           - id: AgentKitAgentsCopilot-CopilotProviderSession-RejectsInvalidArguments
             title: >-

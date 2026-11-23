@@ -523,9 +523,10 @@ internal sealed class CopilotSessionChannel : ICopilotTurnChannel
     ///     started first. Starting is idempotent on a started client — a <see cref="CopilotRuntime"/>
     ///     hands over a started one — and it reconnects a client whose connection was lost; it goes
     ///     through <see cref="CopilotRuntime.StartClientAsync(Func{CancellationToken, Task}, CopilotRuntimeLaunch?, CopilotSignInPlan?, CancellationToken)"/>
-    ///     with the runtime's sign-in plan, so a runtime that cannot start still reports why, and the
-    ///     report carries no token the runtime knows. The client is read from the runtime first, so a disposed runtime fails here
-    ///     with <see cref="ObjectDisposedException"/> rather than being started again.
+    ///     with the runtime's sign-in plan, so a runtime that cannot start still reports why, and
+    ///     neither the report nor its cause, a redacted copy of the runtime's failure, carries a token
+    ///     the runtime knows. The client is read from the runtime first, so a disposed runtime fails
+    ///     here with <see cref="ObjectDisposedException"/> rather than being started again.
     /// </remarks>
     /// <param name="runtime">The runtime to discover on.</param>
     /// <param name="workingDirectory">The session's working directory, whose workspace configuration is included.</param>

@@ -331,7 +331,8 @@ is usable.
 never started.
 
 **Expected**: The SDK refuses with an `InvalidOperationException` rather than answering, and the
-catalog surfaces it as its sign-in message with the SDK's failure as the inner exception.
+catalog surfaces it as its sign-in message with a redacted copy of the SDK's failure, naming its
+type, as the inner exception.
 
 **Requirement coverage**: `AgentKit-OTS-MicrosoftCopilotSDK-ModelListing`.
 

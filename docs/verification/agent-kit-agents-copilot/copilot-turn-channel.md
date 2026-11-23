@@ -252,4 +252,7 @@ can never start, `CreateConfinedSessionAsync` and `ResumeConfinedSessionAsync` e
 without one, none is set. Invoking the session provider with the SDK's arguments for
 `https://example.ghe.com` and `Refresh` asks the host's provider once, with that host and
 `IsRefresh` true, and hands back its token. That the runtime then asks the session provider is shown
-by the opt-in live suite (L-S4).
+by the opt-in live suite (L-S4). The discovery's start failure goes through
+`CopilotRuntime.StartClientAsync` with the runtime's sign-in, so its explanation is redacted and its
+cause is a redacted copy of the runtime's failure; that is asserted in *CopilotRuntime Unit
+Verification Design*.

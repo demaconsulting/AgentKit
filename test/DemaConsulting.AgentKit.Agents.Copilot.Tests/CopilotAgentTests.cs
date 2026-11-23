@@ -352,6 +352,42 @@ public class CopilotAgentTests
     }
 
     /// <summary>
+    ///     Proves a session error that quotes a token the runtime's sign-in knows, or one shaped like a
+    ///     GitHub token, fails the run with both redacted and no cause attached.
+    /// </summary>
+    [Fact]
+    public async Task CopilotAgent_RunStreaming_SessionErrorQuotingAToken_IsRedacted()
+    {
+        // Arrange: a sign-in that knows a token of no GitHub shape, and an error quoting it and a gho_ token
+        const string secret = "s3cr3t-agent-xyz";
+        const string shaped = "gho_AgentSecret123";
+        var secrets = new CopilotSignInSecrets();
+        secrets.Add(secret);
+        var plan = new CopilotSignInPlan { Secrets = secrets };
+        var runtime = new FakeCopilotRuntime(_ =>
+            [new ScriptedTurn([CopilotEvents.Error($"refused {secret} and {shaped}")])]);
+        var agent = CopilotAgentFactory.CreateAgent(
+            [AIFunctionFactory.Create(() => "ok", "doc_read")],
+            instructions: null,
+            onPermissionRequest: null,
+            "test-agent",
+            model: null,
+            workingDirectory: null,
+            runtime.Opener,
+            runtime.Resumer,
+            signIn: plan);
+
+        // Act
+        var failure = await Assert.ThrowsAsync<InvalidOperationException>(() => Collect(agent, "q"));
+
+        // Assert
+        Assert.Equal("Session error: refused <redacted> and gho_<redacted>", failure.Message);
+        Assert.DoesNotContain(secret, failure.ToString(), StringComparison.Ordinal);
+        Assert.DoesNotContain(shaped, failure.ToString(), StringComparison.Ordinal);
+        Assert.Null(failure.InnerException);
+    }
+
+    /// <summary>
     ///     Proves the non-streaming run returns exactly what the stream carried, gathered into one
     ///     response.
     /// </summary>

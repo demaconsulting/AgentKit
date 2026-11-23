@@ -64,7 +64,11 @@ namespace DemaConsulting.AgentKit.Agents.Copilot;
 ///     has every exact token it was given or obtained removed — the host's token, the host's
 ///     provider's tokens at start and for each session, the Copilot CLI's token, and the values of the
 ///     environment's token variables — whatever their shape, and then any text shaped like a GitHub
-///     token. An exception AgentKit keeps as an inner exception is the original, unmodified.
+///     token. A runtime or SDK failure AgentKit keeps as an inner exception is a redacted copy
+///     (<see cref="CopilotRedactedException"/>): its type name, message and stack trace, each
+///     redacted, with every chained exception copied the same way and nothing else of the original.
+///     Only the host's own token provider's exception is kept unchanged: the host's code raised it,
+///     AgentKit quotes none of it, and the host can then recognize its own failure.
 ///     </para>
 /// </remarks>
 internal static partial class CopilotSignIn
@@ -925,6 +929,37 @@ internal static partial class CopilotSignIn
     internal static string Redact(string text) => TokenShape().Replace(text, "$1<redacted>");
 
     /// <summary>
+    ///     Removes every token a sign-in knows, and any text shaped like a GitHub token, from a text
+    ///     AgentKit is about to quote.
+    /// </summary>
+    /// <param name="plan">
+    ///     The sign-in whose tokens are removed, or <see langword="null"/> to remove token-shaped text
+    ///     only (a client built outside <see cref="CopilotRuntime.StartAsync"/>, such as a test's).
+    /// </param>
+    /// <param name="text">The text, such as a runtime's error message, or <see langword="null"/>.</param>
+    /// <returns>The text with the secrets redacted; empty for a <see langword="null"/> text.</returns>
+    internal static string Redact(CopilotSignInPlan? plan, string? text) =>
+        text is null ? string.Empty : plan?.Redact(text) ?? Redact(text);
+
+    /// <summary>
+    ///     Makes the redacted copy of a runtime or SDK failure that AgentKit keeps as an inner exception
+    ///     in place of the original.
+    /// </summary>
+    /// <remarks>
+    ///     Always a copy, never the original, whether or not a secret was spotted: properties AgentKit
+    ///     cannot inspect, such as an RPC error's data, never pass through. See
+    ///     <see cref="CopilotRedactedException"/> for what the copy carries.
+    /// </remarks>
+    /// <param name="failure">The failure the runtime or the SDK raised.</param>
+    /// <param name="plan">
+    ///     The sign-in whose tokens are removed, or <see langword="null"/> to remove token-shaped text
+    ///     only.
+    /// </param>
+    /// <returns>The redacted copy, with every chained exception copied the same way.</returns>
+    internal static CopilotRedactedException RedactFailure(Exception failure, CopilotSignInPlan? plan) =>
+        CopilotRedactedException.Copy(failure, text => Redact(plan, text), depth: 1);
+
+    /// <summary>
     ///     Tries the Copilot CLI sign-in: checks the account against the requested host and reads its
     ///     token.
     /// </summary>
@@ -1334,6 +1369,119 @@ internal sealed class CopilotSignInSecrets
         }
 
         return CopilotSignIn.Redact(text);
+    }
+}
+
+/// <summary>
+///     A redacted copy of a runtime or SDK failure, kept as an inner exception in place of the
+///     original so no exception in the chain carries a token.
+/// </summary>
+/// <remarks>
+///     <para>
+///     The copy carries the original's type name (<see cref="OriginalTypeName"/>, which also leads
+///     <see cref="ToString"/>), its message and its stack trace text, each redacted, and its
+///     <see cref="Exception.HResult"/>. Its <see cref="Exception.InnerException"/> is a copy of the
+///     original's, made the same way, down to <see cref="MaximumDepth"/> exceptions; for an
+///     <see cref="AggregateException"/> that is its first inner exception, and the aggregate's own
+///     message, which lists every inner exception's message, is redacted too.
+///     </para>
+///     <para>
+///     Nothing else is copied: not <see cref="Exception.Data"/>, <see cref="Exception.Source"/>,
+///     <see cref="Exception.HelpLink"/> or any property of the original's own type, because AgentKit
+///     cannot know what they hold. Internal, because a host catches the outer exception, whose type
+///     never changes; the copy is diagnostic text.
+///     </para>
+/// </remarks>
+// Internal on purpose: a host never catches this type, only the outer exception that carries it, so
+// making it public would add API surface and a versioning commitment no host needs.
+#pragma warning disable S3871
+internal sealed class CopilotRedactedException : Exception
+#pragma warning restore S3871
+{
+    /// <summary>
+    ///     The most exceptions of a chain that are copied, the first included.
+    /// </summary>
+    internal const int MaximumDepth = 16;
+
+    /// <summary>
+    ///     The original's stack trace text, redacted, or <see langword="null"/> when it was never thrown.
+    /// </summary>
+    private readonly string? _stackTrace;
+
+    /// <summary>
+    ///     Initializes a new instance of the <see cref="CopilotRedactedException"/> class.
+    /// </summary>
+    /// <param name="originalTypeName">The original's full type name.</param>
+    /// <param name="message">The original's message, redacted.</param>
+    /// <param name="stackTrace">The original's stack trace text, redacted, or <see langword="null"/>.</param>
+    /// <param name="innerException">The copy of the original's inner exception, or <see langword="null"/>.</param>
+    private CopilotRedactedException(string originalTypeName, string message, string? stackTrace, Exception? innerException)
+        : base(message, innerException)
+    {
+        OriginalTypeName = originalTypeName;
+        _stackTrace = stackTrace;
+    }
+
+    /// <summary>
+    ///     Gets the original exception's full type name, such as <c>System.IO.FileNotFoundException</c>.
+    /// </summary>
+    internal string OriginalTypeName { get; }
+
+    /// <summary>
+    ///     Gets the original exception's stack trace text, redacted.
+    /// </summary>
+    public override string? StackTrace => _stackTrace;
+
+    /// <summary>
+    ///     Describes the copy in the layout of <see cref="Exception.ToString"/>, led by the original's
+    ///     type name.
+    /// </summary>
+    /// <returns>The type name, message, inner exceptions and stack trace, all redacted.</returns>
+    public override string ToString()
+    {
+        var text = new StringBuilder(OriginalTypeName);
+        if (Message.Length > 0)
+        {
+            text.Append(": ").Append(Message);
+        }
+
+        if (InnerException is { } inner)
+        {
+            text.Append(" ---> ").Append(inner.ToString()).AppendLine().Append("   --- End of inner exception stack trace ---");
+        }
+
+        if (_stackTrace is not null)
+        {
+            text.AppendLine().Append(_stackTrace);
+        }
+
+        return text.ToString();
+    }
+
+    /// <summary>
+    ///     Copies a failure and its chain, redacted.
+    /// </summary>
+    /// <param name="failure">The failure.</param>
+    /// <param name="redact">Removes the secrets from a text.</param>
+    /// <param name="depth">The failure's position in the chain, the first being 1.</param>
+    /// <returns>The copy.</returns>
+    internal static CopilotRedactedException Copy(Exception failure, Func<string?, string> redact, int depth)
+    {
+        // An aggregate's first inner exception is the one chained; its message lists them all
+        var next = failure is AggregateException { InnerExceptions.Count: > 0 } aggregate
+            ? aggregate.InnerExceptions[0]
+            : failure.InnerException;
+        var inner = next is not null && depth < MaximumDepth ? Copy(next, redact, depth + 1) : null;
+        var stackTrace = failure.StackTrace;
+        var type = failure.GetType();
+        return new CopilotRedactedException(
+            type.FullName ?? type.Name,
+            redact(failure.Message),
+            stackTrace is null ? null : redact(stackTrace),
+            inner)
+        {
+            HResult = failure.HResult,
+        };
     }
 }
 
