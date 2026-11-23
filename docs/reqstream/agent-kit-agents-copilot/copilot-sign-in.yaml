@@ -55,6 +55,7 @@ sections:
               - CopilotSignIn_ResolveAsync_EnvironmentHost_IsGivenToTheRuntimeNormalized
               - CopilotSignIn_NormalizeHost_AcceptedForms_Normalize
               - CopilotSignIn_NormalizeHost_RejectedForms_Throw
+              - CopilotSignIn_NormalizeHost_RejectedHost_IsNotQuoted
 
           - id: AgentKitAgentsCopilot-CopilotSignIn-RefusesAnInvalidEnvironmentHost
             title: >-

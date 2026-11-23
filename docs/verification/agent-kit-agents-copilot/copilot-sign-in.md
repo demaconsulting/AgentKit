@@ -67,7 +67,8 @@ CLI); a helper in another mode, on another executable or with a token; an accoun
 the status shows the account's stored sign-in; a token taken from another account's entry; a helper
 failure, time-out or account-list failure that fails the start; a `COPILOT_HOME` that is not a valid
 path that fails the start or is quoted; an invalid `COPILOT_GH_HOST` that is ignored, quoted, or
-refused when `gitHubHost` was given; a valid one handed to the runtime other than normalized; a helper
+refused when `gitHubHost` was given; a rejected `gitHubHost` quoted in its refusal; a valid one
+handed to the runtime other than normalized; a helper
 not disposed or a helper home
 not deleted on any outcome; a configuration with comments and trailing commas not read; an unusable
 configuration that yields an account; a refusal missing a source, its finding or a remedy; a token
@@ -111,6 +112,7 @@ to `Unknown`.
 - `CopilotSignIn_ResolveAsync_EnvironmentHost_IsGivenToTheRuntimeNormalized`
 - `CopilotSignIn_NormalizeHost_AcceptedForms_Normalize`
 - `CopilotSignIn_NormalizeHost_RejectedForms_Throw`
+- `CopilotSignIn_NormalizeHost_RejectedHost_IsNotQuoted`
 
 Normal operation and boundaries. A token with `https://Example.ghe.com/` gives the runtime
 `example.ghe.com`. A provider is asked for the option's host over `COPILOT_GH_HOST`, for
@@ -122,7 +124,10 @@ names the GitHub CLI found on `PATH`, or says none was found. A `COPILOT_GH_HOST
 token and to the runtime's own fallbacks alike, and the client options built from the fallbacks' plan
 set the runtime's `COPILOT_GH_HOST` to `example.ghe.com`. Bare names, https URLs and one trailing
 slash normalize to lower case; `http`, other schemes, a path, query, fragment, user name, port, an
-empty authority or a non-host are refused naming the parameter.
+empty authority or a non-host are refused naming the parameter. A rejected
+`https://user:s3cr3t-host@example.ghe.com` is refused naming `gitHubHost`, and neither the password
+nor the user name appears in the message or anywhere in the exception's chain, because a rejected URL
+may carry credentials.
 
 #### AgentKitAgentsCopilot-CopilotSignIn-RefusesAnInvalidEnvironmentHost: An Invalid COPILOT_GH_HOST Stops the Start
 

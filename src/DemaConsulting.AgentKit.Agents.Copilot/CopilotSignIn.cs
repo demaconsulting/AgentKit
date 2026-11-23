@@ -210,7 +210,10 @@ internal static partial class CopilotSignIn
     /// <param name="host">The host: a name such as <c>example.ghe.com</c>, or an https URL without a path.</param>
     /// <param name="parameterName">The option's parameter name, for the exception.</param>
     /// <returns>The host as <c>https://name</c> in lower case, or <see langword="null"/> when blank.</returns>
-    /// <exception cref="ArgumentException">The host is not an https host name or URL without a path, query, fragment, user name or port.</exception>
+    /// <exception cref="ArgumentException">
+    ///     The host is not an https host name or URL without a path, query, fragment, user name or
+    ///     port. The message does not quote the value, which may carry a user name and password.
+    /// </exception>
     internal static string? NormalizeHost(string? host, string parameterName)
     {
         if (string.IsNullOrWhiteSpace(host))
@@ -221,8 +224,8 @@ internal static partial class CopilotSignIn
         return TryNormalizeHost(host, out var normalized)
             ? normalized
             : throw new ArgumentException(
-                $"The GitHub host '{host}' is not valid. Pass a host name such as 'example.ghe.com', or an https URL "
-                + "such as 'https://example.ghe.com', without a path, query, user name or port.",
+                "The GitHub host is not valid. Pass a host name such as 'example.ghe.com', or an https URL such as "
+                + "'https://example.ghe.com', without a path, query, user name or port.",
                 parameterName);
     }
 

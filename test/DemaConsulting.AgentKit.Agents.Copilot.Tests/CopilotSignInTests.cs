@@ -1073,6 +1073,24 @@ public sealed class CopilotSignInTests : IDisposable
     }
 
     /// <summary>
+    ///     Proves a rejected GitHub host is not quoted in the refusal, since a URL may carry a user name
+    ///     and password.
+    /// </summary>
+    [Fact]
+    public void CopilotSignIn_NormalizeHost_RejectedHost_IsNotQuoted()
+    {
+        // Act
+        var failure = Assert.Throws<ArgumentException>(
+            () => CopilotSignIn.NormalizeHost("https://user:s3cr3t-host@example.ghe.com", "gitHubHost"));
+
+        // Assert
+        Assert.Equal("gitHubHost", failure.ParamName);
+        Assert.DoesNotContain("s3cr3t-host", failure.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("user:", failure.Message, StringComparison.Ordinal);
+        AssertNoSecretInChain(failure, "s3cr3t-host", "user:");
+    }
+
+    /// <summary>
     ///     Proves the session token provider asks the host's provider with the session's host and
     ///     whether it is a refresh, and hands the runtime the token with its lifetime (eight hours when
     ///     not known).

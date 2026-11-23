@@ -270,7 +270,8 @@ account through another source, a warning naming both and how to choose.
 **Algorithm:** Trim; a bare name becomes `https://name`; a URL must use https; one trailing slash is
 allowed; a path, query, fragment, user name, port or backslash is refused; the name must be a DNS host
 name; the result is lower case. `HostName` strips the scheme. `NormalizeHost` throws
-`ArgumentException` naming the option.
+`ArgumentException` naming the option, without quoting the value, which may carry a user name and
+password.
 
 #### Redact(plan, text) and RedactFailure(failure, plan)
 
