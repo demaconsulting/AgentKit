@@ -436,10 +436,10 @@ public class CopilotProviderSessionTests
         Assert.Equal("connection reset for <redacted> and gho_<redacted>", first.Message);
         var copy = Assert.IsType<CopilotRedactedException>(first.InnerException);
         Assert.Equal(typeof(IOException).FullName, copy.OriginalTypeName);
-        CopilotSignInTests.AssertNoSecretInChain(first, KnownSecret, ShapedSecret);
+        SecretAssert.NoSecret(first, KnownSecret, ShapedSecret);
         Assert.Contains("could not be recorded", refusal.Message, StringComparison.Ordinal);
         Assert.Contains("connection reset for <redacted> and gho_<redacted>", refusal.Message, StringComparison.Ordinal);
-        CopilotSignInTests.AssertNoSecretInChain(refusal, KnownSecret, ShapedSecret);
+        SecretAssert.NoSecret(refusal, KnownSecret, ShapedSecret);
     }
 
     /// <summary>
@@ -467,9 +467,9 @@ public class CopilotProviderSessionTests
         Assert.NotSame(cause, first);
         Assert.Equal("Session error: refused <redacted> gho_<redacted>", first.Message);
         Assert.IsType<CopilotRedactedException>(first.InnerException);
-        CopilotSignInTests.AssertNoSecretInChain(first, KnownSecret, ShapedSecret);
+        SecretAssert.NoSecret(first, KnownSecret, ShapedSecret);
         Assert.Contains("The turn failed because: Session error: refused <redacted> gho_<redacted>", refusal.Message, StringComparison.Ordinal);
-        CopilotSignInTests.AssertNoSecretInChain(refusal, KnownSecret, ShapedSecret);
+        SecretAssert.NoSecret(refusal, KnownSecret, ShapedSecret);
     }
 
     /// <summary>

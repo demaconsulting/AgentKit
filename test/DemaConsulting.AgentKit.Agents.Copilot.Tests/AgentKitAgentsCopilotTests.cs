@@ -510,7 +510,7 @@ public class AgentKitAgentsCopilotTests
         // an aggregate - is free of both values
         foreach (var failure in new Exception[] { startFailure, runFailure, turnFailure, sendFailure, refusal, consolidationFailure })
         {
-            CopilotSignInTests.AssertNoSecretInChain(failure, secret, shaped);
+            SecretAssert.NoSecret(failure, secret, shaped);
             for (Exception? current = failure; current is not null; current = current.InnerException)
             {
                 Assert.IsNotType<AggregateException>(current);

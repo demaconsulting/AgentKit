@@ -412,7 +412,7 @@ public class CopilotAgentTests
         Assert.NotSame(cause, failure);
         Assert.Equal("Session error: refused <redacted> gho_<redacted>", failure.Message);
         Assert.IsType<CopilotRedactedException>(failure.InnerException);
-        CopilotSignInTests.AssertNoSecretInChain(failure, secret, shaped);
+        SecretAssert.NoSecret(failure, secret, shaped);
         Assert.Equal(1, Assert.Single(runtime.Channels).DisposeCount);
     }
 
@@ -453,11 +453,11 @@ public class CopilotAgentTests
         // Assert
         Assert.NotSame(lost, createFailure);
         Assert.Equal("CLI process exited unexpectedly.\nstderr: <redacted> gho_<redacted>", createFailure.Message);
-        CopilotSignInTests.AssertNoSecretInChain(createFailure, secret, shaped);
+        SecretAssert.NoSecret(createFailure, secret, shaped);
         var copy = Assert.IsType<CopilotRedactedException>(resumeFailure.InnerException);
         Assert.Equal(typeof(CopilotSignInTests.RpcErrorException).FullName, copy.OriginalTypeName);
         Assert.Equal("resume refused for <redacted>", resumeFailure.Message);
-        CopilotSignInTests.AssertNoSecretInChain(resumeFailure, secret, shaped);
+        SecretAssert.NoSecret(resumeFailure, secret, shaped);
     }
 
     /// <summary>

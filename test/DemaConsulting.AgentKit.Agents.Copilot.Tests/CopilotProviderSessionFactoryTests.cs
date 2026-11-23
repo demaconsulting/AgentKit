@@ -462,7 +462,7 @@ public class CopilotProviderSessionFactoryTests
         Assert.Equal("session.create refused <redacted> gho_<redacted>", failure.Message);
         var copy = Assert.IsType<CopilotRedactedException>(failure.InnerException);
         Assert.Equal(typeof(CopilotSignInTests.RpcErrorException).FullName, copy.OriginalTypeName);
-        CopilotSignInTests.AssertNoSecretInChain(failure, secret, shaped);
+        SecretAssert.NoSecret(failure, secret, shaped);
     }
 
     /// <summary>

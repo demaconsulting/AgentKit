@@ -326,8 +326,8 @@ A clean cancellation — no cause and nothing in its message to redact — reach
 `OperationCanceledException` instance. A cancellation quoting a known secret in its message and chaining an I/O failure
 quoting it and a token-shaped value is rebuilt as a new `OperationCanceledException` of exactly that type, with the same
 token, the message `stopped <redacted>` and a redacted copy naming `OperationCanceledException` as its cause; a
-`TaskCanceledException` with a cause is rebuilt as a `TaskCanceledException` with its token. The shared chain walk
-finds no secret in either.
+`TaskCanceledException` with a cause is rebuilt as a `TaskCanceledException` with its token. `SecretAssert` finds no
+secret in either.
 
 #### AgentKitAgentsCopilot-CopilotRuntime-LeavesNoRuntimeBehind: Disposed on Failure, Once on Request, Never Restarted
 

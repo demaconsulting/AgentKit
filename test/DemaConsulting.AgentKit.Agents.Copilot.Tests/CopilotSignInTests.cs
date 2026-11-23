@@ -1088,7 +1088,7 @@ public sealed class CopilotSignInTests : IDisposable
         Assert.Equal("gitHubHost", failure.ParamName);
         Assert.DoesNotContain("s3cr3t-host", failure.Message, StringComparison.Ordinal);
         Assert.DoesNotContain("user:", failure.Message, StringComparison.Ordinal);
-        AssertNoSecretInChain(failure, "s3cr3t-host", "user:");
+        SecretAssert.NoSecret(failure, "s3cr3t-host", "user:");
     }
 
     /// <summary>
@@ -1295,8 +1295,8 @@ public sealed class CopilotSignInTests : IDisposable
         Assert.Equal(typeof(StackQuotingException).FullName, first.OriginalTypeName);
         Assert.Contains("<redacted>", first.StackTrace, StringComparison.Ordinal);
         Assert.Contains("second <redacted> gho_<redacted>", copiedAggregate.Message, StringComparison.Ordinal);
-        AssertNoSecretInChain(copy, secret, token, SentinelToken);
-        AssertNoSecretInChain(new InvalidOperationException("outer", copy), secret, token, SentinelToken);
+        SecretAssert.NoSecret(copy, secret, token, SentinelToken);
+        SecretAssert.NoSecret(new InvalidOperationException("outer", copy), secret, token, SentinelToken);
     }
 
     /// <summary>
@@ -1371,7 +1371,7 @@ public sealed class CopilotSignInTests : IDisposable
         var rpcCopy = Assert.IsType<CopilotRedactedException>(cause.InnerException);
         Assert.Equal(typeof(RpcErrorException).FullName, rpcCopy.OriginalTypeName);
         Assert.Empty(rpcCopy.Data);
-        AssertNoSecretInChain(relayed, secret, SentinelToken);
+        SecretAssert.NoSecret(relayed, secret, SentinelToken);
     }
 
     /// <summary>
@@ -1408,7 +1408,7 @@ public sealed class CopilotSignInTests : IDisposable
         Assert.Equal("failed for gho_<redacted>", relayed.Message);
         var cause = Assert.IsType<CopilotRedactedException>(relayed.InnerException);
         Assert.Equal(failure.GetType().FullName, cause.OriginalTypeName);
-        AssertNoSecretInChain(relayed, SentinelToken);
+        SecretAssert.NoSecret(relayed, SentinelToken);
     }
 
     /// <summary>
@@ -1454,11 +1454,11 @@ public sealed class CopilotSignInTests : IDisposable
         Assert.NotSame(canceled, cancel);
         Assert.Equal(source.Token, cancel.CancellationToken);
         Assert.IsType<CopilotRedactedException>(cancel.InnerException);
-        AssertNoSecretInChain(cancel, secret);
+        SecretAssert.NoSecret(cancel, secret);
         var disposal = Assert.IsType<ObjectDisposedException>(relayedDisposal);
         Assert.NotSame(disposed, disposal);
         Assert.Contains("closed for <redacted>", disposal.Message, StringComparison.Ordinal);
-        AssertNoSecretInChain(disposal, secret, SentinelToken);
+        SecretAssert.NoSecret(disposal, secret, SentinelToken);
     }
 
     /// <summary>
@@ -1485,7 +1485,7 @@ public sealed class CopilotSignInTests : IDisposable
         Assert.Equal("canceled", rebuilt.Message);
         var cause = Assert.IsType<CopilotRedactedException>(rebuilt.InnerException);
         Assert.Equal(typeof(TaskCanceledException).FullName, cause.OriginalTypeName);
-        AssertNoSecretInChain(rebuilt, secret);
+        SecretAssert.NoSecret(rebuilt, secret);
     }
 
     /// <summary>
@@ -1511,7 +1511,7 @@ public sealed class CopilotSignInTests : IDisposable
         var relayed = CopilotSignIn.RedactRelayed(failure, plan);
 
         // Assert: the walk sees data, and neither result keeps any
-        Assert.ThrowsAny<Xunit.Sdk.XunitException>(() => AssertNoSecretInChain(failure, secret));
+        Assert.ThrowsAny<Xunit.Sdk.XunitException>(() => SecretAssert.NoSecret(failure, secret));
         foreach (var result in new Exception[] { copy, relayed })
         {
             for (Exception? current = result; current is not null; current = current.InnerException)
@@ -1519,7 +1519,7 @@ public sealed class CopilotSignInTests : IDisposable
                 Assert.Empty(current.Data);
             }
 
-            AssertNoSecretInChain(result, secret, SentinelToken);
+            SecretAssert.NoSecret(result, secret, SentinelToken);
         }
     }
 
@@ -1543,7 +1543,7 @@ public sealed class CopilotSignInTests : IDisposable
         // Assert
         Assert.Same(explained, relayedExplained);
         Assert.Same(once, twice);
-        AssertNoSecretInChain(twice, secret);
+        SecretAssert.NoSecret(twice, secret);
     }
 
     /// <summary>
@@ -1573,9 +1573,9 @@ public sealed class CopilotSignInTests : IDisposable
 
         // Assert
         Assert.Equal("lost <redacted>", synchronous.Message);
-        AssertNoSecretInChain(synchronous, secret);
+        SecretAssert.NoSecret(synchronous, secret);
         Assert.Equal("bad <redacted>", asynchronous.Message);
-        AssertNoSecretInChain(asynchronous, secret);
+        SecretAssert.NoSecret(asynchronous, secret);
         Assert.Same(canceled, cancellation);
         Assert.Equal(42, result);
     }
@@ -1588,7 +1588,7 @@ public sealed class CopilotSignInTests : IDisposable
     public void CopilotSignIn_Report_LogsTheSignInAndWarnsOnAnotherAccount()
     {
         // Arrange
-        var logger = new ListLogger();
+        var logger = new CapturingLogger();
         var plan = new CopilotSignInPlan { Token = SentinelToken, CliAccount = new CopilotCliAccount(AccountHost, AccountLogin) };
         var viaGh = new GetAuthStatusResponse { IsAuthenticated = true, AuthType = "gh-cli", Host = "https://github.com", Login = "web_user" };
 
@@ -1596,12 +1596,13 @@ public sealed class CopilotSignInTests : IDisposable
         CopilotSignIn.Report(logger, plan, CopilotSignInSource.GitHubCli, viaGh);
 
         // Assert
-        Assert.Equal(2, logger.Entries.Count);
-        Assert.Equal(LogLevel.Information, logger.Entries[0].Level);
-        Assert.Contains("GitHubCli as https://github.com / web_user", logger.Entries[0].Message, StringComparison.Ordinal);
-        Assert.Equal(LogLevel.Warning, logger.Entries[1].Level);
-        Assert.Contains(AccountHost, logger.Entries[1].Message, StringComparison.Ordinal);
-        Assert.All(logger.Entries, entry => Assert.DoesNotContain(SentinelToken, entry.Message, StringComparison.Ordinal));
+        var entries = logger.Entries;
+        Assert.Equal(2, entries.Count);
+        Assert.Equal(LogLevel.Information, entries[0].Level);
+        Assert.Contains("GitHubCli as https://github.com / web_user", entries[0].Message, StringComparison.Ordinal);
+        Assert.Equal(LogLevel.Warning, entries[1].Level);
+        Assert.Contains(AccountHost, entries[1].Message, StringComparison.Ordinal);
+        SecretAssert.NoSecret(logger, SentinelToken);
     }
 
     /// <summary>
@@ -1680,48 +1681,6 @@ public sealed class CopilotSignInTests : IDisposable
         catch (Exception caught)
         {
             return caught;
-        }
-    }
-
-    /// <summary>
-    ///     Asserts that no exception in a failure's chain — every inner exception, and every inner
-    ///     exception of an aggregate — carries a secret in its message, its stack trace, its string
-    ///     form or any key or value of its <see cref="Exception.Data"/>. Shared by every test that
-    ///     proves a failure reaches a host without a secret.
-    /// </summary>
-    /// <param name="failure">The failure.</param>
-    /// <param name="secrets">The secrets.</param>
-    internal static void AssertNoSecretInChain(Exception failure, params string[] secrets)
-    {
-        var pending = new Stack<Exception>([failure]);
-        while (pending.TryPop(out var current))
-        {
-            foreach (var secret in secrets)
-            {
-                Assert.False(current.Message.Contains(secret, StringComparison.Ordinal), $"A {current.GetType().Name} message carries a secret.");
-                Assert.False((current.StackTrace ?? string.Empty).Contains(secret, StringComparison.Ordinal), $"A {current.GetType().Name} stack trace carries a secret.");
-                Assert.False(current.ToString().Contains(secret, StringComparison.Ordinal), $"A {current.GetType().Name} string form carries a secret.");
-                foreach (DictionaryEntry entry in current.Data)
-                {
-                    var key = Convert.ToString(entry.Key, CultureInfo.InvariantCulture) ?? string.Empty;
-                    var value = Convert.ToString(entry.Value, CultureInfo.InvariantCulture) ?? string.Empty;
-                    Assert.False(
-                        key.Contains(secret, StringComparison.Ordinal) || value.Contains(secret, StringComparison.Ordinal),
-                        $"A {current.GetType().Name} data entry carries a secret.");
-                }
-            }
-
-            if (current is AggregateException aggregate)
-            {
-                foreach (var each in aggregate.InnerExceptions)
-                {
-                    pending.Push(each);
-                }
-            }
-            else if (current.InnerException is { } inner)
-            {
-                pending.Push(inner);
-            }
         }
     }
 
@@ -1881,27 +1840,5 @@ public sealed class CopilotSignInTests : IDisposable
             Disposed = true;
             return ValueTask.CompletedTask;
         }
-    }
-
-    /// <summary>
-    ///     A logger that keeps every entry.
-    /// </summary>
-    private sealed class ListLogger : ILogger
-    {
-        /// <summary>
-        ///     Gets the entries, in order.
-        /// </summary>
-        public List<(LogLevel Level, string Message)> Entries { get; } = [];
-
-        /// <inheritdoc/>
-        public IDisposable? BeginScope<TState>(TState state)
-            where TState : notnull => null;
-
-        /// <inheritdoc/>
-        public bool IsEnabled(LogLevel logLevel) => true;
-
-        /// <inheritdoc/>
-        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter) =>
-            Entries.Add((logLevel, formatter(state, exception)));
     }
 }

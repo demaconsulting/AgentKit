@@ -23,9 +23,14 @@ Copilot runtime, reads the real user's Copilot CLI home or touches a credential 
   the tests inspect.
 - **`ExplainUnauthenticated`, `Classify`, `NormalizeHost`, `CreateSessionTokenProvider`, `RedactFailure`,
   `RedactRelayed`, `RelayAsync` and `Report`** are pure, or take a fabricated `GetAuthStatusResponse`, SDK
-  token-provider arguments, a fabricated exception chain, and a logger that keeps every entry. The redacted copy's and
-  the relayed failure's tests walk the whole exception chain, every inner exception of an aggregate included, and the
-  shared chain walk also checks every key and value of each exception's `Exception.Data`.
+  token-provider arguments, a fabricated exception chain, and a capturing logger.
+
+Every test that proves no secret reaches a host asserts it through one shared helper, `SecretAssert`
+(`SecretAssert.cs`). For a failure it walks the whole exception chain — every inner exception and every inner exception
+of an aggregate — and checks each exception's message, stack trace, string form, source, help link, every key and value
+of its `Exception.Data` and every other public property's text. For a log it checks what a `CapturingLogger` received:
+each entry's formatted message, event name, state text, structured keys and values and exception (by the same walk),
+and each scope. A failing assertion names where the secret was found, never the secret.
 
 A sentinel token is used wherever a token appears, and the tests assert it never appears in a
 finding, a message, a log entry or a string form. The redaction tests also use secrets that are not
@@ -49,7 +54,8 @@ project.
 - **External services**: None. No Copilot runtime is started, no credential store is read, no
   credential is used and no network access is made
 - **Mocking**: A fake helper implementing `ICopilotSignInHelper`, a `FakeCopilotCliMachine` for
-  `PATH`, a hashtable for the host environment and a list logger; no mocking framework
+  `PATH`, a hashtable for the host environment and a `CapturingLogger` that keeps every entry and scope; no mocking
+  framework
 - **File system**: A root folder under the system temporary folder per test, holding the fake user's
   profile, the data directory and every helper home, deleted afterwards
 - **Isolation**: No test reads or changes the process environment or the user's own profile
@@ -287,8 +293,8 @@ its type name, message, stack trace and `HResult` unchanged, a string form laid 
 and led by the type name, and no data; a failure never thrown has no stack trace; and a chain of
 twenty exceptions is copied to `MaximumDepth`, sixteen. A thrown `InvalidOperationException` with a clean message,
 holding a known secret and a GitHub-shaped token only in its `Data` — as a key and as values — and chaining an
-`IOException` whose `Data` quotes the secret, is first shown to fail the shared chain walk, proving the walk reads
-data; its redacted copy and its relayed exception then carry no `Data` at any level of the chain, and the walk finds
+`IOException` whose `Data` quotes the secret, is first shown to fail `SecretAssert`, proving its walk reads data; its
+redacted copy and its relayed exception then carry no `Data` at any level of the chain, and `SecretAssert` finds
 neither value.
 
 #### AgentKitAgentsCopilot-CopilotSignIn-RelaysFailuresRedacted: A Relayed Failure Is a New, Redacted Exception

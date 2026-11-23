@@ -421,13 +421,13 @@ public sealed class CopilotModelCatalogTests
         Assert.NotSame(lost, io);
         Assert.Equal("CLI process exited unexpectedly.\nstderr: <redacted> gho_<redacted>", io.Message);
         Assert.IsType<CopilotRedactedException>(io.InnerException);
-        CopilotSignInTests.AssertNoSecretInChain(io, secret, shaped);
+        SecretAssert.NoSecret(io, secret, shaped);
         var other = Assert.IsType<InvalidOperationException>(relayedRpc);
         var copy = Assert.IsType<CopilotRedactedException>(other.InnerException);
         Assert.Equal(typeof(CopilotSignInTests.RpcErrorException).FullName, copy.OriginalTypeName);
-        CopilotSignInTests.AssertNoSecretInChain(other, secret, shaped);
+        SecretAssert.NoSecret(other, secret, shaped);
         Assert.Equal(CopilotModelCatalog.SignInMessage, explained.Message);
-        CopilotSignInTests.AssertNoSecretInChain(explained, secret, shaped);
+        SecretAssert.NoSecret(explained, secret, shaped);
     }
 
     /// <summary>

@@ -1009,11 +1009,11 @@ public class CopilotRuntimeTests
         Assert.Equal("stopped <redacted>", failure.Message);
         var copy = Assert.IsType<CopilotRedactedException>(failure.InnerException);
         Assert.Equal(typeof(OperationCanceledException).FullName, copy.OriginalTypeName);
-        CopilotSignInTests.AssertNoSecretInChain(failure, secret, tokenShaped);
+        SecretAssert.NoSecret(failure, secret, tokenShaped);
         Assert.NotSame(taskCanceled, taskFailure);
         Assert.Equal(source.Token, taskFailure.CancellationToken);
         Assert.IsType<CopilotRedactedException>(taskFailure.InnerException);
-        CopilotSignInTests.AssertNoSecretInChain(taskFailure, secret);
+        SecretAssert.NoSecret(taskFailure, secret);
     }
 
     /// <summary>
@@ -1248,7 +1248,7 @@ public class CopilotRuntimeTests
                 Assert.Empty(current.Data);
             }
 
-            CopilotSignInTests.AssertNoSecretInChain(failures[index], secret, tokenShaped);
+            SecretAssert.NoSecret(failures[index], secret, tokenShaped);
         }
     }
 
@@ -1824,7 +1824,7 @@ public class CopilotRuntimeTests
         Assert.Equal(typeof(InvalidOperationException).FullName, copy.OriginalTypeName);
         Assert.Equal("connection lost (start <redacted>, session <redacted>)", copy.Message);
         Assert.Equal(typeof(AggregateException).FullName, Assert.IsType<CopilotRedactedException>(copy.InnerException?.InnerException).OriginalTypeName);
-        CopilotSignInTests.AssertNoSecretInChain(failure, startToken, sessionToken);
+        SecretAssert.NoSecret(failure, startToken, sessionToken);
     }
 
     /// <summary>

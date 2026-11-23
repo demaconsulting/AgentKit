@@ -248,7 +248,7 @@ public class CopilotSummarizerTests
         Assert.NotSame(cause, failure);
         Assert.Equal("Session error: refused <redacted> gho_<redacted>", failure.Message);
         Assert.IsType<CopilotRedactedException>(failure.InnerException);
-        CopilotSignInTests.AssertNoSecretInChain(failure, secret, shaped);
+        SecretAssert.NoSecret(failure, secret, shaped);
         Assert.Equal(1, Assert.Single(runtime.Channels).DisposeCount);
     }
 
@@ -277,7 +277,7 @@ public class CopilotSummarizerTests
         Assert.NotSame(lost, failure);
         Assert.Equal("CLI process exited unexpectedly.\nstderr: <redacted> gho_<redacted>", failure.Message);
         Assert.IsType<CopilotRedactedException>(failure.InnerException);
-        CopilotSignInTests.AssertNoSecretInChain(failure, secret, shaped);
+        SecretAssert.NoSecret(failure, secret, shaped);
     }
 
     /// <summary>
