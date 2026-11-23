@@ -137,6 +137,38 @@ outer message only — naming the file as the model wrote it — and none of the
 failure whose own message embeds the same host path is shaped with the path as `'<path>'`. Neither
 report contains any part of the temporary folder's path.
 
+##### AgentKitToolsVisual-Rendering-RenderErrorShaper-HostPathsScrubbed: Hostile Long Text Is Scrubbed Quickly
+
+**Test**: `RenderErrorShaper_Scrub_HostileLongInput_FinishesQuicklyWithoutRawText`
+
+Four texts of about 100 KB, each crafted against one fallback expression — an unclosed quote before
+50,000 `/a` names, `C:/` before 100,000 commas, two back slashes before 100,000 letters, and
+`file://` before 100,000 commas — are each scrubbed within two seconds without reaching a time
+limit. The drive text becomes `<path>` and the URI text `<path>` followed by its commas, with no
+`C:/` or `file:` left.
+
+##### AgentKitToolsVisual-Rendering-RenderErrorShaper-HostPathsScrubbed: Quoted JSON Pointers and Escapes Are Kept
+
+**Test**: `RenderErrorShaper_Scrub_QuotedJsonPointerAndWebPaths_ArePreserved`
+
+The quoted JSON pointers `"/data/values/0"` and `"/encoding/x/field"` and the quoted regular
+expression `"\\d+\\s"` are left exactly as written, while the quoted host paths `'/home/u/y.png'`,
+`'/tmp/cache/x'` and `'//server/share/x'` each become `'<path>'`.
+
+##### AgentKitToolsVisual-Rendering-RenderErrorShaper-HostPathsScrubbed: The Source Excerpt Is Shown as Written
+
+**Test**: `RenderErrorShaper_Shape_SourceExcerpt_IsNotScrubbed`
+
+A failure at line 2, column 6 of inline source whose line is `A:/x --> '/home/u/y.png'` is shaped
+with that line quoted verbatim in the excerpt and the caret under column 6.
+
+##### AgentKitToolsVisual-Rendering-RenderErrorShaper-HostPathsScrubbed: A Scrub That Times Out Withholds Its Text
+
+**Test**: `RenderErrorShaper_Scrub_Timeout_ReturnsWithheldTextNeverRaw`
+
+A scrub that throws a regular expression match timeout is run through the guard, which returns the
+withheld-details text and none of the raw text.
+
 ##### AgentKitToolsVisual-Rendering-RenderErrorShaper-NotesListed: A Timeout Lists Its Notes
 
 **Test**: `RenderErrorShaper_Shape_TimeoutWithNotes_ListsTheNotes`

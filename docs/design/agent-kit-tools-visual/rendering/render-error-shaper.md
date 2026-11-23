@@ -79,6 +79,9 @@ Help: <help tool> topic '<tag>/diagnostics'.
 - The **excerpt** is shown only when the source text is in hand and the failure's file, if named, is
   the source's own — a failure inside an included file names that file instead. A line longer than
   160 characters is shown as a window around the column; tabs become spaces so the caret aligns.
+  The excerpt is **not scrubbed**: it is the model's own inline source or a file the access policy
+  already lets the model read, so it discloses nothing new, and leaving it whole keeps the caret
+  under its column.
 - The **hint** is this unit's own for the codes a model can fix in only one way
   (`file-access-denied`, `budget-exceeded`, `size-limit`, `unsupported-feature`, `render-timeout`,
   `empty-render`); otherwise the library's hint, unless it contains `--`, "allowed roots", "strict"
@@ -86,7 +89,9 @@ Help: <help tool> topic '<tag>/diagnostics'.
 - The **help line** appears only when the context names a help tool that serves the topic
   `<tag>/diagnostics`; a tool without a help catalog passes none, and pointing a model at a topic the
   help tool would refuse is worse than naming none.
-- Every message and note passes through `Rewrite`, and the whole text through `Scrub`.
+- Every message and note passes through `Rewrite`. The message, the pointer, the hint and each note
+  then pass through `Scrub` one by one, so a text that cannot be checked in time withholds only
+  itself while the code, location and caret survive.
 
 ##### Rewrite(string text) and Scrub(string text, PathPolicy policy, string? inputFolder)
 
@@ -105,14 +110,31 @@ library reports in another case on a platform whose file names ignore case is st
 
 Any absolute path that remains is then replaced whole by `<path>`: a `file:` URI, a drive-qualified
 path (with or without a device prefix), and a network or device path written with back slashes,
-wherever they appear; and a POSIX path of two or more names when it is quoted. Such a path lies
+wherever they appear; and a POSIX path of two or more names when it is quoted and shaped like a host
+path. Such a path lies
 under none of the known folders — the temporary folder, a user profile, a cache, a link's real
 target, or another spelling of a folder such as an 8.3 short name — and is not one the model can
 use. The POSIX rule is anchored on quotes because an unquoted `/`-led token is as likely to be a JSON
 pointer such as `/data/url`, which the headline prints in parentheses to locate the failure; a
-relative path such as `../x.png` is the model's own words and is never touched. Trailing
-punctuation after a path is left in place. A path the model wrote itself is therefore echoed
-relative to the working directory when it lies under a known folder, and as `<path>` otherwise.
+relative path such as `../x.png` is the model's own words and is never touched. A quoted `/`-led
+token is replaced only when it is shaped like a host path: a `//` network form, a last name with an
+extension, or a first name that is a host root — `home`, `Users`, `root`, `tmp`, `var`, `private`,
+`opt`, `usr`, `etc`, `mnt`, `Volumes`, `srv`, `run`, `proc`, `nix`, `snap`, `media`, `workspace`,
+`workspaces`, `github`, `__w`, `builds`, `Library`, `Applications`, `System`, `dev`, `lib`, `bin`,
+`sbin` or `cygdrive`, ignoring case. A quoted JSON pointer such as `"/data/values/0"` is therefore
+kept. The network rule requires a host name (or `?` or `.` for a device path) after the leading
+back slashes, so a regular expression escape such as `"\\d+\\s"` is not taken for a share.
+Trailing punctuation after a path (`,`, `;`, `.`, `:`, `)`, `]`) is given back to the sentence by
+the replacement. A path the model wrote itself is therefore echoed relative to the working directory
+when it lies under a known folder, and as `<path>` otherwise.
+
+The fallback expressions run in time linear in the text's length: each path body is taken by an
+atomic group, with no lazy body or lookahead tail to retry at every position, and trailing
+punctuation is trimmed by the replacement rather than by backtracking. The non-backtracking engine
+is not used because it does not support the look-around assertions that frame a path without consuming its
+delimiter. Every expression still has a one-second match timeout; `Scrub` runs its body through
+`Guard`, which returns `<details withheld: the text could not be checked for host paths>` when a
+timeout is reached, so a text that could not be checked is never returned as written.
 
 Only the outermost exception's message, the library's hint and the notes' messages are surfaced;
 an inner exception's text — an I/O error naming the host file it could not open, for instance — is
@@ -122,7 +144,7 @@ a code.
 #### Error Handling
 
 `ArgumentNullException` for a null argument. Nothing else can fail; the expressions are bounded by a
-timeout.
+timeout, and a scrub that reaches it returns the withheld text instead of throwing.
 
 #### Dependencies
 

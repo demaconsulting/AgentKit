@@ -90,6 +90,31 @@ internal static partial class RenderErrorShaper
     private const string PathPlaceholder = "<path>";
 
     /// <summary>
+    ///     The punctuation a path match gives back to the sentence it ends.
+    /// </summary>
+    private static readonly char[] TrailingPunctuation = [',', ';', '.', ':', ')', ']'];
+
+    /// <summary>
+    ///     The first names a POSIX host path starts with: system, temporary, home, mount and CI
+    ///     folders.
+    /// </summary>
+    /// <remarks>
+    ///     A specification key such as <c>data</c> is deliberately absent, so a quoted JSON
+    ///     pointer such as <c>"/data/values/0"</c> is left as written.
+    /// </remarks>
+    private static readonly HashSet<string> HostRoots = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "home", "Users", "root", "tmp", "var", "private", "opt", "usr", "etc", "mnt", "Volumes",
+        "srv", "run", "proc", "nix", "snap", "media", "workspace", "workspaces", "github", "__w",
+        "builds", "Library", "Applications", "System", "dev", "lib", "bin", "sbin", "cygdrive",
+    };
+
+    /// <summary>
+    ///     The text that replaces a text the scrubber could not check for host paths in time.
+    /// </summary>
+    internal const string WithheldText = "<details withheld: the text could not be checked for host paths>";
+
+    /// <summary>
     ///     The hint for a referenced file the access policy refused.
     /// </summary>
     private const string FileAccessHint =
@@ -283,7 +308,12 @@ internal static partial class RenderErrorShaper
     ///     The first line states the code, the location and the message; an excerpt of the source
     ///     line with a caret follows when the location is in the source the context holds; then
     ///     the hint, the notes, and a help topic when the context names a help catalog that has
-    ///     one. Every line passes through <see cref="Scrub"/>.
+    ///     one. The message, pointer, hint and each note — the text the library or the host wrote —
+    ///     each pass through <see cref="Scrub"/> on their own, so a text that cannot be checked in
+    ///     time withholds only itself while the code, location and caret survive. The excerpt is
+    ///     left as written: it is the model's own inline source or a file the access policy
+    ///     already lets the model read, so it discloses nothing new, and leaving it whole keeps
+    ///     the caret under its column.
     /// </remarks>
     /// <param name="failure">The failure to shape. Must not be null.</param>
     /// <param name="context">What the caller knows about the render. Must not be null.</param>
@@ -293,6 +323,8 @@ internal static partial class RenderErrorShaper
     {
         ArgumentNullException.ThrowIfNull(failure);
         ArgumentNullException.ThrowIfNull(context);
+
+        string Clean(string value) => Scrub(value, context.Policy, context.InputFolder);
 
         var text = new StringBuilder();
 
@@ -314,25 +346,26 @@ internal static partial class RenderErrorShaper
 
             if (failure.Pointer is not null)
             {
-                text.Append(" (").Append(failure.Pointer).Append(')');
+                text.Append(" (").Append(Clean(failure.Pointer)).Append(')');
             }
         }
 
-        text.Append(": ").Append(Rewrite(failure.Message)).Append('\n');
+        text.Append(": ").Append(Clean(Rewrite(failure.Message))).Append('\n');
 
-        // The source line with a caret under the column, when the location is in that source.
+        // The source line with a caret under the column, when the location is in that source;
+        // it is the model's own text, so it is not scrubbed.
         AppendExcerpt(text, failure, context);
 
         // Advice the model can follow, never advice addressed to a host or a command line.
         var hint = HintFor(failure);
         if (hint is not null)
         {
-            text.Append("Hint: ").Append(hint).Append('\n');
+            text.Append("Hint: ").Append(Clean(hint)).Append('\n');
         }
 
         if (failure.Notes.Count > 0)
         {
-            text.Append("Notes: ").Append(string.Join("; ", failure.Notes.Select(Rewrite))).Append('\n');
+            text.Append("Notes: ").Append(string.Join("; ", failure.Notes.Select(note => Clean(Rewrite(note))))).Append('\n');
         }
 
         // The help line only names a topic the help tool will actually serve.
@@ -345,7 +378,7 @@ internal static partial class RenderErrorShaper
             }
         }
 
-        return Scrub(text.ToString().TrimEnd('\n'), context.Policy, context.InputFolder);
+        return text.ToString().TrimEnd('\n');
     }
 
     /// <summary>
@@ -367,9 +400,17 @@ internal static partial class RenderErrorShaper
     ///     Any absolute path that remains — one under none of those folders, such as the system's
     ///     temporary folder, a user profile, a cache or a link's real target — is replaced whole
     ///     by <c>&lt;path&gt;</c>: a drive-qualified, network, device or <c>file:</c> URI path
-    ///     wherever it appears, and a POSIX path when it is quoted. An unquoted <c>/</c>-led
-    ///     token is left alone because it is as likely to be a JSON pointer, and a relative path
-    ///     is left alone because it is the model's own words.
+    ///     wherever it appears, less any punctuation that ends the sentence, and a POSIX path when
+    ///     it is quoted and shaped like a host path — a <c>//</c> network form, a last name with
+    ///     an extension, or a first name that is a host root such as <c>home</c> or <c>tmp</c>.
+    ///     An unquoted <c>/</c>-led token, and a quoted one not shaped like a host path, is left
+    ///     alone because it is as likely to be a JSON pointer such as <c>"/data/values/0"</c>,
+    ///     and a relative path is left alone because it is the model's own words.
+    ///     </para>
+    ///     <para>
+    ///     Every expression is linear in the length of the text, and each also has a time limit.
+    ///     When a limit is reached the whole text is replaced by <see cref="WithheldText"/>: a text
+    ///     that could not be checked is never returned as written.
     ///     </para>
     /// </remarks>
     /// <param name="text">The text to scrub. Must not be null.</param>
@@ -382,6 +423,38 @@ internal static partial class RenderErrorShaper
         ArgumentNullException.ThrowIfNull(text);
         ArgumentNullException.ThrowIfNull(policy);
 
+        return Guard(() => ScrubCore(text, policy, inputFolder));
+    }
+
+    /// <summary>
+    ///     Runs a scrub, withholding its text when an expression reaches its time limit.
+    /// </summary>
+    /// <param name="scrub">The scrub to run. Must not be null.</param>
+    /// <returns>The scrubbed text, or <see cref="WithheldText"/> when the scrub timed out.</returns>
+    internal static string Guard(Func<string> scrub)
+    {
+        ArgumentNullException.ThrowIfNull(scrub);
+
+        try
+        {
+            return scrub();
+        }
+        catch (RegexMatchTimeoutException)
+        {
+            // The text could not be checked, so none of it is shown.
+            return WithheldText;
+        }
+    }
+
+    /// <summary>
+    ///     Removes host paths from text bound for a model, without guarding the time limit.
+    /// </summary>
+    /// <param name="text">The text to scrub.</param>
+    /// <param name="policy">The access policy whose folders are the host's.</param>
+    /// <param name="inputFolder">The folder of the rendered file, or null for inline source.</param>
+    /// <returns>The text without host paths.</returns>
+    private static string ScrubCore(string text, PathPolicy policy, string? inputFolder)
+    {
         var comparison = NamesIgnoreCase ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
         var folders = policy.Grants
             .Where(grant => grant.Root is not null)
@@ -413,10 +486,42 @@ internal static partial class RenderErrorShaper
         }
 
         // Any absolute path still present is not one the model can use: it is replaced whole.
-        text = FileUri().Replace(text, PathPlaceholder);
-        text = DrivePath().Replace(text, PathPlaceholder);
-        text = UncPath().Replace(text, PathPlaceholder);
-        return QuotedPosixPath().Replace(text, PathPlaceholder);
+        text = FileUri().Replace(text, ReplacePath);
+        text = DrivePath().Replace(text, ReplacePath);
+        text = UncPath().Replace(text, ReplacePath);
+        return QuotedPosixPath().Replace(text, ReplaceQuotedPosixPath);
+    }
+
+    /// <summary>
+    ///     Replaces a matched path by the placeholder, giving back the punctuation that ends the
+    ///     sentence it closes.
+    /// </summary>
+    /// <param name="match">The matched path.</param>
+    /// <returns>The placeholder and any trailing punctuation.</returns>
+    private static string ReplacePath(Match match)
+    {
+        var trimmed = match.Value.TrimEnd(TrailingPunctuation);
+        return PathPlaceholder + match.Value[trimmed.Length..];
+    }
+
+    /// <summary>
+    ///     Replaces a quoted POSIX path by the placeholder when it is shaped like a host path.
+    /// </summary>
+    /// <remarks>
+    ///     A host path is a <c>//</c> network form, one whose last name has an extension, or one
+    ///     whose first name is a host root; anything else, such as the JSON pointer
+    ///     <c>/data/values/0</c>, is left as written.
+    /// </remarks>
+    /// <param name="match">The matched quoted path.</param>
+    /// <returns>The placeholder, or the path as written.</returns>
+    private static string ReplaceQuotedPosixPath(Match match)
+    {
+        var path = match.Value;
+        var names = path.TrimStart('/').Split('/');
+        var hostShaped = path.StartsWith("//", StringComparison.Ordinal)
+            || names[^1].Contains('.', StringComparison.Ordinal)
+            || HostRoots.Contains(names[0]);
+        return hostShaped ? PathPlaceholder : path;
     }
 
     /// <summary>
@@ -733,23 +838,36 @@ internal static partial class RenderErrorShaper
     /// <summary>
     ///     Matches a <c>file:</c> URI with an authority, whatever path it names.
     /// </summary>
+    /// <remarks>
+    ///     The path is taken atomically, so the match is linear in the length of the text; the
+    ///     punctuation that ends a sentence is given back by <see cref="ReplacePath"/>.
+    /// </remarks>
     /// <returns>The compiled expression.</returns>
-    [GeneratedRegex(@"(?<![\w.])(?i:file:)/{2,3}[^\s'""<>|]*?(?=[,;.:)\]]*(?:$|[\s'""<>|]))", RegexOptions.CultureInvariant, 1000)]
+    [GeneratedRegex(@"(?<![\w.])(?i:file:)/{2,3}(?>[^\s'""<>|]*)", RegexOptions.CultureInvariant, 1000)]
     private static partial Regex FileUri();
 
     /// <summary>
     ///     Matches a drive-qualified absolute path, with or without a device prefix.
     /// </summary>
+    /// <remarks>
+    ///     The path is taken atomically, so the match is linear in the length of the text; the
+    ///     punctuation that ends a sentence is given back by <see cref="ReplacePath"/>.
+    /// </remarks>
     /// <returns>The compiled expression.</returns>
-    [GeneratedRegex(@"(?<![\w.%~$/\\-])(?:\\\\\?\\|//\?/)?[A-Za-z]:[\\/][^\s'""<>|]*?(?=[,;.:)\]]*(?:$|[\s'""<>|]))", RegexOptions.CultureInvariant, 1000)]
+    [GeneratedRegex(@"(?<![\w.%~$/\\-])(?:\\\\\?\\|//\?/)?[A-Za-z]:[\\/](?>[^\s'""<>|]*)", RegexOptions.CultureInvariant, 1000)]
     private static partial Regex DrivePath();
 
     /// <summary>
     ///     Matches a network or device path written with back slashes, such as
     ///     <c>\\server\share\file</c> or <c>\\?\UNC\server\share</c>.
     /// </summary>
+    /// <remarks>
+    ///     The server is a host name, or <c>?</c> or <c>.</c> for a device path, so a regular
+    ///     expression escape such as <c>\\d+\\s</c> is not taken for a share. Each part is taken
+    ///     atomically, so the match is linear in the length of the text.
+    /// </remarks>
     /// <returns>The compiled expression.</returns>
-    [GeneratedRegex(@"(?<![\w\\])\\\\[^\\\s'""<>|]+\\[^\s'""<>|]*?(?=[,;.:)\]]*(?:$|[\s'""<>|]))", RegexOptions.CultureInvariant, 1000)]
+    [GeneratedRegex(@"(?<![\w\\])\\\\(?>[A-Za-z0-9._$?-]+)\\(?>[^\s'""<>|]*)", RegexOptions.CultureInvariant, 1000)]
     private static partial Regex UncPath();
 
     /// <summary>
@@ -757,10 +875,14 @@ internal static partial class RenderErrorShaper
     /// </summary>
     /// <remarks>
     ///     Only a quoted path is matched: an unquoted <c>/</c>-led token is as likely to be a
-    ///     JSON pointer such as <c>/data/url</c>, which locates the failure for the model.
+    ///     JSON pointer such as <c>/data/url</c>, which locates the failure for the model. A
+    ///     quoted match is replaced only when <see cref="ReplaceQuotedPosixPath"/> finds it shaped
+    ///     like a host path. The names are taken atomically, so the match is linear in the length
+    ///     of the text; look-around assertions frame the path without consuming its quotes, which is
+    ///     why the non-backtracking engine, which has no look-around assertions, is not used.
     /// </remarks>
     /// <returns>The compiled expression.</returns>
-    [GeneratedRegex(@"(?<=['""])/{1,2}(?:[^/\s'""]+/)+[^\s'""]*(?=['""])", RegexOptions.CultureInvariant, 1000)]
+    [GeneratedRegex(@"(?<=['""])/{1,2}(?>(?:[^/\s'""]+/)+[^\s'""]*)(?=['""])", RegexOptions.CultureInvariant, 1000)]
     private static partial Regex QuotedPosixPath();
 }
 

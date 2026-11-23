@@ -72,7 +72,9 @@ sections:
                   platform's file names ignore case, matching each folder only whole and in every
                   spelling — either separator, a device prefix, a file URI or percent-encoded
                   names — and shall replace any other absolute path, in drive, UNC, device or
-                  file-URI form, or quoted POSIX form, with a placeholder.
+                  file-URI form, or quoted POSIX form shaped like a host path, with a placeholder,
+                  in time linear in the text's length, and shall withhold any text it cannot check
+                  in time rather than show it as written.
                 tags: [security]
                 justification: |
                   The text joins a transcript that leaves the host, and must not disclose the
@@ -84,7 +86,18 @@ sections:
                   folder in another spelling; replacing only exact known folders would let those
                   through, and replacing a folder's name inside a longer sibling name would garble
                   the path while still disclosing its remainder. An unquoted POSIX path is left
-                  because it cannot be told from a JSON pointer, which locates the failure.
+                  because it cannot be told from a JSON pointer, which locates the failure; a
+                  quoted one is replaced only when shaped like a host path — a // network form, a
+                  last name with an extension, or a first name that is a host root such as home or
+                  tmp — so a quoted pointer such as "/data/values/0" survives. The trade-off is
+                  that an extension-less folder under an unlisted root may pass; it carries no user
+                  name, and known folders are replaced in any form. The text it scrubs can be long
+                  and written by the model, so an expression that backtracks could hang the tool or
+                  reach its time limit; the expressions are linear, and a text that still cannot be
+                  checked is withheld, because returning it raw could disclose a host path. The
+                  source excerpt is left as written: it is the model's own inline source or a file
+                  the access policy already lets it read, and leaving it whole keeps the caret
+                  under its column.
                 tests:
                   - RenderErrorShaper_Shape_HostPaths_AreScrubbed
                   - windows@RenderErrorShaper_Shape_HostPathInOtherCase_IsScrubbedWhereNamesIgnoreCase
@@ -93,6 +106,10 @@ sections:
                   - RenderErrorShaper_Scrub_RootInDevicePrefixAndFileUriForms_IsReplacedWhole
                   - RenderErrorShaper_Scrub_UnknownAbsolutePath_IsReplacedWithAPlaceholder
                   - RenderErrorShaper_Shape_InnerExceptionHostPath_NeverReachesTheModel
+                  - RenderErrorShaper_Scrub_HostileLongInput_FinishesQuicklyWithoutRawText
+                  - RenderErrorShaper_Scrub_QuotedJsonPointerAndWebPaths_ArePreserved
+                  - RenderErrorShaper_Shape_SourceExcerpt_IsNotScrubbed
+                  - RenderErrorShaper_Scrub_Timeout_ReturnsWithheldTextNeverRaw
 
               - id: AgentKitToolsVisual-Rendering-RenderErrorShaper-NotesListed
                 title: >-

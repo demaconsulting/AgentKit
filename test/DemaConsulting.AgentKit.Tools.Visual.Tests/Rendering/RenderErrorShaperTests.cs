@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using System.Xml;
 using DemaConsulting.AgentKit.Tools.Visual.Rendering;
 using DemaConsulting.CanvasNet.Codecs;
@@ -395,6 +396,109 @@ public class RenderErrorShaperTests
         Assert.StartsWith("Render failed (render-timeout): The render did not finish within 2 seconds.", text, StringComparison.Ordinal);
         Assert.Contains("Hint: Simplify the source", text, StringComparison.Ordinal);
         Assert.Contains("Notes: warning a: first; unsupported b: second", text, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves a long hostile text crafted against each host-path expression is scrubbed
+    ///     quickly, without a timeout and without leaving a raw path behind.
+    /// </summary>
+    [Fact]
+    public void RenderErrorShaper_Scrub_HostileLongInput_FinishesQuicklyWithoutRawText()
+    {
+        // Arrange: about 100 KB aimed at the quoted POSIX, drive, network and URI expressions
+        using var fixture = new TempDirectoryFixture();
+        var policy = RenderSamples.Policy(fixture.Root);
+        var quoted = "'" + string.Concat(Enumerable.Repeat("/a", 50000)) + " x";
+        var drive = "C:/" + new string(',', 100000) + "x";
+        var network = @"\\" + new string('a', 100000);
+        var uri = "file://" + new string(',', 100000);
+
+        foreach (var input in new[] { quoted, drive, network, uri })
+        {
+            // Act: scrub it against the clock
+            var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+            var scrubbed = RenderErrorShaper.Scrub(input, policy, null);
+            stopwatch.Stop();
+
+            // Assert: linear time, and never the withheld text a timeout would give
+            Assert.True(stopwatch.Elapsed < TimeSpan.FromSeconds(2), $"Scrub took {stopwatch.Elapsed}.");
+            Assert.NotEqual(RenderErrorShaper.WithheldText, scrubbed);
+        }
+
+        // Assert: the drive and URI paths are replaced, leaving only the trailing punctuation
+        var scrubbedDrive = RenderErrorShaper.Scrub(drive, policy, null);
+        var scrubbedUri = RenderErrorShaper.Scrub(uri, policy, null);
+        Assert.Equal("<path>", scrubbedDrive);
+        Assert.DoesNotContain("C:/", scrubbedDrive, StringComparison.Ordinal);
+        Assert.StartsWith("<path>", scrubbedUri, StringComparison.Ordinal);
+        Assert.DoesNotContain("file:", scrubbedUri, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves a quoted JSON pointer and a regular expression escape are kept, while quoted
+    ///     paths shaped like host paths are replaced.
+    /// </summary>
+    [Fact]
+    public void RenderErrorShaper_Scrub_QuotedJsonPointerAndWebPaths_ArePreserved()
+    {
+        // Arrange: quoted pointers, an escape, and quoted host paths
+        using var fixture = new TempDirectoryFixture();
+        var policy = RenderSamples.Policy(fixture.Root);
+        const string pointers = "field \"/data/values/0\" and \"/encoding/x/field\"";
+        const string escape = @"pattern ""\\d+\\s""";
+
+        // Act: scrub each
+        var scrubbedPointers = RenderErrorShaper.Scrub(pointers, policy, null);
+        var scrubbedEscape = RenderErrorShaper.Scrub(escape, policy, null);
+        var scrubbedHome = RenderErrorShaper.Scrub("cannot read '/home/u/y.png'", policy, null);
+        var scrubbedTemporary = RenderErrorShaper.Scrub("cannot read '/tmp/cache/x'", policy, null);
+        var scrubbedNetwork = RenderErrorShaper.Scrub("cannot read '//server/share/x'", policy, null);
+
+        // Assert: pointers and escape unchanged; host paths replaced
+        Assert.Equal(pointers, scrubbedPointers);
+        Assert.Equal(escape, scrubbedEscape);
+        Assert.Equal("cannot read '<path>'", scrubbedHome);
+        Assert.Equal("cannot read '<path>'", scrubbedTemporary);
+        Assert.Equal("cannot read '<path>'", scrubbedNetwork);
+    }
+
+    /// <summary>
+    ///     Proves the source excerpt is shown as written, so the caret stays under its column.
+    /// </summary>
+    [Fact]
+    public void RenderErrorShaper_Shape_SourceExcerpt_IsNotScrubbed()
+    {
+        // Arrange: inline source whose line holds path-like text, failing at its second token
+        using var fixture = new TempDirectoryFixture();
+        var policy = RenderSamples.Policy(fixture.Root);
+        const string source = "graph TD\nA:/x --> '/home/u/y.png'";
+        var failure = new RenderFailure(ErrorCodes.MermaidError, null, "bad arrow", null, null, 2, 6, null, []);
+
+        // Act: shape it with the source in hand
+        var text = RenderErrorShaper.Shape(failure, new ShapeContext(policy, null, source, "diagram.mmd", null));
+
+        // Assert: the excerpt is verbatim and the caret is under column 6
+        var lines = text.Split('\n');
+        Assert.Equal("  2 | A:/x --> '/home/u/y.png'", lines[1]);
+        Assert.Equal(lines[1].IndexOf(" | ", StringComparison.Ordinal) + 3 + 5, lines[2].IndexOf('^', StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    ///     Proves a scrub that reaches its time limit withholds the text rather than returning it
+    ///     as written.
+    /// </summary>
+    [Fact]
+    public void RenderErrorShaper_Scrub_Timeout_ReturnsWithheldTextNeverRaw()
+    {
+        // Arrange: a scrub that times out
+        static string TimedOut() => throw new RegexMatchTimeoutException("raw C:\\secret", "pattern", TimeSpan.FromSeconds(1));
+
+        // Act: guard it
+        var guarded = RenderErrorShaper.Guard(TimedOut);
+
+        // Assert: the withheld text, never the raw input
+        Assert.Equal(RenderErrorShaper.WithheldText, guarded);
+        Assert.DoesNotContain("secret", guarded, StringComparison.Ordinal);
     }
 
     /// <summary>
