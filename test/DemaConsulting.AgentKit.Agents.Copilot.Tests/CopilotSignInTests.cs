@@ -63,6 +63,30 @@ public sealed class CopilotSignInTests : IDisposable
         new(CopilotRuntimeSource.InstalledCli, Path.Combine("/fake", "bin", "copilot"), new Version(1, 0, 114));
 
     /// <summary>
+    ///     Logs an entry in the shape the SDK logs an RPC failure with.
+    /// </summary>
+    private static readonly Action<ILogger, string, string, Exception?> RpcError =
+        LoggerMessage.Define<string, string>(
+            LogLevel.Error,
+            new EventId(7, "RpcError"),
+            "Error handling JSON-RPC method {Method}: {Error}");
+
+    /// <summary>
+    ///     Begins a scope naming a session.
+    /// </summary>
+    private static readonly Func<ILogger, string, IDisposable?> SessionScope =
+        LoggerMessage.DefineScope<string>("Session {SessionId}");
+
+    /// <summary>
+    ///     Logs an entry whose values are of every kind the redacting logger keeps typed, and a text.
+    /// </summary>
+    private static readonly Action<ILogger, int, bool, TimeSpan, CopilotSignInSource, Guid, string, Exception?> ProbeLogged =
+        LoggerMessage.Define<int, bool, TimeSpan, CopilotSignInSource, Guid, string>(
+            LogLevel.Warning,
+            new EventId(9, "Probe"),
+            "Probe {Count} {Flag} {Elapsed} {Source} {Id} {Path}");
+
+    /// <summary>
     ///     The root of this test's folders under the system temporary folder.
     /// </summary>
     private readonly string _root =
@@ -1236,6 +1260,240 @@ public sealed class CopilotSignInTests : IDisposable
         Assert.Contains("could not be run", plan.CopilotCliFinding, StringComparison.Ordinal);
         Assert.False(plan.CopilotCliFinding.Contains(secret, StringComparison.Ordinal), "The finding carries the secret.");
         Assert.Contains("stray <redacted>", plan.CopilotCliFinding, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves every finding redacts each field it quotes from the configuration, the environment
+    ///     or the host's options — the requested host, the Copilot CLI account's host and login, the
+    ///     configuration's path, a lookup's problem and the GitHub CLI's folder — so neither a finding
+    ///     nor the refusal built from them carries a known secret.
+    /// </summary>
+    [Fact]
+    public async Task CopilotSignIn_ResolveAsync_FindingsQuotingASecret_AreRedacted()
+    {
+        // Arrange: a GitHub Enterprise token, not shaped like a GitHub token, whose value also appears
+        // in COPILOT_HOME's path, the configuration's login, the requested host and the GitHub CLI's folder
+        const string secret = "s3cr3t-value-xyz";
+        var home = Path.Combine(_root, $"home-{secret}");
+        Directory.CreateDirectory(home);
+        await File.WriteAllTextAsync(
+            Path.Combine(home, "config.json"),
+            $$"""{ "lastLoggedInUser": { "host": "{{AccountHost}}", "login": "octo-{{secret}}" } }""",
+            TestContext.Current.CancellationToken);
+        var machine = new FakeCopilotCliMachine();
+        machine.AddFile(Path.Combine($"/opt/{secret}/bin", "gh"));
+        var search = machine.Context(CopilotCliPlatform.Linux, $"/opt/{secret}/bin");
+        var secretHost = $"{secret}.ghe.com";
+        Hashtable EnvironmentWith(string copilotHome, string? ghToken = null)
+        {
+            var environment = new Hashtable { ["GH_ENTERPRISE_TOKEN"] = secret, ["COPILOT_HOME"] = copilotHome };
+            if (ghToken is not null)
+            {
+                environment["GH_TOKEN"] = ghToken;
+            }
+
+            return environment;
+        }
+
+        // Act
+        var hostToken = await ResolveAsync(
+            new CopilotRuntimeOptions(DataDirectory, gitHubToken: SentinelToken, gitHubHost: secretHost),
+            EnvironmentWith(home));
+        var hostProvider = await ResolveAsync(
+            new CopilotRuntimeOptions(
+                DataDirectory,
+                gitHubHost: secretHost,
+                gitHubTokenProvider: (_, _) => Task.FromResult(new CopilotGitHubToken(SentinelToken))),
+            EnvironmentWith(home));
+        var environmentToken = await ResolveAsync(new CopilotRuntimeOptions(DataDirectory), EnvironmentWith(home, "gho_environment"));
+        var otherHost = await ResolveAsync(new CopilotRuntimeOptions(DataDirectory, gitHubHost: secretHost), EnvironmentWith(home), search);
+        var missingHome = await ResolveAsync(new CopilotRuntimeOptions(DataDirectory), EnvironmentWith(Path.Combine(_root, $"missing-{secret}")));
+        Helper.StartFailure = new IOException($"pipe broke for {secret}");
+        var helperFailed = await ResolveAsync(new CopilotRuntimeOptions(DataDirectory), EnvironmentWith(home));
+
+        // Assert: the fields were quoted, and redacted
+        Assert.Contains("https://<redacted>.ghe.com", hostToken.HostSuppliedFinding, StringComparison.Ordinal);
+        Assert.Contains("https://<redacted>.ghe.com", hostProvider.HostSuppliedFinding, StringComparison.Ordinal);
+        Assert.Contains($"{AccountHost} / octo-<redacted> found in", environmentToken.CopilotCliFinding, StringComparison.Ordinal);
+        Assert.Contains("home-<redacted>", environmentToken.CopilotCliFinding, StringComparison.Ordinal);
+        Assert.Contains("but https://<redacted>.ghe.com was requested", otherHost.CopilotCliFinding, StringComparison.Ordinal);
+        Assert.Contains("/opt/<redacted>/bin", otherHost.FallbackFinding, StringComparison.Ordinal);
+        Assert.Contains("missing-<redacted>", missingHome.CopilotCliFinding, StringComparison.Ordinal);
+        Assert.Contains("pipe broke for <redacted>", helperFailed.CopilotCliFinding, StringComparison.Ordinal);
+        var unauthenticated = new GetAuthStatusResponse { IsAuthenticated = false };
+        foreach (var plan in new[] { hostToken, hostProvider, environmentToken, otherHost, missingHome, helperFailed })
+        {
+            SecretAssert.NoSecretInText(plan.HostSuppliedFinding, secret, SentinelToken);
+            SecretAssert.NoSecretInText(plan.EnvironmentFinding, secret, SentinelToken);
+            SecretAssert.NoSecretInText(plan.CopilotCliFinding, secret, SentinelToken);
+            SecretAssert.NoSecretInText(plan.FallbackFinding, secret, SentinelToken);
+            SecretAssert.NoSecretInText(CopilotSignIn.ExplainUnauthenticated(plan, unauthenticated), secret, SentinelToken);
+        }
+    }
+
+    /// <summary>
+    ///     Proves the entry logged for a Copilot CLI sign-in that was found but not used carries the
+    ///     finding redacted — the account's login, the configuration's path, the requested host and a
+    ///     helper's failure — in its message and in its structured values alike.
+    /// </summary>
+    [Fact]
+    public async Task CopilotSignIn_ResolveAsync_CopilotCliNotUsed_LogsTheFindingRedacted()
+    {
+        // Arrange
+        const string secret = "s3cr3t-value-xyz";
+        var home = Path.Combine(_root, $"home-{secret}");
+        Directory.CreateDirectory(home);
+        await File.WriteAllTextAsync(
+            Path.Combine(home, "config.json"),
+            $$"""{ "lastLoggedInUser": { "host": "{{AccountHost}}", "login": "octo-{{secret}}" } }""",
+            TestContext.Current.CancellationToken);
+        var environment = new Hashtable { ["GITHUB_ENTERPRISE_TOKEN"] = secret, ["COPILOT_HOME"] = home };
+        var logger = new CapturingLogger();
+
+        // Act
+        await ResolveAsync(new CopilotRuntimeOptions(DataDirectory, logger: logger, gitHubHost: $"{secret}.ghe.com"), environment);
+        Helper.StartFailure = new InvalidOperationException($"runtime exited quoting {secret} {SentinelToken}");
+        await ResolveAsync(new CopilotRuntimeOptions(DataDirectory, logger: logger), environment);
+
+        // Assert
+        var entries = logger.Entries;
+        Assert.Equal(2, entries.Count);
+        Assert.All(entries, entry => Assert.Equal("CopilotCliSignInNotUsed", entry.EventId.Name));
+        Assert.Contains("octo-<redacted> found in", entries[0].Message, StringComparison.Ordinal);
+        Assert.Contains("home-<redacted>", entries[0].Message, StringComparison.Ordinal);
+        Assert.Contains("https://<redacted>.ghe.com was requested", entries[0].Message, StringComparison.Ordinal);
+        Assert.Contains("quoting <redacted> gho_<redacted>", entries[1].Message, StringComparison.Ordinal);
+        SecretAssert.NoSecret(logger, secret, SentinelToken);
+    }
+
+    /// <summary>
+    ///     Proves a helper that reports another sign-in, with a kind, host and login that each quote a
+    ///     known secret or a token-shaped value, leaves a finding — and a log entry — with each field
+    ///     redacted.
+    /// </summary>
+    [Fact]
+    public async Task CopilotSignIn_ResolveAsync_HelperReportsAnotherSignInQuotingASecret_IsRedacted()
+    {
+        // Arrange
+        const string secret = "s3cr3t-value-xyz";
+        WriteUserConfiguration(UserConfiguration);
+        Helper.Status = new GetAuthStatusResponse
+        {
+            IsAuthenticated = true,
+            AuthType = $"kind-{secret}",
+            Host = $"https://{secret}.ghe.com",
+            Login = $"octo-{secret} {SentinelToken}",
+        };
+        var logger = new CapturingLogger();
+
+        // Act
+        var plan = await ResolveAsync(
+            new CopilotRuntimeOptions(DataDirectory, logger: logger),
+            new Hashtable { ["GH_ENTERPRISE_TOKEN"] = secret });
+
+        // Assert
+        Assert.Null(plan.Source);
+        Assert.Equal(0, Helper.UserReads);
+        Assert.Contains(
+            "reported another sign-in (kind-<redacted>: https://<redacted>.ghe.com / octo-<redacted> gho_<redacted>)",
+            plan.CopilotCliFinding,
+            StringComparison.Ordinal);
+        SecretAssert.NoSecretInText(plan.CopilotCliFinding, secret, SentinelToken);
+        Assert.Contains("reported another sign-in", Assert.Single(logger.Entries).Message, StringComparison.Ordinal);
+        SecretAssert.NoSecret(logger, secret, SentinelToken);
+    }
+
+    /// <summary>
+    ///     Proves the redacting logger passes on only redacted entries — the formatted message, every
+    ///     structured value, the scope and the logged exception, whose aggregate's second inner
+    ///     exception and data quote the secret — while the same entries logged directly are caught by
+    ///     the shared assertion.
+    /// </summary>
+    [Fact]
+    public void CopilotSignIn_RedactingLogger_RedactsMessageValuesScopesAndExceptions()
+    {
+        // Arrange: an entry in the SDK's shape, under a scope, with a failure quoting the secret
+        const string secret = "s3cr3t-value-xyz";
+        var secrets = new CopilotSignInSecrets();
+        secrets.Add(secret);
+        var inner = new CapturingLogger();
+        var raw = new CapturingLogger();
+        var logger = CopilotRedactingLogger.Wrap(inner, text => secrets.Redact(text))!;
+        var failure = Thrown(new InvalidOperationException(
+            "Error handling JSON-RPC method",
+            new AggregateException("both failed", new IOException("first"), new IOException($"second {secret}"))));
+        failure.Data["token"] = secret;
+        void Write(ILogger target)
+        {
+            using (SessionScope(target, secret))
+            {
+                RpcError(target, "session.send", $"refused {secret} {SentinelToken}", failure);
+            }
+        }
+
+        // Act
+        Write(logger);
+        Write(raw);
+
+        // Assert
+        Assert.ThrowsAny<Xunit.Sdk.XunitException>(() => SecretAssert.NoSecret(raw, secret));
+        SecretAssert.NoSecret(inner, secret, SentinelToken);
+        var entry = Assert.Single(inner.Entries);
+        Assert.Equal(LogLevel.Error, entry.Level);
+        Assert.Equal("Error handling JSON-RPC method session.send: refused <redacted> gho_<redacted>", entry.Message);
+        Assert.Equal(entry.Message, entry.StateText);
+        Assert.Contains(entry.State, pair => pair.Key == "Method" && Equals(pair.Value, "session.send"));
+        Assert.Contains(entry.State, pair => pair.Key == "Error" && Equals(pair.Value, "refused <redacted> gho_<redacted>"));
+        Assert.Contains(entry.State, pair => pair.Key == "{OriginalFormat}" && Equals(pair.Value, "Error handling JSON-RPC method {Method}: {Error}"));
+        var copy = Assert.IsType<CopilotRedactedException>(entry.Exception);
+        Assert.Equal(typeof(InvalidOperationException).FullName, copy.OriginalTypeName);
+        Assert.Empty(copy.Data);
+        Assert.Equal("Session <redacted>", Assert.Single(inner.Scopes).Text);
+    }
+
+    /// <summary>
+    ///     Proves the redacting logger keeps each entry's level and event, keeps values that cannot
+    ///     hold text with their type, formats nothing for a level the host's logger does not enable,
+    ///     reports the host's logger's levels, and wraps no logger as no logger.
+    /// </summary>
+    [Fact]
+    public void CopilotSignIn_RedactingLogger_KeepsLevelsEventsAndPrimitiveValues()
+    {
+        // Arrange
+        const string secret = "s3cr3t-value-xyz";
+        var secrets = new CopilotSignInSecrets();
+        secrets.Add(secret);
+        var inner = new CapturingLogger { MinimumLevel = LogLevel.Information };
+        var logger = CopilotRedactingLogger.Wrap(inner, text => secrets.Redact(text))!;
+        var id = Guid.NewGuid();
+        var formatted = 0;
+
+        // Act
+        ProbeLogged(logger, 42, true, TimeSpan.FromSeconds(3), CopilotSignInSource.CopilotCli, id, $"path {secret}", null);
+        logger.Log(LogLevel.Debug, new EventId(10, "Dropped"), secret, null, (state, _) =>
+        {
+            formatted++;
+            return state;
+        });
+
+        // Assert
+        var entry = Assert.Single(inner.Entries);
+        Assert.Equal(LogLevel.Warning, entry.Level);
+        Assert.Equal(new EventId(9, "Probe"), entry.EventId);
+        Assert.Equal(9, entry.EventId.Id);
+        Assert.Equal("Probe", entry.EventId.Name);
+        var values = entry.State.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
+        Assert.Equal(42, Assert.IsType<int>(values["Count"]));
+        Assert.True(Assert.IsType<bool>(values["Flag"]));
+        Assert.Equal(TimeSpan.FromSeconds(3), Assert.IsType<TimeSpan>(values["Elapsed"]));
+        Assert.Equal(CopilotSignInSource.CopilotCli, Assert.IsType<CopilotSignInSource>(values["Source"]));
+        Assert.Equal(id, Assert.IsType<Guid>(values["Id"]));
+        Assert.Equal("path <redacted>", Assert.IsType<string>(values["Path"]));
+        Assert.Equal(0, formatted);
+        Assert.False(logger.IsEnabled(LogLevel.Debug));
+        Assert.True(logger.IsEnabled(LogLevel.Information));
+        Assert.Null(CopilotRedactingLogger.Wrap(null, text => text));
+        SecretAssert.NoSecret(inner, secret);
     }
 
     /// <summary>

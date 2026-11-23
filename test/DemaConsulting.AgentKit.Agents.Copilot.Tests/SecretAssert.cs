@@ -237,7 +237,8 @@ internal static class SecretAssert
 ///     exception, and each scope — so a test can prove what reached it.
 /// </summary>
 /// <remarks>
-///     Thread-safe: the runtime's diagnostics may log from any thread. Every level is enabled.
+///     Thread-safe: the runtime's diagnostics may log from any thread. Every level is enabled unless
+///     <see cref="MinimumLevel"/> says otherwise.
 /// </remarks>
 internal sealed class CapturingLogger : ILogger
 {
@@ -284,6 +285,15 @@ internal sealed class CapturingLogger : ILogger
         }
     }
 
+    /// <summary>
+    ///     Gets the lowest level <see cref="IsEnabled"/> reports as enabled; every level by default.
+    /// </summary>
+    /// <remarks>
+    ///     <see cref="Log{TState}"/> keeps every entry it is given whatever the level, so a test sees
+    ///     an entry that a caller logged without asking.
+    /// </remarks>
+    public LogLevel MinimumLevel { get; init; } = LogLevel.Trace;
+
     /// <inheritdoc/>
     public IDisposable? BeginScope<TState>(TState state)
         where TState : notnull
@@ -298,7 +308,7 @@ internal sealed class CapturingLogger : ILogger
     }
 
     /// <inheritdoc/>
-    public bool IsEnabled(LogLevel logLevel) => true;
+    public bool IsEnabled(LogLevel logLevel) => logLevel != LogLevel.None && logLevel >= MinimumLevel;
 
     /// <inheritdoc/>
     public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)

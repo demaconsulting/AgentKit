@@ -1567,6 +1567,88 @@ public class CopilotRuntimeTests
     }
 
     /// <summary>
+    ///     Proves a status or authentication read that fails quoting a known secret — not shaped like a
+    ///     GitHub token — and a token-shaped value is relayed as a new exception of the kind a host
+    ///     catches, with a redacted message, a redacted copy naming the original type as its cause,
+    ///     and no secret anywhere in its chain.
+    /// </summary>
+    /// <param name="failingRead">Which read fails: <c>status</c> or <c>authentication</c>.</param>
+    /// <param name="kind">The failure the read raises: <c>io</c> or <c>rpc</c>.</param>
+    [Theory]
+    [InlineData("status", "io")]
+    [InlineData("status", "rpc")]
+    [InlineData("authentication", "io")]
+    [InlineData("authentication", "rpc")]
+    public async Task CopilotRuntime_VerifyStarted_ReadFailureQuotingASecret_IsRelayedRedacted(string failingRead, string kind)
+    {
+        // Arrange
+        const string secret = "s3cr3t-value-xyz";
+        const string shaped = "gho_VERIFY0123456789abcdefABCDEF0123456";
+        var plan = CopilotSignInTests.PlanKnowing(secret);
+        Exception NewFailure()
+        {
+            if (kind == "io")
+            {
+                return new IOException($"pipe broke reading {secret} {shaped}");
+            }
+
+            var rpc = new CopilotSignInTests.RpcErrorException($"read refused {secret} {shaped}", new { token = secret });
+            rpc.Data["token"] = secret;
+            return rpc;
+        }
+
+        Func<CancellationToken, Task<GetStatusResponse>> readStatus = _ => failingRead == "status"
+            ? Task.FromException<GetStatusResponse>(NewFailure())
+            : Task.FromResult(new GetStatusResponse { Version = "1.0.114", ProtocolVersion = 4 });
+        Func<CancellationToken, Task<GetAuthStatusResponse>> readAuthentication = _ => failingRead == "authentication"
+            ? Task.FromException<GetAuthStatusResponse>(NewFailure())
+            : Task.FromResult(new GetAuthStatusResponse { IsAuthenticated = true });
+
+        // Act
+        var failure = await Assert.ThrowsAnyAsync<Exception>(() => CopilotRuntime.VerifyStartedAsync(
+            readStatus,
+            readAuthentication,
+            plan,
+            TestContext.Current.CancellationToken));
+
+        // Assert
+        Assert.IsType(kind == "io" ? typeof(IOException) : typeof(InvalidOperationException), failure);
+        Assert.Contains("<redacted> gho_<redacted>", failure.Message, StringComparison.Ordinal);
+        var copy = Assert.IsType<CopilotRedactedException>(failure.InnerException);
+        Assert.Equal(kind == "io" ? typeof(IOException).FullName : typeof(CopilotSignInTests.RpcErrorException).FullName, copy.OriginalTypeName);
+        SecretAssert.NoSecret(failure, secret, shaped);
+    }
+
+    /// <summary>
+    ///     Proves a clean cancellation or disposal of either read — no cause and nothing to redact —
+    ///     reaches the caller as the very same instance.
+    /// </summary>
+    [Fact]
+    public async Task CopilotRuntime_VerifyStarted_CleanCancellation_PassesUnchanged()
+    {
+        // Arrange
+        var canceled = new OperationCanceledException("canceled");
+        var disposed = new ObjectDisposedException("CopilotClient");
+        var status = new GetStatusResponse { Version = "1.0.114", ProtocolVersion = 4 };
+
+        // Act
+        var statusCancellation = await Assert.ThrowsAsync<OperationCanceledException>(() => CopilotRuntime.VerifyStartedAsync(
+            _ => Task.FromException<GetStatusResponse>(canceled),
+            _ => Task.FromResult(new GetAuthStatusResponse { IsAuthenticated = true }),
+            new CopilotSignInPlan(),
+            TestContext.Current.CancellationToken));
+        var authenticationDisposal = await Assert.ThrowsAsync<ObjectDisposedException>(() => CopilotRuntime.VerifyStartedAsync(
+            _ => Task.FromResult(status),
+            _ => Task.FromException<GetAuthStatusResponse>(disposed),
+            new CopilotSignInPlan(),
+            TestContext.Current.CancellationToken));
+
+        // Assert
+        Assert.Same(canceled, statusCancellation);
+        Assert.Same(disposed, authenticationDisposal);
+    }
+
+    /// <summary>
     ///     Proves the runtime reports the CLI it launched and the version and protocol the started
     ///     runtime reported, and that a runtime not started by <c>StartAsync</c> reports none.
     /// </summary>

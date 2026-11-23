@@ -1,4 +1,5 @@
 using System.Collections;
+using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -128,7 +129,7 @@ internal static partial class CopilotSignIn
     ///     The environment variables whose values are secrets, redacted from any text AgentKit quotes:
     ///     the token variables and the GitHub Enterprise token variables.
     /// </summary>
-    private static readonly string[] SecretVariables =
+    internal static readonly string[] SecretVariables =
         ["COPILOT_GITHUB_TOKEN", "GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN"];
 
     /// <summary>
@@ -331,14 +332,10 @@ internal static partial class CopilotSignIn
         var requestedHost = options.GitHubHost ?? ReadEnvironmentHost(hostEnvironment);
         var overrideHostName = requestedHost is null ? null : HostName(requestedHost);
 
-        // Every token this resolution is given or obtains, so text it quotes can never carry one
-        var secrets = new CopilotSignInSecrets();
-        foreach (var name in SecretVariables)
-        {
-            secrets.Add(ReadVariable(hostEnvironment, name));
-        }
-
-        secrets.Add(options.GitHubToken);
+        // Every token this resolution is given or obtains, so text it quotes can never carry one; the
+        // host's logger only ever receives entries redacted with them
+        var secrets = CopilotSignInSecrets.FromEnvironment(hostEnvironment, options.GitHubToken);
+        var logger = CopilotRedactingLogger.Wrap(options.Logger, text => secrets.Redact(text));
 
         // Step 1: a token or token provider the host supplies
         if (options.GitHubToken is not null)
@@ -350,7 +347,7 @@ internal static partial class CopilotSignIn
                 requestedHost,
                 provider: null,
                 secrets,
-                $"gitHubToken supplied; AgentKit passed it to the runtime (host {requestedHost ?? DefaultHost}).");
+                $"gitHubToken supplied; AgentKit passed it to the runtime (host {secrets.Redact(requestedHost ?? DefaultHost)}).");
         }
 
         if (options.GitHubTokenProvider is { } provider)
@@ -365,7 +362,7 @@ internal static partial class CopilotSignIn
                 requestedHost,
                 provider,
                 secrets,
-                $"gitHubTokenProvider supplied; it returned a token for {host}, which AgentKit passed to the runtime.");
+                $"gitHubTokenProvider supplied; it returned a token for {secrets.Redact(host)}, which AgentKit passed to the runtime.");
         }
 
         // The Copilot CLI account is looked up whenever the host allows it, so later steps can name it
@@ -388,7 +385,7 @@ internal static partial class CopilotSignIn
                 EnvironmentFinding = $"{string.Join(", ", setVariables)} set; the runtime signs in with it.",
                 CopilotCliFinding = cliLookup is null
                     ? "turned off by the host (useCopilotCliSignIn: false)."
-                    : $"{precedence}{DescribeFound(cliLookup)}.",
+                    : $"{precedence}{DescribeFound(cliLookup, secrets)}.",
                 FallbackFinding = "not tried: an earlier source applied.",
                 Secrets = secrets,
             };
@@ -397,7 +394,7 @@ internal static partial class CopilotSignIn
         // Step 3: the user's Copilot CLI sign-in
         var (cliToken, cliFinding) = cliLookup is null
             ? (null, "turned off by the host (useCopilotCliSignIn: false).")
-            : await TryCopilotCliAsync(cliLookup, requestedHost, hostEnvironment, launch, context, secrets, options.Logger, cancellationToken)
+            : await TryCopilotCliAsync(cliLookup, requestedHost, hostEnvironment, launch, context, secrets, logger, cancellationToken)
                 .ConfigureAwait(false);
         if (cliToken is not null)
         {
@@ -417,7 +414,8 @@ internal static partial class CopilotSignIn
             };
         }
 
-        if (options.Logger is { } logger && cliLookup?.Account is not null)
+        // The finding was redacted as it was composed, and the logger redacts every entry once more
+        if (logger is not null && cliLookup?.Account is not null)
         {
             CopilotCliNotUsed(logger, cliFinding, null);
         }
@@ -435,7 +433,8 @@ internal static partial class CopilotSignIn
             CopilotCliFinding = cliFinding,
             FallbackFinding = gh is null
                 ? $"left to the runtime; the GitHub CLI ('{context.Search.ExecutableName("gh")}') was not found on PATH."
-                : $"left to the runtime; the GitHub CLI was found at '{gh}' (signed in to {requestedHost ?? DefaultHost} or not).",
+                : $"left to the runtime; the GitHub CLI was found at '{secrets.Redact(gh)}' "
+                    + $"(signed in to {secrets.Redact(requestedHost ?? DefaultHost)} or not).",
             Secrets = secrets,
         };
     }
@@ -1151,21 +1150,24 @@ internal static partial class CopilotSignIn
         ILogger? logger,
         CancellationToken cancellationToken)
     {
+        // Every field quoted from the configuration, the environment or the helper is redacted as the
+        // finding is composed, so the finding is safe in a log entry as well as in a refusal
         if (lookup.Account is not { } account)
         {
-            return (null, lookup.Problem ?? "no signed-in account found.");
+            return (null, secrets.Redact(lookup.Problem ?? "no signed-in account found."));
         }
 
-        var found = $"{account.Host} / {account.Login} found in '{lookup.ConfigurationPath}'";
+        var found = $"{secrets.Redact(account.Host)} / {secrets.Redact(account.Login)} found in "
+            + $"'{secrets.Redact(lookup.ConfigurationPath ?? string.Empty)}'";
         if (requestedHost is not null && !SameHost(requestedHost, account.Host))
         {
-            return (null, $"{found}, but {requestedHost} was requested (gitHubHost or COPILOT_GH_HOST), so it was not used.");
+            return (null, $"{found}, but {secrets.Redact(requestedHost)} was requested (gitHubHost or COPILOT_GH_HOST), so it was not used.");
         }
 
         var (token, problem) = await ReadCopilotCliTokenAsync(account, hostEnvironment, launch.CliPath, context, secrets, logger, cancellationToken)
             .ConfigureAwait(false);
         return token is null
-            ? (null, $"{found}, but {problem}")
+            ? (null, $"{found}, but {secrets.Redact(problem ?? string.Empty)}")
             : (token, $"{found}; AgentKit obtained its token through the Copilot CLI and passed it to the runtime.");
     }
 
@@ -1207,7 +1209,11 @@ internal static partial class CopilotSignIn
                 || !SameHost(status.Host, account.Host)
                 || !string.Equals(status.Login, account.Login, StringComparison.OrdinalIgnoreCase))
             {
-                return (null, $"the Copilot CLI reported another sign-in ({status.AuthType ?? "unknown"}: {status.Host ?? "unknown host"} / {status.Login ?? "unknown login"}) instead of that account's.");
+                // Each field is the helper's own text: redacted, like its status message
+                var authType = secrets.Redact(status.AuthType ?? "unknown");
+                var host = secrets.Redact(status.Host ?? "unknown host");
+                var login = secrets.Redact(status.Login ?? "unknown login");
+                return (null, $"the Copilot CLI reported another sign-in ({authType}: {host} / {login}) instead of that account's.");
             }
 
             IList<AccountAllUsers> users;
@@ -1315,9 +1321,13 @@ internal static partial class CopilotSignIn
     ///     Describes the account a lookup found, for a step that did not use it.
     /// </summary>
     /// <param name="lookup">The lookup.</param>
+    /// <param name="secrets">The secrets redacted from each field the clause quotes.</param>
     /// <returns>A clause naming the account, or empty when none was found.</returns>
-    private static string DescribeFound(CopilotCliAccountLookup lookup) =>
-        lookup.Account is { } account ? $" ({account.Host} / {account.Login} found in '{lookup.ConfigurationPath}')" : string.Empty;
+    private static string DescribeFound(CopilotCliAccountLookup lookup, CopilotSignInSecrets secrets) =>
+        lookup.Account is { } account
+            ? $" ({secrets.Redact(account.Host)} / {secrets.Redact(account.Login)} found in "
+                + $"'{secrets.Redact(lookup.ConfigurationPath ?? string.Empty)}')"
+            : string.Empty;
 
     /// <summary>
     ///     Reads a variable from the host's environment with this platform's name comparison.
@@ -1325,7 +1335,7 @@ internal static partial class CopilotSignIn
     /// <param name="hostEnvironment">The host's environment.</param>
     /// <param name="name">The variable's name.</param>
     /// <returns>The value, or <see langword="null"/> when unset.</returns>
-    private static string? ReadVariable(IDictionary hostEnvironment, string name)
+    internal static string? ReadVariable(IDictionary hostEnvironment, string name)
     {
         var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
         foreach (DictionaryEntry entry in hostEnvironment)
@@ -1492,6 +1502,30 @@ internal sealed class CopilotSignInSecrets
     private readonly HashSet<string> _values = new(StringComparer.Ordinal);
 
     /// <summary>
+    ///     Builds the secrets an environment holds: the value of each of its secret variables
+    ///     (<see cref="CopilotSignIn.SecretVariables"/>), read with this platform's name comparison,
+    ///     and the host's token.
+    /// </summary>
+    /// <remarks>
+    ///     The redactor of text quoted before a sign-in is resolved, or while it is resolving: every
+    ///     value the environment in hand could make a runtime, a CLI or a path quote.
+    /// </remarks>
+    /// <param name="environment">The environment, such as the host's.</param>
+    /// <param name="hostToken">The host's token, or <see langword="null"/>.</param>
+    /// <returns>The secrets.</returns>
+    internal static CopilotSignInSecrets FromEnvironment(IDictionary environment, string? hostToken = null)
+    {
+        var secrets = new CopilotSignInSecrets();
+        foreach (var name in CopilotSignIn.SecretVariables)
+        {
+            secrets.Add(CopilotSignIn.ReadVariable(environment, name));
+        }
+
+        secrets.Add(hostToken);
+        return secrets;
+    }
+
+    /// <summary>
     ///     Records a value as a secret.
     /// </summary>
     /// <remarks>
@@ -1539,6 +1573,160 @@ internal sealed class CopilotSignInSecrets
         }
 
         return CopilotSignIn.Redact(text);
+    }
+}
+
+/// <summary>
+///     A logger that passes on only redacted entries: the host's logger, as AgentKit and the SDK
+///     write to it.
+/// </summary>
+/// <remarks>
+///     <para>
+///     The single choke point for every log entry that can quote runtime, SDK, helper, environment
+///     or configuration text. Each entry is formatted with the caller's formatter, and the text is
+///     redacted; the inner logger receives a structured state whose string form is that text, whose
+///     values are redacted as text — except <see langword="null"/>, Booleans, numbers, enumerations,
+///     dates, times, durations and GUIDs, which keep their value and type — and whose keys are
+///     redacted too. A logged exception is passed on as its redacted copy
+///     (<see cref="CopilotRedactedException"/>). A scope's state is passed on the same way.
+///     </para>
+///     <para>
+///     Levels and events are passed through unchanged, and nothing is formatted or redacted for a
+///     level the inner logger does not enable. Thread-safe and stateless apart from the redactor,
+///     which reads the sign-in's live secrets, so a session token added later is removed from later
+///     entries. Wrapping a redacting logger again is harmless.
+///     </para>
+/// </remarks>
+internal sealed class CopilotRedactingLogger : ILogger
+{
+    /// <summary>
+    ///     The host's logger.
+    /// </summary>
+    private readonly ILogger _inner;
+
+    /// <summary>
+    ///     Removes the secrets from a text.
+    /// </summary>
+    private readonly Func<string, string> _redact;
+
+    /// <summary>
+    ///     Initializes a new instance of the <see cref="CopilotRedactingLogger"/> class.
+    /// </summary>
+    /// <param name="inner">The host's logger.</param>
+    /// <param name="redact">Removes the secrets from a text.</param>
+    private CopilotRedactingLogger(ILogger inner, Func<string, string> redact)
+    {
+        _inner = inner;
+        _redact = redact;
+    }
+
+    /// <summary>
+    ///     Wraps a logger so it receives only redacted entries.
+    /// </summary>
+    /// <param name="inner">The host's logger, or <see langword="null"/>.</param>
+    /// <param name="redact">Removes the secrets from a text.</param>
+    /// <returns>The redacting logger, or <see langword="null"/> when <paramref name="inner"/> is.</returns>
+    internal static ILogger? Wrap(ILogger? inner, Func<string, string> redact) =>
+        inner is null ? null : new CopilotRedactingLogger(inner, redact);
+
+    /// <inheritdoc/>
+    public IDisposable? BeginScope<TState>(TState state)
+        where TState : notnull =>
+        _inner.BeginScope(RedactedLogState.Create(state, Convert.ToString(state, CultureInfo.InvariantCulture), _redact));
+
+    /// <inheritdoc/>
+    public bool IsEnabled(LogLevel logLevel) => _inner.IsEnabled(logLevel);
+
+    /// <inheritdoc/>
+    public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+    {
+        // Nothing is formatted or copied for an entry the host's logger would drop
+        if (!_inner.IsEnabled(logLevel))
+        {
+            return;
+        }
+
+        var message = formatter is null ? Convert.ToString(state, CultureInfo.InvariantCulture) : formatter(state, exception);
+        var redactedState = RedactedLogState.Create(state, message, _redact);
+        var redactedException = exception is null
+            ? null
+            : CopilotRedactedException.Copy(exception, text => _redact(text ?? string.Empty), depth: 1);
+        _inner.Log(logLevel, eventId, redactedState, redactedException, static (logged, _) => logged.ToString());
+    }
+
+    /// <summary>
+    ///     A log entry's or scope's state, redacted: its text, and its structured keys and values.
+    /// </summary>
+    private sealed class RedactedLogState : IReadOnlyList<KeyValuePair<string, object?>>
+    {
+        /// <summary>
+        ///     The redacted text.
+        /// </summary>
+        private readonly string _text;
+
+        /// <summary>
+        ///     The redacted keys and values.
+        /// </summary>
+        private readonly KeyValuePair<string, object?>[] _pairs;
+
+        /// <summary>
+        ///     Initializes a new instance of the <see cref="RedactedLogState"/> class.
+        /// </summary>
+        /// <param name="text">The redacted text.</param>
+        /// <param name="pairs">The redacted keys and values.</param>
+        private RedactedLogState(string text, KeyValuePair<string, object?>[] pairs)
+        {
+            _text = text;
+            _pairs = pairs;
+        }
+
+        /// <inheritdoc/>
+        public int Count => _pairs.Length;
+
+        /// <inheritdoc/>
+        public KeyValuePair<string, object?> this[int index] => _pairs[index];
+
+        /// <summary>
+        ///     Redacts a state.
+        /// </summary>
+        /// <param name="state">The caller's state; its structured keys and values, if any, are copied redacted.</param>
+        /// <param name="text">The state's text, such as the formatted message.</param>
+        /// <param name="redact">Removes the secrets from a text.</param>
+        /// <returns>The redacted state.</returns>
+        internal static RedactedLogState Create(object? state, string? text, Func<string, string> redact)
+        {
+            KeyValuePair<string, object?>[] pairs = state is IEnumerable<KeyValuePair<string, object?>> structured
+                ? [.. structured.Select(pair => new KeyValuePair<string, object?>(redact(pair.Key ?? string.Empty), RedactValue(pair.Value, redact)))]
+                : [];
+            return new RedactedLogState(redact(text ?? string.Empty), pairs);
+        }
+
+        /// <inheritdoc/>
+        public IEnumerator<KeyValuePair<string, object?>> GetEnumerator() => ((IEnumerable<KeyValuePair<string, object?>>)_pairs).GetEnumerator();
+
+        /// <inheritdoc/>
+        IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+
+        /// <summary>
+        ///     Returns the redacted text.
+        /// </summary>
+        /// <returns>The text.</returns>
+        public override string ToString() => _text;
+
+        /// <summary>
+        ///     Redacts a structured value: a value that cannot hold text keeps its value and type; any
+        ///     other becomes its redacted text.
+        /// </summary>
+        /// <param name="value">The value.</param>
+        /// <param name="redact">Removes the secrets from a text.</param>
+        /// <returns>The value, or its redacted text.</returns>
+        private static object? RedactValue(object? value, Func<string, string> redact) => value switch
+        {
+            null => null,
+            bool or byte or sbyte or short or ushort or int or uint or long or ulong or float or double or decimal
+                or Enum or DateTime or DateTimeOffset or TimeSpan or Guid => value,
+            _ => redact(Convert.ToString(value, CultureInfo.InvariantCulture) ?? string.Empty),
+        };
     }
 }
 

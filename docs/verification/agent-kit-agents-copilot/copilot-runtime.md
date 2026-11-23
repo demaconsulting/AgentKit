@@ -379,9 +379,25 @@ The deletion is injected through the runtime's `RelayDeleteSessionAsync` seam, o
 secret. An RPC-shaped error quoting the secret in its message, error data and `Data`, the same error wrapped in an
 `InvalidOperationException` that also quotes a token-shaped value, and an `IOException` thrown synchronously each
 arrive as a new `InvalidOperationException` or `IOException` with the secret and token replaced by `<redacted>`, a
-redacted copy naming the original type as the cause, no `Data` at any level, and no secret anywhere the shared chain
-walk looks. The deletion receives the session identifier and the caller's token. A clean cancellation reaches the
-caller as the same instance.
+redacted copy naming the original type as the cause, no `Data` at any level, and no secret anywhere `SecretAssert`
+looks. The deletion receives the session identifier and the caller's token. A clean cancellation reaches the caller as
+the same instance.
+
+#### AgentKitAgentsCopilot-CopilotRuntime-RelaysStatusReadFailuresRedacted: Status Read Failures Relayed Redacted
+
+**Tests**:
+
+- `CopilotRuntime_VerifyStarted_ReadFailureQuotingASecret_IsRelayedRedacted` (status or authentication read; an
+  `IOException` or an RPC-shaped error)
+- `CopilotRuntime_VerifyStarted_CleanCancellation_PassesUnchanged`
+
+Error paths. The status and authentication reads are injected into `VerifyStartedAsync` with a sign-in that knows the
+secret `s3cr3t-value-xyz`, which is not shaped like a GitHub token. Each read in turn fails, the other succeeding,
+with an `IOException` or an RPC-shaped error whose message quotes the secret and a token-shaped value and whose error
+data and `Data` quote the secret. Each arrives as a new `IOException` or `InvalidOperationException` respectively,
+with `<redacted> gho_<redacted>` in place of the values, a redacted copy naming the original type as its cause, and no
+secret anywhere `SecretAssert` looks. A clean `OperationCanceledException` from the status read and a clean
+`ObjectDisposedException` from the authentication read reach the caller as the same instances.
 
 #### AgentKitAgentsCopilot-CopilotRuntime-RejectsInvalidOptions: Missing Options Are Refused
 

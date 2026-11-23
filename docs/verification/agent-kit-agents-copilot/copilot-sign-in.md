@@ -251,6 +251,8 @@ hour and half a second is 3601, and two hours is 7200.
 - `CopilotSignIn_ExplainUnauthenticated_NonGitHubShapedTokens_AreRedacted` (host token, provider
   token, `GH_TOKEN`, Copilot CLI token)
 - `CopilotSignIn_ResolveAsync_HelperFailureQuotingAKnownSecret_IsRedacted`
+- `CopilotSignIn_ResolveAsync_FindingsQuotingASecret_AreRedacted`
+- `CopilotSignIn_ResolveAsync_HelperReportsAnotherSignInQuotingASecret_IsRedacted`
 - `CopilotSignIn_CreateSessionTokenProvider_RecordsEachTokenForRedaction`
 - `CopilotSignIn_PlanRedact_LongestSecretFirstAndTokenShapes`
 - `CopilotSignIn_PlanToString_RedactsTheToken`
@@ -272,6 +274,44 @@ environment step apply) leaves a finding with `<redacted>` in its place. A token
 returns for a session is recorded, so text redacted afterwards no longer carries it. Overlapping
 secrets are removed whole, longest first; `null` and blank values are ignored; and a GitHub-shaped
 token is still reduced to its prefix and `<redacted>`.
+
+Every field a finding quotes is redacted where the finding is composed. With `GH_ENTERPRISE_TOKEN` set to
+`s3cr3t-value-xyz`, the same value appears in `COPILOT_HOME`'s path, in the configuration's login, in a requested host
+`s3cr3t-value-xyz.ghe.com` and in the folder holding the GitHub CLI. Resolutions with a host token, a host provider, an
+environment token, another requested host, a `COPILOT_HOME` without a configuration and a failing helper each produce
+findings that show `<redacted>` where the value was — the host-supplied finding's host, the account's login and
+configuration path, the requested host, the GitHub CLI's folder, the lookup's problem and the helper's error — and
+`SecretAssert` finds the value in no finding and in no refusal built from them. A helper that reports another sign-in
+whose kind, host and login quote the secret and a token-shaped value leaves the finding `reported another sign-in
+(kind-<redacted>: https://<redacted>.ghe.com / octo-<redacted> gho_<redacted>)`, and the entry logged for it carries
+neither value.
+
+#### AgentKitAgentsCopilot-CopilotSignIn-RedactsLogEntries: The Host's Logger Receives Only Redacted Entries
+
+**Tests**:
+
+- `CopilotSignIn_RedactingLogger_RedactsMessageValuesScopesAndExceptions`
+- `CopilotSignIn_RedactingLogger_KeepsLevelsEventsAndPrimitiveValues`
+- `CopilotSignIn_ResolveAsync_CopilotCliNotUsed_LogsTheFindingRedacted`
+- `CopilotSignIn_ResolveAsync_HelperReportsAnotherSignInQuotingASecret_IsRedacted`
+
+Normal operation and error paths. An entry in the shape the SDK logs an RPC failure with —
+`Error handling JSON-RPC method {Method}: {Error}`, the error quoting `s3cr3t-value-xyz` and a token-shaped value —
+is written under a scope naming the secret, with a thrown exception chaining an aggregate whose second inner exception
+quotes the secret and whose `Data` holds it. Written to a `CapturingLogger` directly, `SecretAssert` finds the secret,
+proving the assertion reads logs; written through the redacting logger, the inner logger receives the message
+`Error handling JSON-RPC method session.send: refused <redacted> gho_<redacted>`, the same text as the state's string
+form, the method name unchanged, the error value redacted, the template kept, the exception as a
+`CopilotRedactedException` naming `InvalidOperationException` with no data, and the scope `Session <redacted>`; and
+`SecretAssert` finds neither value. An entry with an integer, a Boolean, a duration, an enumeration, a GUID and a text
+keeps its level, its event's identifier and name, and each value but the text with its own type, the text reading
+`path <redacted>`; a debug entry is neither formatted nor passed to an inner logger that enables information and above,
+whose levels the redacting logger reports; and wrapping no logger yields none.
+
+The resolution logs through it: a Copilot CLI account found but not used, because another host was requested or the
+helper failed quoting the secret and a token-shaped value, is logged as `CopilotCliSignInNotUsed` with the login,
+the configuration's path, the requested host and the helper's error each showing `<redacted>`, and `SecretAssert` finds
+neither value in any entry.
 
 #### AgentKitAgentsCopilot-CopilotSignIn-KeepsOnlyARedactedCause: A Cause Is a Redacted Copy
 

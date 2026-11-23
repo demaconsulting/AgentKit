@@ -439,9 +439,16 @@ public sealed class CopilotRuntime : IAsyncDisposable
     ///     the message lists what each sign-in source found and how to sign in; or the host's token
     ///     provider failed or returned no token — a failure is the <see cref="Exception.InnerException"/>;
     ///     or <c>COPILOT_GH_HOST</c> is set to something that is not a valid GitHub host and no
-    ///     <c>gitHubHost</c> was given — the message says how to correct it, without quoting it.
+    ///     <c>gitHubHost</c> was given — the message says how to correct it, without quoting it; or a
+    ///     read of the started runtime's status failed — relayed as a new exception of the same kind
+    ///     with a redacted message and a redacted copy as its cause, an exception a host does not
+    ///     reference becoming an <see cref="InvalidOperationException"/>.
     /// </exception>
-    /// <exception cref="IOException">The data directory or its marker could not be created or read.</exception>
+    /// <exception cref="IOException">
+    ///     The data directory or its marker could not be created or read; or a read of the started
+    ///     runtime's status lost the connection, relayed redacted.
+    /// </exception>
+    /// <exception cref="TimeoutException">A read of the started runtime's status timed out, relayed redacted.</exception>
     /// <exception cref="UnauthorizedAccessException">The data directory is not writable, or its marker is not readable.</exception>
     /// <exception cref="OperationCanceledException">
     ///     The start was canceled. A cancellation carrying nothing to redact propagates unchanged;
@@ -1139,26 +1146,36 @@ public sealed class CopilotRuntime : IAsyncDisposable
     /// <remarks>
     ///     Run inside the start step of <see cref="StartAsync"/>, so a refused runtime's client is
     ///     disposed. The reads are injected because the SDK's client cannot report a status on demand
-    ///     without a runtime.
+    ///     without a runtime. A read that fails is relayed as <see cref="CopilotSignIn.RelayAsync{T}"/>
+    ///     relays it: a new exception of the same kind, its message redacted, and a redacted copy of
+    ///     the failure as its cause.
     /// </remarks>
     /// <param name="readStatus">Reads the runtime's version and protocol.</param>
     /// <param name="readAuthentication">Reads the runtime's authentication status.</param>
-    /// <param name="signIn">The sign-in plan the runtime started with, which a refusal explains.</param>
+    /// <param name="signIn">The sign-in plan the runtime started with, which a refusal explains and a relayed failure is redacted with.</param>
     /// <param name="cancellationToken">Cancels the reads.</param>
     /// <returns>The runtime's status and authentication status.</returns>
     /// <exception cref="InvalidOperationException">
     ///     The runtime is not signed in; the message lists what each sign-in source found and how to
-    ///     sign in.
+    ///     sign in. Or a status read failed with an <see cref="InvalidOperationException"/> or an
+    ///     exception a host does not reference, such as the SDK's RPC error, relayed redacted.
     /// </exception>
-    /// <exception cref="OperationCanceledException">The reads were canceled.</exception>
+    /// <exception cref="IOException">A status read lost the connection to the runtime, relayed redacted.</exception>
+    /// <exception cref="TimeoutException">A status read timed out, relayed redacted.</exception>
+    /// <exception cref="ObjectDisposedException">The client was disposed during a read; relayed as a cancellation is.</exception>
+    /// <exception cref="OperationCanceledException">
+    ///     The reads were canceled. A cancellation carrying nothing to redact propagates unchanged;
+    ///     otherwise it is rebuilt with the same token, a redacted message and a redacted copy as its
+    ///     cause.
+    /// </exception>
     internal static async Task<(GetStatusResponse Status, GetAuthStatusResponse Authentication)> VerifyStartedAsync(
         Func<CancellationToken, Task<GetStatusResponse>> readStatus,
         Func<CancellationToken, Task<GetAuthStatusResponse>> readAuthentication,
         CopilotSignInPlan signIn,
         CancellationToken cancellationToken)
     {
-        var status = await readStatus(cancellationToken).ConfigureAwait(false);
-        var authentication = await readAuthentication(cancellationToken).ConfigureAwait(false);
+        var status = await CopilotSignIn.RelayAsync(() => readStatus(cancellationToken), signIn).ConfigureAwait(false);
+        var authentication = await CopilotSignIn.RelayAsync(() => readAuthentication(cancellationToken), signIn).ConfigureAwait(false);
         return authentication.IsAuthenticated
             ? (status, authentication)
             : throw new InvalidOperationException(CopilotSignIn.ExplainUnauthenticated(signIn, authentication));

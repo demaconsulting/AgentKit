@@ -191,8 +191,12 @@ machine without a CLI.
 
 **Purpose:** Read what the started runtime is and refuse one that is not signed in.
 
-**Algorithm:** Read the status (version and protocol version), then the authentication status. When
-the runtime is not authenticated, throw `InvalidOperationException` with
+**Algorithm:** Read the status (version and protocol version), then the authentication status, each
+through `CopilotSignIn.RelayAsync` with the sign-in plan: a read that fails, thrown synchronously or
+carried by its task, becomes a new exception of the same kind (an RPC error becomes an
+`InvalidOperationException`) with a redacted message and a redacted copy as its cause, and a clean
+cancellation or disposal propagates unchanged. When the runtime is not authenticated, throw
+`InvalidOperationException` with
 `CopilotSignIn.ExplainUnauthenticated(signIn, authentication)`, which lists what each sign-in source
 found; otherwise return the status and the authentication status. Run inside `StartOwnedAsync`'s
 start step, so a refused runtime's client is disposed. The reads are delegates so the outcome is
@@ -452,6 +456,7 @@ for that open. Disposal is not serialized against open runs, as is usual for `IA
 | CLI version cannot be read, or is too old | `InvalidOperationException` before any client exists |
 | SDK refuses the runtime's protocol | client disposed; `InvalidOperationException` explaining too old or too new |
 | Started runtime not signed in | client disposed; `InvalidOperationException` listing what each sign-in source found |
+| Started runtime's status read fails | client disposed; relayed redacted; RPC error as `InvalidOperationException` |
 | Data directory path names a file | `InvalidOperationException` naming the path |
 | Non-empty data directory without the marker | `InvalidOperationException` naming the directory |
 | Directory or marker cannot be created | `IOException` or `UnauthorizedAccessException` propagates |

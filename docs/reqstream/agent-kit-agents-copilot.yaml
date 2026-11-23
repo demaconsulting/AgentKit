@@ -493,8 +493,9 @@ sections:
           redacted cause, a session error that fails an agent's run, a turn the runtime or the SDK
           fails on an agent, a provider session or a consolidation, a session the runtime or the SDK
           fails to create or resume for an agent, a provider session or a consolidation, a session the
-          host asks the runtime to delete, a canceled start's cause, a provider session's refusals,
-          and a model listing failure and its redacted cause.
+          host asks the runtime to delete, a started runtime's status read, a canceled start's cause,
+          a provider session's refusals, and a model listing failure and its redacted cause; and
+          shall put none in any entry it writes to the host's logger.
         tags: [security]
         justification: |
           An exception is built to be shown, logged and attached to crash reports, which print its
@@ -503,15 +504,18 @@ sections:
           failure kept as a cause is a redacted copy rather than the original. A relayed runtime or
           SDK failure is a new exception of the same base class library type with a redacted message
           and a redacted copy as its cause; only a cancellation or disposal carrying nothing to
-          redact passes unchanged. The conversation content the model already received is left as
-          the runtime produced it: rewriting it would make the transcript disagree with the
-          runtime's conversation.
+          redact passes unchanged. A log entry is built to be shared in the same way, so every entry
+          reaches the host's logger through one redacting logger. The conversation content the model
+          already received is left as the runtime produced it: rewriting it would make the transcript
+          disagree with the runtime's conversation.
         children:
           - AgentKitAgentsCopilot-CopilotSignIn-ReportsWhatEachSourceFound
+          - AgentKitAgentsCopilot-CopilotSignIn-RedactsLogEntries
           - AgentKitAgentsCopilot-CopilotSignIn-KeepsOnlyARedactedCause
           - AgentKitAgentsCopilot-CopilotSignIn-RelaysFailuresRedacted
           - AgentKitAgentsCopilot-CopilotRuntime-ExplainsAMissingRuntime
           - AgentKitAgentsCopilot-CopilotRuntime-RelaysDeletionFailuresRedacted
+          - AgentKitAgentsCopilot-CopilotRuntime-RelaysStatusReadFailuresRedacted
           - AgentKitAgentsCopilot-CopilotRuntime-PassesCancellationThrough
           - AgentKitAgentsCopilot-CopilotAgent-ReportsRuntimeErrors
           - AgentKitAgentsCopilot-CopilotProviderSession-RefusesASilentSession

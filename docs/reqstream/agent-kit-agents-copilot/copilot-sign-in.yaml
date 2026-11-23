@@ -178,22 +178,49 @@ sections:
               runtime, SDK or exception text it quotes every exact token it knows — the host's token,
               the host's provider's tokens at start and for each session, the Copilot CLI's token and
               the environment's token values — whatever its shape, and any text shaped like a GitHub
-              token.
+              token; and shall redact each field a finding quotes from the runtime, the helper, the
+              Copilot CLI's configuration, the environment or the host's options — a host, a login,
+              a kind of sign-in, a path or a problem — where the finding is composed.
             tags: [security]
             justification: |
               A refusal that lists each source shows which one the user expected and why it did not
               apply. A token in a message or log would leak a credential into places built to be
               shared. A host or provider may hand over a token of any shape, so a pattern for GitHub's
-              token prefixes alone cannot keep it out of quoted text; the exact values can.
+              token prefixes alone cannot keep it out of quoted text; the exact values can. A finding
+              reaches a log entry as well as the refusal, so it is redacted where it is composed and
+              no sink relies on another having redacted it.
             tests:
               - CopilotSignIn_ExplainUnauthenticated_ListsEverySourceWithoutTheToken
               - CopilotSignIn_ExplainUnauthenticated_RejectedTokens_SayWhatToChange
               - CopilotSignIn_ExplainUnauthenticated_NonGitHubShapedTokens_AreRedacted
               - CopilotSignIn_ResolveAsync_HelperFailureQuotingAKnownSecret_IsRedacted
+              - CopilotSignIn_ResolveAsync_FindingsQuotingASecret_AreRedacted
+              - CopilotSignIn_ResolveAsync_HelperReportsAnotherSignInQuotingASecret_IsRedacted
               - CopilotSignIn_CreateSessionTokenProvider_RecordsEachTokenForRedaction
               - CopilotSignIn_PlanRedact_LongestSecretFirstAndTokenShapes
               - CopilotSignIn_PlanToString_RedactsTheToken
               - CopilotSignIn_Report_LogsTheSignInAndWarnsOnAnotherAccount
+
+          - id: AgentKitAgentsCopilot-CopilotSignIn-RedactsLogEntries
+            title: >-
+              The sign-in shall pass the host's logger only entries redacted of every secret it knows
+              and any text shaped like a GitHub token — the formatted message, every structured value
+              except null, Boolean, numeric, enumeration, date, time, duration and GUID values, which
+              keep their value and type, every scope and a logged exception as its redacted copy —
+              shall keep each entry's level and event, and shall format nothing for a level the
+              host's logger does not enable.
+            tags: [security]
+            justification: |
+              A log entry is built to be shared, so text quoted from the runtime, the helper, the
+              configuration or the environment must not carry a secret there either. One redacting
+              logger in front of the host's is a single choke point that also covers entries AgentKit
+              did not compose. Keeping values that cannot hold text typed, and the level and event,
+              keeps the entries useful to structured logging.
+            tests:
+              - CopilotSignIn_RedactingLogger_RedactsMessageValuesScopesAndExceptions
+              - CopilotSignIn_RedactingLogger_KeepsLevelsEventsAndPrimitiveValues
+              - CopilotSignIn_ResolveAsync_CopilotCliNotUsed_LogsTheFindingRedacted
+              - CopilotSignIn_ResolveAsync_HelperReportsAnotherSignInQuotingASecret_IsRedacted
 
           - id: AgentKitAgentsCopilot-CopilotSignIn-KeepsOnlyARedactedCause
             title: >-

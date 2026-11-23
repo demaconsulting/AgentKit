@@ -328,6 +328,23 @@ sections:
               - CopilotRuntime_DeleteSessionAsync_RuntimeFailureQuotingASecret_IsRelayedRedacted
               - CopilotRuntime_DeleteSessionAsync_CleanCancellation_PassesUnchanged
 
+          - id: AgentKitAgentsCopilot-CopilotRuntime-RelaysStatusReadFailuresRedacted
+            title: >-
+              The runtime shall relay a failure the runtime or the SDK raises while it reads a started
+              runtime's status or authentication status as a new exception of the same kind with a
+              redacted message and the redacted copy as its cause, and a clean cancellation or
+              disposal unchanged.
+            tags: [security]
+            justification: |
+              The status reads are the last step of a start, and a read that fails raises the SDK's
+              own exception, whose message and RPC error data AgentKit cannot vouch for and whose
+              type a host does not reference. Relaying it as on every other relayed path keeps tokens
+              out of the exception StartAsync throws; a clean cancellation or disposal keeps its token
+              and object name.
+            tests:
+              - CopilotRuntime_VerifyStarted_ReadFailureQuotingASecret_IsRelayedRedacted
+              - CopilotRuntime_VerifyStarted_CleanCancellation_PassesUnchanged
+
           - id: AgentKitAgentsCopilot-CopilotRuntime-RejectsInvalidOptions
             title: >-
               The runtime shall reject missing options, a missing, blank or invalid data directory, an

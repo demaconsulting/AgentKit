@@ -87,7 +87,27 @@ whitespace both as given and trimmed. `Redact(text, also)` replaces every known 
 given), longest first, with `<redacted>`, and then applies the GitHub-token-shape pattern. No value is
 too short to be redacted: a secret's safety comes before the readability of the text it appears in.
 The session token provider can add values while a start failure on another thread is being
-redacted, so the set is read under a lock.
+redacted, so the set is read under a lock. `FromEnvironment(environment, hostToken)` builds the set an
+environment holds: the value of each `SecretVariables` variable, read with the platform's name
+comparison, and the host's token. It is the redactor of text quoted while a sign-in is resolving.
+
+`CopilotRedactingLogger` (internal sealed `ILogger`, in `CopilotSignIn.cs`): the one choke point for
+every entry that reaches the host's logger. `Wrap(inner, redact)` returns `null` for a `null` logger.
+
+- **`IsEnabled`** — the inner logger's answer.
+- **`Log`** — returns at once for a level the inner logger does not enable, so nothing is formatted
+  or copied. Otherwise it formats the entry with the caller's formatter, redacts the text, and passes
+  the inner logger a redacted state: an `IReadOnlyList<KeyValuePair<string, object?>>` whose string
+  form is the redacted text, with every key redacted and every value redacted as text except `null`,
+  Booleans, numbers, `decimal`, enumerations, `DateTime`, `DateTimeOffset`, `TimeSpan` and `Guid`,
+  which keep their value and type. A logged exception is passed on as its `CopilotRedactedException`
+  copy. The level and event are passed through unchanged; the formatter passed on returns the
+  state's string form.
+- **`BeginScope`** — passes on the scope's state redacted the same way.
+
+It is stateless apart from the redactor, which reads the live secrets, so a session token added
+later is removed from later entries; it is thread-safe because the secrets are; wrapping a redacting
+logger again is harmless.
 
 `CopilotRedactedException` (internal sealed exception, in `CopilotSignIn.cs`): the redacted copy of a
 runtime or SDK failure that AgentKit keeps as an inner exception in place of the original.
@@ -151,9 +171,13 @@ whose values are redacted), `InvalidEnvironmentHostMessage` (the refusal of an i
    not read at all. The requested host, from either, becomes the plan's `HostName` as a bare
    lower-case name on every path but the Copilot CLI's (which uses its account's host, the same host
    when one was requested), so the runtime's `COPILOT_GH_HOST` is always exactly the host the token
-   was resolved for. One `CopilotSignInSecrets` is created and seeded with the value of
-   each `SecretVariables` variable that is set and with `options.GitHubToken`; every plan returned
-   carries it as `Secrets`.
+   was resolved for. One `CopilotSignInSecrets` is created by `FromEnvironment(hostEnvironment,
+   options.GitHubToken)`; every plan returned carries it as `Secrets`. The host's logger is wrapped
+   once in a `CopilotRedactingLogger` over those secrets, and the resolution logs only through it.
+   Every field a finding quotes from the configuration, the environment, the helper or the host's
+   options — a host, a login, a path, a lookup's problem, the GitHub CLI's folder — is redacted with
+   those secrets where the finding is composed, so a finding is safe in a log entry as well as in the
+   refusal.
 2. A host-supplied token: plan with that token and source `GitHubToken`; every later step reads "not
    tried: a token from the host takes precedence".
 3. A token provider: ask it (`AskProviderAsync`) for the requested host, else `DefaultHost`; record
@@ -167,7 +191,9 @@ whose values are redacted), `InvalidEnvironmentHostMessage` (the refusal of an i
    requested; otherwise `ReadCopilotCliTokenAsync`. With a token, record it as a secret and plan with
    it, source `CopilotCli` and the account's bare host name.
 7. Otherwise plan with no token, the requested host name, and a finding saying whether
-   the GitHub CLI is on `PATH` (`CopilotCli.FindOnPath`, nothing is run).
+   the GitHub CLI is on `PATH` (`CopilotCli.FindOnPath`, nothing is run). When a Copilot CLI account
+   was found but not used, the Copilot CLI step's finding is logged at information level, through
+   the redacting logger.
 
 **Postconditions:** The process environment and the user's Copilot CLI home are unchanged; any helper
 home created is deleted.
@@ -216,9 +242,9 @@ symbolic link or junction to the data directory is not recognized as the data di
 4. Run the helper under a linked time limit: start it; read its status; continue only when it is
    authenticated through a stored sign-in (`authType` `user`) as exactly the account's host and login
    (login compared case-insensitively). Only then read the account list, guarded, and take the token
-   of the `AuthInfoUser` entry with the account's host and login. The helper's status message and
-   any exception message it quotes are redacted with the resolution's `secrets` (the known values,
-   then token shapes).
+   of the `AuthInfoUser` entry with the account's host and login. The helper's status message, any
+   exception message it quotes, and the kind, host and login of another sign-in it reports are each
+   redacted with the resolution's `secrets` (the known values, then token shapes).
 5. Always dispose the helper, if one was created (stopping its process; the SDK bounds the stop),
    then delete the temporary home by its exact path (`DeleteHelperHome`, retrying briefly while a
    stopped process releases its files); a home that cannot be deleted is logged as a warning naming
@@ -347,8 +373,10 @@ the result otherwise.
 | No token for the account | Finding; next source |
 | Helper home cannot be deleted | Warning logged naming the path; the start goes on |
 
-Every message and finding AgentKit composes from runtime, SDK or exception text is redacted with the
-plan's secrets and the token-shape pattern. A runtime or SDK failure AgentKit keeps as an inner
+Every message and finding AgentKit composes from runtime, SDK, helper, environment, configuration or
+exception text is redacted with the plan's secrets and the token-shape pattern, field by field where
+the text is composed; every log entry passes through the `CopilotRedactingLogger`. A runtime or SDK
+failure AgentKit keeps as an inner
 exception is a `CopilotRedactedException` copy (`RedactFailure`), never the original, and a runtime or
 SDK failure AgentKit relays to a host is a new exception of the same kind built by `RedactRelayed`,
 so no exception in the chain carries a token. Only the host provider's own failure is kept
