@@ -152,6 +152,17 @@ words:
   # PDF file-structure keywords the visual tools' tests write when they build a document.
   - endobj
   - startxref
+  # Open Packaging Conventions, PresentationML and Visio schema names the visual tools' tests write
+  # when they build a PPTX deck and a VSDX drawing, and the Visio product name.
+  - rels
+  - openxmlformats
+  - officedocument
+  - presentationml
+  - xfrm
+  - prst
+  - Hlink
+  - Foregnd
+  - Visio
 
 ignorePaths:
   - '**/.git/**'

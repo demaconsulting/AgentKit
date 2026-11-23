@@ -49,8 +49,9 @@ The built tool carries the name and a description, and a null policy or renderer
 
 **Test**: `ImageViewTool_View_SupportedFile_ReturnsAPngPicture`
 
-Run as a theory over an SVG, a Mermaid, PlantUML, Vega-Lite and OpenSCAD source, a PDF and a PNG,
-each named relative to the workspace: the result is a caption naming the format followed by
+Run as a theory over an SVG, a Mermaid, PlantUML, Vega-Lite and OpenSCAD source, a PDF, a PPTX
+deck, a VSDX drawing and a PNG, each named relative to the workspace: the result is a caption naming
+the format followed by
 `image/png` content whose corner is opaque.
 
 ##### AgentKitToolsVisual-Image-ViewTool-PageSelection: The Second Page Is Drawn and Counted

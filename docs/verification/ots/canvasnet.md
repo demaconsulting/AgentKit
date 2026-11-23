@@ -126,7 +126,10 @@ The Viewer requirements are evidenced by the Rendering subsystem's and the view 
 which draw through the real library:
 
 - **Drawing** — `ImageViewTool_View_SupportedFile_ReturnsAPngPicture` draws an SVG, Mermaid,
-  PlantUML, Vega-Lite and OpenSCAD source, a PDF and a PNG; `VisualRenderer_RenderAsync_Svg_IsDrawnOnOpaqueWhite`
+  PlantUML, Vega-Lite and OpenSCAD source, a PDF, a PPTX slide, a VSDX page and a PNG (the PPTX and
+  VSDX packages are built in test code: a one-slide deck with its layout, master and theme, and a
+  one-page drawing in the Visio 2012 namespace, each holding one filled shape and no text, so the
+  result does not depend on installed fonts); `VisualRenderer_RenderAsync_Svg_IsDrawnOnOpaqueWhite`
   asserts the requested background; `VisualRenderer_RenderAsync_WidthBeyondTheLargestSide_IsReduced`
   the requested width; `VisualRenderer_RenderAsync_DocumentPage_IsDrawnWithThePageCount` the
   requested page and the page count.

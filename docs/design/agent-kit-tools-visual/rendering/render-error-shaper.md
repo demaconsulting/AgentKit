@@ -92,13 +92,32 @@ Help: <help tool> topic '<tag>/diagnostics'.
 
 `Rewrite` replaces "by the file-access policy '<name>'" with "by the access policy", "the allowed
 roots" with "the locations the agent may read", and removes a trailing "Hint: …" the library
-appended. `Scrub` replaces, longest first and in both separator spellings, the working directory,
-every grant root and the input's folder with their form relative to the working directory (`.` for
-the working directory itself) or `<outside>` when they lie outside it. Paths are matched ignoring
-case on Windows and macOS and exactly elsewhere, the same rule `PathPolicy` applies, so a host path
-the library reports in another case on a platform whose file names ignore case is still replaced.
-A path the model wrote itself — an absolute reference in its own document — may still appear,
-because the model supplied it.
+appended. `Scrub` replaces, longest first, the working directory, every grant root and the input's
+folder with their form relative to the working directory (`.` for the working directory itself) or
+`<outside>` when they lie outside it. Each folder is matched by one expression built from its names:
+either separator between them, each name also in its percent-encoded form, an optional `\\?\` or
+`//?/` device prefix and an optional `file:` URI scheme before it (both removed with the match), a
+start where a path can start, and an end where the last name ends — so `C:\t\ws-backup` is never
+read as `C:\t\ws` followed by `-backup`. A drive root keeps its separator, and the relative form
+keeps it too. The replacement uses the separator the match used. Paths are matched ignoring case on
+Windows and macOS and exactly elsewhere, the same rule `PathPolicy` applies, so a host path the
+library reports in another case on a platform whose file names ignore case is still replaced.
+
+Any absolute path that remains is then replaced whole by `<path>`: a `file:` URI, a drive-qualified
+path (with or without a device prefix), and a network or device path written with back slashes,
+wherever they appear; and a POSIX path of two or more names when it is quoted. Such a path lies
+under none of the known folders — the temporary folder, a user profile, a cache, a link's real
+target, or another spelling of a folder such as an 8.3 short name — and is not one the model can
+use. The POSIX rule is anchored on quotes because an unquoted `/`-led token is as likely to be a JSON
+pointer such as `/data/url`, which the headline prints in parentheses to locate the failure; a
+relative path such as `../x.png` is the model's own words and is never touched. Trailing
+punctuation after a path is left in place. A path the model wrote itself is therefore echoed
+relative to the working directory when it lies under a known folder, and as `<path>` otherwise.
+
+Only the outermost exception's message, the library's hint and the notes' messages are surfaced;
+an inner exception's text — an I/O error naming the host file it could not open, for instance — is
+never read into the shaped text, and the library's key-value detail record is shown only when it is
+a code.
 
 #### Error Handling
 

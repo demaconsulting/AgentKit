@@ -1,3 +1,4 @@
+using System.IO.Compression;
 using System.Text;
 using DemaConsulting.AgentKit.Core;
 using DemaConsulting.AgentKit.Tools.Visual.Rendering;
@@ -215,6 +216,98 @@ internal static class RenderSamples
     }
 
     /// <summary>
+    ///     Builds a one-slide PowerPoint deck whose slide holds a filled red rectangle.
+    /// </summary>
+    /// <remarks>
+    ///     The slide's layout, master and theme are included because the library refuses a deck
+    ///     without them; the shape uses no text, so the picture does not depend on installed fonts.
+    /// </remarks>
+    /// <returns>The PPTX bytes.</returns>
+    internal static byte[] Pptx()
+    {
+        const string Relationships = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+        const string Namespaces =
+            "xmlns:a='http://schemas.openxmlformats.org/drawingml/2006/main' xmlns:r='" + Relationships + "' "
+            + "xmlns:p='http://schemas.openxmlformats.org/presentationml/2006/main'";
+        const string EmptyTree =
+            "<p:nvGrpSpPr><p:cNvPr id='1' name=''/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr/>";
+
+        return Package(
+            ("[Content_Types].xml",
+                "<Types xmlns='http://schemas.openxmlformats.org/package/2006/content-types'>"
+                + "<Default Extension='rels' ContentType='application/vnd.openxmlformats-package.relationships+xml'/>"
+                + "<Default Extension='xml' ContentType='application/xml'/>"
+                + "<Override PartName='/ppt/presentation.xml' ContentType='application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml'/>"
+                + "<Override PartName='/ppt/slides/slide1.xml' ContentType='application/vnd.openxmlformats-officedocument.presentationml.slide+xml'/>"
+                + "</Types>"),
+            ("_rels/.rels", Rels("rId1", Relationships + "/officeDocument", "ppt/presentation.xml")),
+            ("ppt/presentation.xml",
+                "<p:presentation " + Namespaces + "><p:sldIdLst><p:sldId id='256' r:id='rId2'/></p:sldIdLst>"
+                + "<p:sldSz cx='9144000' cy='6858000'/><p:notesSz cx='6858000' cy='9144000'/></p:presentation>"),
+            ("ppt/_rels/presentation.xml.rels", Rels("rId2", Relationships + "/slide", "slides/slide1.xml")),
+            ("ppt/slides/_rels/slide1.xml.rels", Rels("rId1", Relationships + "/slideLayout", "../slideLayouts/slideLayout1.xml")),
+            ("ppt/slideLayouts/slideLayout1.xml",
+                "<p:sldLayout " + Namespaces + "><p:cSld><p:spTree>" + EmptyTree + "</p:spTree></p:cSld></p:sldLayout>"),
+            ("ppt/slideLayouts/_rels/slideLayout1.xml.rels", Rels("rId1", Relationships + "/slideMaster", "../slideMasters/slideMaster1.xml")),
+            ("ppt/slideMasters/slideMaster1.xml",
+                "<p:sldMaster " + Namespaces + "><p:cSld><p:spTree>" + EmptyTree + "</p:spTree></p:cSld>"
+                + "<p:clrMap bg1='lt1' tx1='dk1' bg2='lt2' tx2='dk2' accent1='accent1' accent2='accent2' accent3='accent3' "
+                + "accent4='accent4' accent5='accent5' accent6='accent6' hlink='hlink' folHlink='folHlink'/></p:sldMaster>"),
+            ("ppt/slideMasters/_rels/slideMaster1.xml.rels", Rels("rId1", Relationships + "/theme", "../theme/theme1.xml")),
+            ("ppt/theme/theme1.xml", Theme()),
+            ("ppt/slides/slide1.xml",
+                "<p:sld " + Namespaces + "><p:cSld><p:spTree>" + EmptyTree
+                + "<p:sp><p:nvSpPr><p:cNvPr id='2' name='Box'/><p:cNvSpPr/><p:nvPr/></p:nvSpPr><p:spPr>"
+                + "<a:xfrm><a:off x='914400' y='914400'/><a:ext cx='4572000' cy='2743200'/></a:xfrm>"
+                + "<a:prstGeom prst='rect'><a:avLst/></a:prstGeom><a:solidFill><a:srgbClr val='FF0000'/></a:solidFill>"
+                + "</p:spPr></p:sp></p:spTree></p:cSld></p:sld>"));
+    }
+
+    /// <summary>
+    ///     Builds a one-page Visio drawing whose page holds a filled red rectangle.
+    /// </summary>
+    /// <remarks>
+    ///     The document uses the Visio 2012 namespace, the one the library reads; the shape has a
+    ///     closed geometry and no text, so the picture does not depend on installed fonts.
+    /// </remarks>
+    /// <returns>The VSDX bytes.</returns>
+    internal static byte[] Vsdx()
+    {
+        const string Visio = "http://schemas.microsoft.com/office/visio/2012/main";
+        const string VisioRelationships = "http://schemas.microsoft.com/visio/2010/relationships";
+        const string Namespaces =
+            "xmlns='" + Visio + "' xmlns:r='http://schemas.openxmlformats.org/officeDocument/2006/relationships'";
+
+        // The rectangle's outline, corner to corner in inches, closed back at the origin.
+        var corners = new[] { (0, 0), (4, 0), (4, 3), (0, 3), (0, 0) };
+        var geometry = string.Concat(corners.Select((corner, index) =>
+            $"<Row T='{(index == 0 ? "MoveTo" : "LineTo")}' IX='{index + 1}'>"
+            + $"<Cell N='X' V='{corner.Item1}'/><Cell N='Y' V='{corner.Item2}'/></Row>"));
+
+        return Package(
+            ("[Content_Types].xml",
+                "<Types xmlns='http://schemas.openxmlformats.org/package/2006/content-types'>"
+                + "<Default Extension='rels' ContentType='application/vnd.openxmlformats-package.relationships+xml'/>"
+                + "<Default Extension='xml' ContentType='application/xml'/>"
+                + "<Override PartName='/visio/document.xml' ContentType='application/vnd.ms-visio.drawing.main+xml'/>"
+                + "<Override PartName='/visio/pages/pages.xml' ContentType='application/vnd.ms-visio.pages+xml'/>"
+                + "<Override PartName='/visio/pages/page1.xml' ContentType='application/vnd.ms-visio.page+xml'/>"
+                + "</Types>"),
+            ("_rels/.rels", Rels("rId1", VisioRelationships + "/document", "visio/document.xml")),
+            ("visio/document.xml", "<VisioDocument " + Namespaces + "/>"),
+            ("visio/_rels/document.xml.rels", Rels("rId1", VisioRelationships + "/pages", "pages/pages.xml")),
+            ("visio/pages/pages.xml",
+                "<Pages " + Namespaces + "><Page ID='0' NameU='Page-1' Name='Page-1'><PageSheet>"
+                + "<Cell N='PageWidth' V='8.5'/><Cell N='PageHeight' V='11'/></PageSheet><Rel r:id='rId1'/></Page></Pages>"),
+            ("visio/pages/_rels/pages.xml.rels", Rels("rId1", VisioRelationships + "/page", "page1.xml")),
+            ("visio/pages/page1.xml",
+                "<PageContents " + Namespaces + "><Shapes><Shape ID='1' Type='Shape'>"
+                + "<Cell N='PinX' V='4.25'/><Cell N='PinY' V='5.5'/><Cell N='Width' V='4'/><Cell N='Height' V='3'/>"
+                + "<Cell N='LocPinX' V='2'/><Cell N='LocPinY' V='1.5'/><Cell N='FillForegnd' V='#FF0000'/>"
+                + "<Section N='Geometry' IX='0'>" + geometry + "</Section></Shape></Shapes></PageContents>"));
+    }
+
+    /// <summary>
     ///     Builds a render request for an inline source.
     /// </summary>
     /// <param name="source">The source text.</param>
@@ -254,5 +347,65 @@ internal static class RenderSamples
     {
         using var stream = new MemoryStream(png);
         return PngCodec.Load(stream);
+    }
+
+    /// <summary>
+    ///     Builds an Open Packaging Conventions package from its parts.
+    /// </summary>
+    /// <param name="parts">Each part's name within the package and its XML content.</param>
+    /// <returns>The package bytes.</returns>
+    private static byte[] Package(params (string Name, string Content)[] parts)
+    {
+        using var stream = new MemoryStream();
+        using (var archive = new ZipArchive(stream, ZipArchiveMode.Create, leaveOpen: true))
+        {
+            foreach (var (name, content) in parts)
+            {
+                using var writer = new StreamWriter(archive.CreateEntry(name).Open(), new UTF8Encoding(false));
+                writer.Write("<?xml version='1.0' encoding='UTF-8'?>");
+                writer.Write(content);
+            }
+        }
+
+        return stream.ToArray();
+    }
+
+    /// <summary>
+    ///     Builds a relationships part holding one relationship.
+    /// </summary>
+    /// <param name="id">The relationship's identifier.</param>
+    /// <param name="type">The relationship's type.</param>
+    /// <param name="target">The part the relationship targets.</param>
+    /// <returns>The relationships part's XML.</returns>
+    private static string Rels(string id, string type, string target)
+    {
+        return "<Relationships xmlns='http://schemas.openxmlformats.org/package/2006/relationships'>"
+            + $"<Relationship Id='{id}' Type='{type}' Target='{target}'/></Relationships>";
+    }
+
+    /// <summary>
+    ///     Builds the minimal complete theme a deck's slide master needs.
+    /// </summary>
+    /// <returns>The theme part's XML.</returns>
+    private static string Theme()
+    {
+        static string Color(string name, string value) => $"<a:{name}><a:srgbClr val='{value}'/></a:{name}>";
+        const string Fill = "<a:solidFill><a:schemeClr val='phClr'/></a:solidFill>";
+        const string Font = "<a:latin typeface='Arial'/><a:ea typeface=''/><a:cs typeface=''/>";
+
+        return "<a:theme xmlns:a='http://schemas.openxmlformats.org/drawingml/2006/main' name='T'><a:themeElements>"
+            + "<a:clrScheme name='C'>"
+            + Color("dk1", "000000") + Color("lt1", "FFFFFF") + Color("dk2", "000000") + Color("lt2", "FFFFFF")
+            + Color("accent1", "FF0000") + Color("accent2", "00FF00") + Color("accent3", "0000FF")
+            + Color("accent4", "FFFF00") + Color("accent5", "00FFFF") + Color("accent6", "FF00FF")
+            + Color("hlink", "0000FF") + Color("folHlink", "800080") + "</a:clrScheme>"
+            + "<a:fontScheme name='F'><a:majorFont>" + Font + "</a:majorFont><a:minorFont>" + Font + "</a:minorFont></a:fontScheme>"
+            + "<a:fmtScheme name='M'>"
+            + "<a:fillStyleLst>" + Fill + Fill + Fill + "</a:fillStyleLst>"
+            + "<a:lnStyleLst><a:ln w='6350'>" + Fill + "</a:ln><a:ln w='12700'>" + Fill + "</a:ln><a:ln w='19050'>" + Fill + "</a:ln></a:lnStyleLst>"
+            + "<a:effectStyleLst><a:effectStyle><a:effectLst/></a:effectStyle><a:effectStyle><a:effectLst/></a:effectStyle>"
+            + "<a:effectStyle><a:effectLst/></a:effectStyle></a:effectStyleLst>"
+            + "<a:bgFillStyleLst>" + Fill + Fill + Fill + "</a:bgFillStyleLst>"
+            + "</a:fmtScheme></a:themeElements></a:theme>";
     }
 }

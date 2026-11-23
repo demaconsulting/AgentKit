@@ -24,7 +24,7 @@ Unit tests reside in `Rendering/RenderErrorShaperTests.cs` within the
 
 #### Acceptance Criteria
 
-A unit test run passes when all ten scenarios below pass without error or exception beyond those
+A unit test run passes when all fourteen scenarios below pass without error or exception beyond those
 explicitly asserted. A code decided by message text, a missing or wrong location, a misplaced caret,
 a help topic named that the help tool does not serve, a host-oriented phrase or hint reaching the
 model, a host path not scrubbed, or a note dropped each constitute a failure.
@@ -102,6 +102,40 @@ its full path in upper case is shaped with the path relative to the working dire
 of the temporary directory's absolute path remains in any case. Elsewhere the two spellings name
 different folders, so the scenario is skipped there, and the requirement links it only to Windows
 and macOS results.
+
+##### AgentKitToolsVisual-Rendering-RenderErrorShaper-HostPathsScrubbed: A Sibling of a Root Is Not Partially Replaced
+
+**Test**: `RenderErrorShaper_Scrub_SiblingOfARoot_IsNotPartiallyReplaced`
+
+A text naming a file in the workspace's `-backup` sibling, in both separator spellings and quoted,
+is scrubbed to `'<path>'` twice: never to a relative-looking `.-backup`, and with no part of the
+sibling's absolute path left.
+
+##### AgentKitToolsVisual-Rendering-RenderErrorShaper-HostPathsScrubbed: A Root in Device-Prefix and File-URI Forms Is Replaced Whole
+
+**Test**: `RenderErrorShaper_Scrub_RootInDevicePrefixAndFileUriForms_IsReplacedWhole`
+
+With a workspace whose name holds a space, a file in it named with a `\\?\` prefix, with a `//?/`
+prefix and as a percent-encoded `file:` URI is in each case scrubbed to the workspace-relative form,
+with no prefix residue.
+
+##### AgentKitToolsVisual-Rendering-RenderErrorShaper-HostPathsScrubbed: An Unknown Absolute Path Is Replaced With a Placeholder
+
+**Test**: `RenderErrorShaper_Scrub_UnknownAbsolutePath_IsReplacedWithAPlaceholder`
+
+A text naming a file under the temporary folder (outside every grant), a drive-qualified path, a
+UNC path, a quoted POSIX path and a `file:` URI has each replaced by `<path>`, with the surrounding
+quotes and punctuation kept, while the JSON pointer `(/data/url)` and the relative path `../x.png`
+are left exactly as written.
+
+##### AgentKitToolsVisual-Rendering-RenderErrorShaper-HostPathsScrubbed: An Inner Exception's Host Path Never Reaches the Model
+
+**Test**: `RenderErrorShaper_Shape_InnerExceptionHostPath_NeverReachesTheModel`
+
+A read failure whose inner I/O error names a host file under the temporary folder is shaped with the
+outer message only — naming the file as the model wrote it — and none of the inner text. A viewer
+failure whose own message embeds the same host path is shaped with the path as `'<path>'`. Neither
+report contains any part of the temporary folder's path.
 
 ##### AgentKitToolsVisual-Rendering-RenderErrorShaper-NotesListed: A Timeout Lists Its Notes
 

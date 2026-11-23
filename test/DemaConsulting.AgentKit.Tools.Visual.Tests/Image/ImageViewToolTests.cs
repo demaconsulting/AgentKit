@@ -67,6 +67,8 @@ public class ImageViewToolTests
     [InlineData("chart.vl.json", "vega-lite")]
     [InlineData("part.scad", "scad")]
     [InlineData("report.pdf", "pdf")]
+    [InlineData("deck.pptx", "pptx")]
+    [InlineData("drawing.vsdx", "vsdx")]
     [InlineData("photo.png", "png")]
     public async Task ImageViewTool_View_SupportedFile_ReturnsAPngPicture(string fileName, string format)
     {
@@ -341,6 +343,8 @@ public class ImageViewToolTests
             "vl.json" => Encoding.UTF8.GetBytes(RenderSamples.VegaLite),
             "scad" => Encoding.UTF8.GetBytes(RenderSamples.Scad),
             "pdf" => RenderSamples.Pdf(1),
+            "pptx" => RenderSamples.Pptx(),
+            "vsdx" => RenderSamples.Vsdx(),
             _ => ImageTestImages.Png(60, 40)
         };
     }

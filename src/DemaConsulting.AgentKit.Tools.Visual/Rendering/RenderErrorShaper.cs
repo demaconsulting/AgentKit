@@ -50,7 +50,10 @@ namespace DemaConsulting.AgentKit.Tools.Visual.Rendering;
 ///     <para>
 ///     <b>No host path reaches the model.</b> The working directory, every grant root and the
 ///     input's folder are replaced by the form a model already knows — relative to the working
-///     directory, or <c>&lt;outside&gt;</c> — and the library's naming of its file-access policy
+///     directory, or <c>&lt;outside&gt;</c> — and any other absolute path by
+///     <c>&lt;path&gt;</c>. Only the outermost exception's message and the library's hint
+///     are surfaced; an inner exception's text, which may name a host file, never is. The
+///     library's naming of its file-access policy
 ///     and its host-oriented advice ("add the folder to the allowed roots", "without --strict")
 ///     are replaced by words that describe the agent's own situation.
 ///     </para>
@@ -80,6 +83,11 @@ internal static partial class RenderErrorShaper
     ///     The text a host folder outside the working directory is replaced with.
     /// </summary>
     private const string OutsidePlaceholder = "<outside>";
+
+    /// <summary>
+    ///     The text any other absolute host path is replaced with.
+    /// </summary>
+    private const string PathPlaceholder = "<path>";
 
     /// <summary>
     ///     The hint for a referenced file the access policy refused.
@@ -121,6 +129,16 @@ internal static partial class RenderErrorShaper
     ///     bound for the model.
     /// </remarks>
     private static readonly bool NamesIgnoreCase = OperatingSystem.IsWindows() || OperatingSystem.IsMacOS();
+
+    /// <summary>
+    ///     How long matching one host folder against a text may take.
+    /// </summary>
+    private static readonly TimeSpan PatternTimeout = TimeSpan.FromSeconds(1);
+
+    /// <summary>
+    ///     The separators a path may be written with, on any platform.
+    /// </summary>
+    private static readonly char[] Separators = ['\\', '/'];
 
     /// <summary>
     ///     Classifies the exception a render threw.
@@ -334,12 +352,25 @@ internal static partial class RenderErrorShaper
     ///     Removes host paths from text bound for a model.
     /// </summary>
     /// <remarks>
+    ///     <para>
     ///     The working directory, every grant root and the input's folder are replaced, longest
     ///     first, by their form relative to the working directory, or by <c>&lt;outside&gt;</c>
-    ///     when they lie outside it. Both separator spellings are replaced, because a document may
-    ///     write a path either way and the library echoes what it was given. Case is ignored on
-    ///     Windows and macOS, as <see cref="PathPolicy"/> ignores it, so a host path the library
-    ///     reports in another case is still replaced.
+    ///     when they lie outside it. A folder is matched only whole — where a path can start and
+    ///     up to the end of its last name — so a sibling such as <c>ws-backup</c> is not mistaken
+    ///     for <c>ws</c>. It is matched in every spelling a document or the library may use:
+    ///     either separator, a <c>\\?\</c> or <c>//?/</c> device prefix, a <c>file:</c> URI
+    ///     scheme, and percent-encoded names; the prefix is removed with the folder. Case is
+    ///     ignored on Windows and macOS, as <see cref="PathPolicy"/> ignores it, so a host path
+    ///     the library reports in another case is still replaced.
+    ///     </para>
+    ///     <para>
+    ///     Any absolute path that remains — one under none of those folders, such as the system's
+    ///     temporary folder, a user profile, a cache or a link's real target — is replaced whole
+    ///     by <c>&lt;path&gt;</c>: a drive-qualified, network, device or <c>file:</c> URI path
+    ///     wherever it appears, and a POSIX path when it is quoted. An unquoted <c>/</c>-led
+    ///     token is left alone because it is as likely to be a JSON pointer, and a relative path
+    ///     is left alone because it is the model's own words.
+    ///     </para>
     /// </remarks>
     /// <param name="text">The text to scrub. Must not be null.</param>
     /// <param name="policy">The access policy whose folders are the host's. Must not be null.</param>
@@ -363,14 +394,58 @@ internal static partial class RenderErrorShaper
             .Distinct(NamesIgnoreCase ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal)
             .OrderByDescending(folder => folder.Length);
 
+        // Each known folder, in every spelling it may take, becomes the form a model knows.
         foreach (var folder in folders)
         {
             var replacement = RelativeForm(folder, policy.WorkingDirectory, comparison);
-            text = text.Replace(folder, replacement, comparison);
-            text = text.Replace(folder.Replace('\\', '/'), replacement.Replace('\\', '/'), comparison);
+            var endsWithSeparator = folder.EndsWith('\\') || folder.EndsWith('/');
+            text = Regex.Replace(
+                text,
+                FolderPattern(folder),
+                match =>
+                {
+                    // A drive root carries its separator, which the relative form must keep.
+                    var form = endsWithSeparator ? replacement + Path.DirectorySeparatorChar : replacement;
+                    return match.Groups["root"].Value.Contains('\\', StringComparison.Ordinal) ? form : form.Replace('\\', '/');
+                },
+                RegexOptions.CultureInvariant | (NamesIgnoreCase ? RegexOptions.IgnoreCase : RegexOptions.None),
+                PatternTimeout);
         }
 
-        return text;
+        // Any absolute path still present is not one the model can use: it is replaced whole.
+        text = FileUri().Replace(text, PathPlaceholder);
+        text = DrivePath().Replace(text, PathPlaceholder);
+        text = UncPath().Replace(text, PathPlaceholder);
+        return QuotedPosixPath().Replace(text, PathPlaceholder);
+    }
+
+    /// <summary>
+    ///     Builds the expression matching a host folder in every spelling a message may carry.
+    /// </summary>
+    /// <remarks>
+    ///     The folder may be led by a device prefix (<c>\\?\</c> or <c>//?/</c>) or a
+    ///     <c>file:</c> URI scheme, which are matched with it; its separators may be written
+    ///     either way; and each name in it may be percent-encoded. The match must start where a
+    ///     path can start and end where the folder's name ends, so a sibling such as
+    ///     <c>ws-backup</c> is never taken for <c>ws</c>.
+    /// </remarks>
+    /// <param name="folder">The host folder, without a trailing separator unless it is a root.</param>
+    /// <returns>The pattern, whose <c>root</c> group is the folder without its prefix.</returns>
+    private static string FolderPattern(string folder)
+    {
+        var segments = folder.Split(Separators, StringSplitOptions.None).Select(segment =>
+        {
+            var plain = Regex.Escape(segment);
+            var encoded = Regex.Escape(Uri.EscapeDataString(segment));
+            return plain == encoded ? plain : "(?:" + plain + "|" + encoded + ")";
+        });
+
+        // A folder ending in a separator (a drive root) is complete at that separator.
+        var end = folder.EndsWith('\\') || folder.EndsWith('/')
+            ? string.Empty
+            : @"(?=$|[\\/'""\s:;,)\]>]|\.(?:$|\s))";
+        return @"(?<![\w.%~$/\\-])(?:(?i:file:)/{2,3})?(?:\\\\\?\\|//\?/)?(?<root>"
+            + string.Join(@"[\\/]", segments) + ")" + end;
     }
 
     /// <summary>
@@ -597,7 +672,10 @@ internal static partial class RenderErrorShaper
             return ".";
         }
 
-        return folder.StartsWith(root + Path.DirectorySeparatorChar, comparison)
+        // A drive root keeps its separator when trimmed; another must be given one, so that a
+        // sibling such as "ws-backup" is never taken to lie inside "ws".
+        var prefix = root.EndsWith('\\') || root.EndsWith('/') ? root : root + Path.DirectorySeparatorChar;
+        return folder.StartsWith(prefix, comparison)
             ? Path.GetRelativePath(root, folder)
             : OutsidePlaceholder;
     }
@@ -651,6 +729,39 @@ internal static partial class RenderErrorShaper
     /// <returns>The compiled expression.</returns>
     [GeneratedRegex(@"\.?\s*Hint: [^\r\n]*$", RegexOptions.CultureInvariant, 1000)]
     private static partial Regex TrailingHint();
+
+    /// <summary>
+    ///     Matches a <c>file:</c> URI with an authority, whatever path it names.
+    /// </summary>
+    /// <returns>The compiled expression.</returns>
+    [GeneratedRegex(@"(?<![\w.])(?i:file:)/{2,3}[^\s'""<>|]*?(?=[,;.:)\]]*(?:$|[\s'""<>|]))", RegexOptions.CultureInvariant, 1000)]
+    private static partial Regex FileUri();
+
+    /// <summary>
+    ///     Matches a drive-qualified absolute path, with or without a device prefix.
+    /// </summary>
+    /// <returns>The compiled expression.</returns>
+    [GeneratedRegex(@"(?<![\w.%~$/\\-])(?:\\\\\?\\|//\?/)?[A-Za-z]:[\\/][^\s'""<>|]*?(?=[,;.:)\]]*(?:$|[\s'""<>|]))", RegexOptions.CultureInvariant, 1000)]
+    private static partial Regex DrivePath();
+
+    /// <summary>
+    ///     Matches a network or device path written with back slashes, such as
+    ///     <c>\\server\share\file</c> or <c>\\?\UNC\server\share</c>.
+    /// </summary>
+    /// <returns>The compiled expression.</returns>
+    [GeneratedRegex(@"(?<![\w\\])\\\\[^\\\s'""<>|]+\\[^\s'""<>|]*?(?=[,;.:)\]]*(?:$|[\s'""<>|]))", RegexOptions.CultureInvariant, 1000)]
+    private static partial Regex UncPath();
+
+    /// <summary>
+    ///     Matches a quoted POSIX absolute path of at least two names.
+    /// </summary>
+    /// <remarks>
+    ///     Only a quoted path is matched: an unquoted <c>/</c>-led token is as likely to be a
+    ///     JSON pointer such as <c>/data/url</c>, which locates the failure for the model.
+    /// </remarks>
+    /// <returns>The compiled expression.</returns>
+    [GeneratedRegex(@"(?<=['""])/{1,2}(?:[^/\s'""]+/)+[^\s'""]*(?=['""])", RegexOptions.CultureInvariant, 1000)]
+    private static partial Regex QuotedPosixPath();
 }
 
 /// <summary>

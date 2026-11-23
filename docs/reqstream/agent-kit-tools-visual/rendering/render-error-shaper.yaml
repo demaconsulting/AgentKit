@@ -69,17 +69,30 @@ sections:
                   The error shaper shall replace the working directory, every grant root and the
                   input's folder in the text it produces with their form relative to the working
                   directory, or a placeholder when they lie outside it, ignoring case where the
-                  platform's file names ignore case.
+                  platform's file names ignore case, matching each folder only whole and in every
+                  spelling — either separator, a device prefix, a file URI or percent-encoded
+                  names — and shall replace any other absolute path, in drive, UNC, device or
+                  file-URI form, or quoted POSIX form, with a placeholder.
                 tags: [security]
                 justification: |
                   The text joins a transcript that leaves the host, and must not disclose the
                   host's directory layout or the user name an absolute path carries. On Windows and
                   macOS a renderer may report a host path in another case, and the access policy
-                  treats both spellings as one location, so the scrubber must as well.
+                  treats both spellings as one location, so the scrubber must as well. A library
+                  or system message may also name a path under none of the known folders — the
+                  temporary folder, a user profile, a cache, or a link's real target — or a known
+                  folder in another spelling; replacing only exact known folders would let those
+                  through, and replacing a folder's name inside a longer sibling name would garble
+                  the path while still disclosing its remainder. An unquoted POSIX path is left
+                  because it cannot be told from a JSON pointer, which locates the failure.
                 tests:
                   - RenderErrorShaper_Shape_HostPaths_AreScrubbed
                   - windows@RenderErrorShaper_Shape_HostPathInOtherCase_IsScrubbedWhereNamesIgnoreCase
                   - macos@RenderErrorShaper_Shape_HostPathInOtherCase_IsScrubbedWhereNamesIgnoreCase
+                  - RenderErrorShaper_Scrub_SiblingOfARoot_IsNotPartiallyReplaced
+                  - RenderErrorShaper_Scrub_RootInDevicePrefixAndFileUriForms_IsReplacedWhole
+                  - RenderErrorShaper_Scrub_UnknownAbsolutePath_IsReplacedWithAPlaceholder
+                  - RenderErrorShaper_Shape_InnerExceptionHostPath_NeverReachesTheModel
 
               - id: AgentKitToolsVisual-Rendering-RenderErrorShaper-NotesListed
                 title: >-

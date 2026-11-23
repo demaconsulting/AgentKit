@@ -265,6 +265,119 @@ public class RenderErrorShaperTests
     }
 
     /// <summary>
+    ///     Proves a sibling of a known folder, whose name merely starts with the folder's name, is
+    ///     not partially replaced as though it lay inside the folder.
+    /// </summary>
+    [Fact]
+    public void RenderErrorShaper_Scrub_SiblingOfARoot_IsNotPartiallyReplaced()
+    {
+        // Arrange: a policy over the workspace, and texts naming its "-backup" sibling both ways
+        using var fixture = new TempDirectoryFixture();
+        var policy = RenderSamples.Policy(fixture.Root);
+        var sibling = fixture.Root + "-backup" + Path.DirectorySeparatorChar + "k.txt";
+        var text = "cannot read '" + sibling + "' or '" + sibling.Replace('\\', '/') + "'";
+
+        // Act: scrub it
+        var scrubbed = RenderErrorShaper.Scrub(text, policy, null);
+
+        // Assert: the sibling is replaced whole, never turned into a relative-looking ".-backup"
+        Assert.DoesNotContain(".-backup", scrubbed, StringComparison.Ordinal);
+        Assert.DoesNotContain(fixture.Root, scrubbed, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(fixture.Root.Replace('\\', '/'), scrubbed, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("cannot read '<path>' or '<path>'", scrubbed);
+    }
+
+    /// <summary>
+    ///     Proves a known folder written with a device prefix, as a <c>file:</c> URI or with
+    ///     percent-encoded names is replaced whole, prefix and all.
+    /// </summary>
+    [Fact]
+    public void RenderErrorShaper_Scrub_RootInDevicePrefixAndFileUriForms_IsReplacedWhole()
+    {
+        // Arrange: a workspace whose name holds a space, named in each alternative spelling
+        using var fixture = new TempDirectoryFixture();
+        var workspace = Path.Combine(fixture.Root, "My Docs");
+        Directory.CreateDirectory(workspace);
+        var policy = RenderSamples.Policy(workspace);
+        var file = Path.Combine(workspace, "a.png");
+        var device = @"\\?\" + file;
+        var deviceSlashes = "//?/" + file.Replace('\\', '/');
+        var uri = new Uri(file).AbsoluteUri;
+
+        // Act: scrub each
+        var scrubbedDevice = RenderErrorShaper.Scrub("cannot read '" + device + "'", policy, null);
+        var scrubbedSlashes = RenderErrorShaper.Scrub("cannot read '" + deviceSlashes + "'", policy, null);
+        var scrubbedUri = RenderErrorShaper.Scrub("cannot read '" + uri + "'", policy, null);
+
+        // Assert: each becomes the workspace-relative form, with no prefix residue
+        Assert.Contains("%20", uri, StringComparison.Ordinal);
+        Assert.Equal("cannot read '" + Path.Combine(".", "a.png") + "'", scrubbedDevice);
+        Assert.Equal("cannot read './a.png'", scrubbedSlashes);
+        Assert.Equal("cannot read './a.png'", scrubbedUri);
+    }
+
+    /// <summary>
+    ///     Proves an absolute path under none of the known folders is replaced by a placeholder,
+    ///     while a JSON pointer and a relative path are left as written.
+    /// </summary>
+    [Fact]
+    public void RenderErrorShaper_Scrub_UnknownAbsolutePath_IsReplacedWithAPlaceholder()
+    {
+        // Arrange: a text naming host paths in every form, beside a pointer and a relative path
+        using var fixture = new TempDirectoryFixture();
+        var policy = RenderSamples.Policy(fixture.Root);
+        var temporary = Path.Combine(Path.GetTempPath(), "other", "x.png");
+        var text = "at line 3 (/data/url): cannot read '" + temporary + "', "
+            + @"C:\Users\someone\secret.txt, \\server\share\x.png, '/home/someone/y.png', "
+            + "file:///home/someone/z.png or '../x.png'";
+
+        // Act: scrub it
+        var scrubbed = RenderErrorShaper.Scrub(text, policy, null);
+
+        // Assert: every host path is gone; the pointer and the relative path survive
+        Assert.Equal(
+            "at line 3 (/data/url): cannot read '<path>', <path>, <path>, '<path>', <path> or '../x.png'",
+            scrubbed);
+    }
+
+    /// <summary>
+    ///     Proves a host path carried only by an inner exception, or by an outer message naming a
+    ///     folder the policy does not know, never reaches the model.
+    /// </summary>
+    [Fact]
+    public void RenderErrorShaper_Shape_InnerExceptionHostPath_NeverReachesTheModel()
+    {
+        // Arrange: a read failure whose inner I/O error names a host file outside every grant,
+        // and a viewer failure whose own message embeds the same host file
+        using var fixture = new TempDirectoryFixture();
+        var policy = RenderSamples.Policy(fixture.Root);
+        var host = Path.Combine(Path.GetTempPath(), "cache", "locked.png");
+        var io = new IOException("The process cannot access the file '" + host + "' because it is being used by another process.");
+        var nested = new ImageSourceException(
+            "The image 'a.puml' could not be drawn by the 'plantuml' source: the included file 'locked.png' cannot be read.",
+            "a.puml",
+            null!,
+            new FileReferenceException(FileReferenceFailureKind.CannotRead, "locked.png", "cannot read", io));
+        var folded = new ViewerException(ErrorCodes.OperationFailed, "Reading failed: " + io.Message, null, io);
+
+        // Act: classify and shape each
+        var nestedText = RenderErrorShaper.Shape(RenderErrorShaper.Classify(nested), new ShapeContext(policy, null, null, null, null));
+        var foldedText = RenderErrorShaper.Shape(RenderErrorShaper.Classify(folded), new ShapeContext(policy, null, null, null, null));
+
+        // Assert: neither names the host file, nor the temporary folder it lies in
+        var temporary = Path.GetTempPath().TrimEnd('\\', '/');
+        foreach (var text in new[] { nestedText, foldedText })
+        {
+            Assert.DoesNotContain(temporary, text, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain(temporary.Replace('\\', '/'), text, StringComparison.OrdinalIgnoreCase);
+        }
+
+        Assert.DoesNotContain("being used by another process", nestedText, StringComparison.Ordinal);
+        Assert.Contains("'locked.png'", nestedText, StringComparison.Ordinal);
+        Assert.Contains("'<path>'", foldedText, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     ///     Proves a timeout is shaped with its own code and advice, and every note is listed.
     /// </summary>
     [Fact]

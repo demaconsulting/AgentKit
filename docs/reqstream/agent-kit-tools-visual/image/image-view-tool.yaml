@@ -50,9 +50,10 @@ sections:
 
               - id: AgentKitToolsVisual-Image-ViewTool-DrawsEachFormat
                 title: >-
-                  The view tool shall draw an SVG, a PDF, a Mermaid, PlantUML, Vega-Lite or
-                  OpenSCAD source and a raster image file to an opaque PNG picture, returned as
-                  image content with a caption naming the format and the picture's size.
+                  The view tool shall draw an SVG, a PDF, a PPTX slide, a VSDX page, a Mermaid,
+                  PlantUML, Vega-Lite or OpenSCAD source and a raster image file to an opaque PNG
+                  picture, returned as image content with a caption naming the format and the
+                  picture's size.
                 justification: |
                   These are the visual formats an agent meets in a workspace that a provider cannot
                   render itself. Returning each as a PNG gives the model one kind of content to
