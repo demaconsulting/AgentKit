@@ -118,7 +118,8 @@ sections:
               server the runtime discovers; after creating or resuming it, shall clear the session's
               installed plugins and disable every MCP server still enabled; and shall refuse and
               release the session, deleting a created one and keeping a resumed one, if any MCP server
-              remains enabled.
+              remains enabled, with a refusal that names each such server and reaches a host redacted,
+              as every opener relays it.
             tags: [security]
             justification: |
               The runtime starts MCP servers from ambient configuration — the data directory's
@@ -157,6 +158,7 @@ sections:
               - CopilotSessionChannel_Seal_ClearsInstalledPluginsFirst
               - CopilotSessionChannel_Seal_ServerStillEnabledAfterCreation_IsDisabledThenVerified
               - CopilotSessionChannel_Seal_ServerThatStaysEnabled_RefusesNamingIt
+              - CopilotSessionChannel_Seal_RefusalNamingASecret_IsRedactedWhenRelayed
               - CopilotSessionChannel_NoInstalledPluginsPatch_ReplacesTheListWithAnEmptyOne
 
           - id: AgentKitAgentsCopilot-CopilotTurnChannel-AppliesTheHostsTokenProvider

@@ -163,12 +163,22 @@ sections:
             title: >-
               The CLI version check shall refuse a CLI that cannot be started, exits with an error, or
               does not finish in time, and an npm installation without Node.js, naming the CLI, the
-              command and the failure, and the end of the CLI's error output.
+              command and the failure, and the end of the CLI's error output; shall redact the refusal
+              and the error output of the probe environment's secret values and any text shaped like a
+              GitHub token, the error output before its end is cut; and shall keep, for a CLI that
+              cannot be started, only a redacted copy of the failure as the cause.
+            tags: [security]
             justification: |
               A CLI that cannot report its version cannot be trusted to run as the runtime, and the raw
-              process failure names neither the CLI nor the remedy.
+              process failure names neither the CLI nor the remedy. The probe runs with the runtime's
+              environment, whose token variables it can echo in its error output, and the CLI's path
+              comes from PATH or discovery, so both are redacted with exactly the secrets that
+              environment holds; redacting before the end is cut keeps a secret split by the cut from
+              being half quoted, and keeping only a redacted copy of a start failure keeps the
+              original's text out of the chain.
             tests:
               - CopilotCli_ReadVersionAsync_JsLoaderWithoutNode_ThrowsNamingNode
               - CopilotCli_ReadVersionAsync_TimedOut_ThrowsNamingTheTimeout
               - CopilotCli_ReadVersionAsync_NonZeroExit_ThrowsWithStandardError
               - CopilotCli_ReadVersionAsync_CannotStart_ThrowsNamingTheCli
+              - CopilotCli_ReadVersionAsync_ProbeQuotingASecret_IsRedacted

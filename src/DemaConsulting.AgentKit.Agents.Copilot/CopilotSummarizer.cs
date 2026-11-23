@@ -68,7 +68,7 @@ public sealed class CopilotSummarizer : ISummarizer
 
     /// <summary>
     ///     The sign-in of the runtime the consolidations run on, whose tokens a relayed failure is
-    ///     redacted of, or <see langword="null"/> to redact token-shaped text only.
+    ///     redacted of, or <see langword="null"/> to redact the process environment's secrets and token-shaped text only.
     /// </summary>
     private readonly CopilotSignInPlan? _signIn;
 
@@ -129,7 +129,7 @@ public sealed class CopilotSummarizer : ISummarizer
     /// <param name="selection">A validated model selection, or <see langword="null"/>; see the public constructor.</param>
     /// <param name="signIn">
     ///     The sign-in whose tokens a relayed failure is redacted of, or <see langword="null"/> to
-    ///     redact token-shaped text only.
+    ///     redact the process environment's secrets and token-shaped text only.
     /// </param>
     /// <exception cref="ArgumentNullException"><paramref name="opener"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException">

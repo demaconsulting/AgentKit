@@ -75,9 +75,12 @@ equality prints or compares the token):
 - **`HostSuppliedFinding`**, **`EnvironmentFinding`**, **`CopilotCliFinding`**,
   **`FallbackFinding`** (`string`) — what each step found, in words that name hosts, logins, files and
   variable names only.
-- **`ToString()`** — source, host name and `<redacted>` or `none` for the token.
+- **`ToString()`** — source, host name and `<redacted>` or `none` for the token, the whole text
+  redacted with `Redact`, because the host name may come from the environment.
 - **`Secrets`** (`CopilotSignInSecrets`) — the exact tokens the sign-in knows. `ResolveAsync` and
   `FromOptions` fill it, and the runtime's session token provider adds each session token to it.
+  `FromOptions(options, hostEnvironment)`, the plan of a client built outside `StartAsync`, records the
+  host's token and, when an environment is given, its secret variables' values.
 - **`Redact(text)`** — removes `Token`, every value in `Secrets` and any GitHub-token-shaped text from
   a text AgentKit is about to quote.
 
@@ -89,7 +92,11 @@ too short to be redacted: a secret's safety comes before the readability of the 
 The session token provider can add values while a start failure on another thread is being
 redacted, so the set is read under a lock. `FromEnvironment(environment, hostToken)` builds the set an
 environment holds: the value of each `SecretVariables` variable, read with the platform's name
-comparison, and the host's token. It is the redactor of text quoted while a sign-in is resolving.
+comparison, and the host's token. It is the redactor of text quoted while a sign-in is resolving. An
+overload over an `IReadOnlyDictionary<string, string>` builds the set a spawned process's environment
+holds, the redactor of a version probe's text. `Ambient()` is `FromEnvironment` of the process
+environment, read when it is called: the redactor of last resort, for a client built outside
+`StartAsync` that has neither a plan nor an environment in hand.
 
 `CopilotRedactingLogger` (internal sealed `ILogger`, in `CopilotSignIn.cs`): the one choke point for
 every entry that reaches the host's logger. `Wrap(inner, redact)` returns `null` for a `null` logger.
@@ -248,9 +255,12 @@ symbolic link or junction to the data directory is not recognized as the data di
 5. Always dispose the helper, if one was created (stopping its process; the SDK bounds the stop),
    then delete the temporary home by its exact path (`DeleteHelperHome`, retrying briefly while a
    stopped process releases its files); a home that cannot be deleted is logged as a warning naming
-   the path.
+   the path, through a `CopilotRedactingLogger` over the resolution's `secrets` (the home is under
+   `TEMP`, from the environment), whoever passed the logger.
 
-**Postconditions:** A token, or none with a problem. Never throws but for the caller's cancellation.
+**Postconditions:** A token, or none with a problem. Never throws but for the caller's cancellation:
+the SDK's cancellation may carry the helper's text and a cause, so it is relayed as `RedactRelayed`
+relays it — unchanged only when it carries nothing to redact.
 
 #### AskProviderAsync and CreateSessionTokenProvider
 
@@ -259,6 +269,11 @@ symbolic link or junction to the data directory is not recognized as the data di
 **Algorithm:** At start, call the provider with `CopilotGitHubTokenRequest(host, isRefresh: false)`.
 An `OperationCanceledException` propagates; any other failure becomes an `InvalidOperationException`
 naming the provider with the failure as cause; a `null` result becomes an `InvalidOperationException`.
+Each refusal names the host redacted with the resolution's secrets (or, called without them, the
+process environment's), since the host may come from `COPILOT_GH_HOST`. The provider's own exception
+is kept unchanged as the cause, by design: the host's code raised it, AgentKit quotes none of it,
+and the host can then recognize it. A session's refusal for a host the runtime names that cannot be
+normalized names that host redacted with the plan's secrets.
 For sessions, return an SDK `GitHub.TokenProvider` that maps the SDK's arguments to a request (the
 host normalized, `IsRefresh` when the reason is `Refresh`) and the result to the SDK's token, with
 `ExpiresIn` the token's lifetime, or `DefaultTokenLifetime`, in whole seconds rounded up (so a
@@ -287,7 +302,9 @@ appears.
 `token-provider` is `GitHubTokenProvider`; `env` is `EnvironmentVariable`; `user` is `DataDirectory`;
 `gh-cli` is `GitHubCli`; anything else is `Unknown`. `Report` logs the source, host and login at
 information level and, when a Copilot CLI account was found but the runtime signed in on another
-account through another source, a warning naming both and how to choose.
+account through another source, a warning naming both and how to choose. Both go through a
+`CopilotRedactingLogger` over `plan.Redact`, so the runtime's host and login and the Copilot CLI
+account's are logged redacted.
 
 #### NormalizeHost / TryNormalizeHost / HostName / SameHost
 
@@ -304,10 +321,13 @@ password.
 **Purpose:** Redact the runtime or SDK text that other units quote, and copy a failure they keep as a
 cause.
 
-**Algorithm:** `Redact(plan, text)` returns an empty string for a `null` text, `plan.Redact(text)`
-when there is a plan, and the token-shape `Redact(text)` otherwise (a client built outside
-`StartAsync`, such as a test's). `RedactFailure(failure, plan)` builds the `CopilotRedactedException`
-copy of `failure` and its chain, redacting each message and stack trace with `Redact(plan, text)`.
+**Algorithm:** `Redactor(plan)` builds the redactor once: `plan.Redact` when there is a plan, and
+otherwise — only a client built outside `StartAsync`, such as a test's — the process environment's
+secrets read once (`CopilotSignInSecrets.Ambient()`) and the token shapes. `Redact(plan, text)`
+returns an empty string for a `null` text and the redactor's result otherwise.
+`RedactFailure(failure, plan)` builds the `CopilotRedactedException` copy of `failure` and its chain,
+redacting each message and stack trace with one redactor; `RedactRelayed` uses one redactor for the
+message and the whole copied chain too.
 
 **Known limitation.** Exact-value redaction cannot recognize a token the runtime transformed, for
 example by URL-encoding or truncating it; the token-shape pattern still applies to such text.
@@ -356,13 +376,45 @@ the result otherwise.
 
 **Postconditions:** The operation's result, or a relayed failure.
 
+#### The Sink Rule and Its Exclusions
+
+Text derived from the runtime, the SDK, the helper, the environment or the Copilot CLI's configuration
+is redacted where it enters a finding, a log entry, an exception message or a cause; no sink relies on
+an upstream caller having redacted it.
+
+- **Exceptions.** A runtime or SDK failure that reaches a host goes through `RelayAsync` or
+  `RedactRelayed`, and a kept cause through `RedactFailure`. A message AgentKit composes is redacted
+  whole, or field by field where the redactor is in scope.
+- **Logs.** Every entry AgentKit writes, and every entry the SDK writes, passes through a
+  `CopilotRedactingLogger`; AgentKit's own entries also receive findings already redacted.
+- **The redactor in scope**, in order of availability: the resolved plan's `Redact`; while the sign-in
+  resolves, its `CopilotSignInSecrets`; before it, `FromEnvironment` of the environment in hand and
+  the host's token (a launch refusal), or of a probe's own environment (a version probe); and with no
+  plan and no environment in hand, `Ambient()`.
+
+Left as they are, by design:
+
+- A value the host passed, reflected back in the host's own argument validation.
+- The host's token provider's exception, kept unchanged as the provider refusal's cause.
+- Conversation content — assistant text, tool calls and results, the raw events the host
+  subscribed to — which the model has already seen.
+- Typed values the host asked for: the runtime's host, login and version, the catalog's models, and
+  `CopilotCli.FindInstalled()`'s result.
+- Exception type names, which are code identifiers.
+
+Exact-value redaction now applies to paths and log entries as well, so a short or common secret value
+can rewrite unrelated text: a secret's safety comes before the readability of the text it appears in.
+The redacting logger checks the inner logger's level first, so text is formatted and redacted only for
+an enabled level.
+
 ### Error Handling
 
 | Condition | Handling |
 | --- | --- |
 | Token provider fails or returns no token | `InvalidOperationException` naming the provider; failure as cause |
 | `COPILOT_GH_HOST` invalid, no `gitHubHost` | `InvalidOperationException` naming the variable, not its value |
-| Provider or caller canceled | `OperationCanceledException` propagates; helper stopped, home deleted |
+| Provider canceled | `OperationCanceledException` propagates unchanged |
+| Caller canceled while the helper runs | Relayed redacted; helper stopped, home deleted |
 | `COPILOT_HOME` not a valid path | Finding naming the variable, not its value; next source |
 | No, unreadable, oversized or malformed Copilot CLI configuration; no or invalid account | Finding; next source |
 | Copilot CLI account on another host than the one requested | Finding; next source |

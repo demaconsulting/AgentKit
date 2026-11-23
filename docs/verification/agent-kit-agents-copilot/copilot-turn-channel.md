@@ -216,6 +216,7 @@ failure would read as a model or tool fault rather than as a deadline nobody cho
 - `CopilotSessionChannel_Seal_ClearsInstalledPluginsFirst`
 - `CopilotSessionChannel_Seal_ServerStillEnabledAfterCreation_IsDisabledThenVerified`
 - `CopilotSessionChannel_Seal_ServerThatStaysEnabled_RefusesNamingIt`
+- `CopilotSessionChannel_Seal_RefusalNamingASecret_IsRedactedWhenRelayed`
 - `CopilotSessionChannel_NoInstalledPluginsPatch_ReplacesTheListWithAnEmptyOne`
 
 The first runs the opening protocol over a confined engine configuration with a discovery that
@@ -231,6 +232,10 @@ a non-GitHub server enabled on the first listing — the case of a source discov
 and disabled on the second, and asserts only that server was disabled, the configuration was listed
 again, and the session was accepted. The sixth keeps reporting the server enabled and asserts the
 refusal names it and points to the signed-in account or its organization among the sources to check.
+The seventh keeps a server enabled whose name quotes the secret `s3cr3t-value-xyz` and runs the seal
+through `CopilotSignIn.RelayAsync` with a sign-in that knows it, as every opener does: the refusal
+arrives as a new `InvalidOperationException` naming `'docs-<redacted>'`, with a redacted copy as its
+cause, and `SecretAssert` finds the secret nowhere in the chain.
 
 The last asserts the plugin patch carries an empty installed list rather than none, which the runtime
 would read as no change.

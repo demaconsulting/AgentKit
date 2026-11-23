@@ -282,7 +282,8 @@ behind is empty, so the next start refuses the directory as carrying an invalid 
 With every option a host can set supplied, the tests assert no plugin directory, session filesystem,
 test options, extension launch provider, installation handler, model request handler, model listing
 handler, telemetry, network callbacks, Entra registration or telemetry forwarder is set; that the
-token, log level and logger reach the client options; that a blank token is treated as none; that
+token and log level reach the client options, and the logger only behind the redacting logger, which
+passes an entry on to it, while no logger gives the SDK none; that a blank token is treated as none; that
 a relative data directory is resolved to a full path when the options are built; that a blank CLI path
 is treated as none for either source; and that a fully qualified CLI path is kept, normalized. A
 GitHub host given as `example.ghe.com`, `https://example.ghe.com` or `https://example.ghe.com/` is kept
@@ -299,6 +300,7 @@ it carries the token.
 - `CopilotRuntime_StartClient_InstalledCliFailure_DoesNotBlameTheSdkReference`
 - `CopilotRuntime_StartClient_Succeeds_DoesNotThrow`
 - `CopilotRuntime_StartClient_FailureQuotingASignInToken_IsRedacted`
+- `CopilotRuntime_StartClient_InstalledCliPathQuotingASecret_IsRedacted` (ordinary failure, protocol mismatch)
 
 Error path and normal operation. A bundled start failing with the SDK's runtime-not-found error is rethrown as an
 `InvalidOperationException` whose message carries the runtime's error and the remedy â€” a `PackageReference` to
@@ -313,7 +315,10 @@ its token, a start failure quoting both the start token and the session token â€
 and chaining an inner exception that chains an aggregate of two exceptions quoting them, is explained with `<redacted>`
 in their places and neither value in the message; the inner exception is a redacted copy carrying the original's type
 name and the redacted message, the aggregate is copied with its type name, and a walk of the whole chain, every inner
-exception of any aggregate included, finds neither value in any message, stack trace, string form or data.
+exception of any aggregate included, finds neither value in any message, stack trace, string form or data. The whole
+explanation is redacted: an installed CLI at `/opt/s3cr3t-value-xyz/bin/copilot`, on a sign-in that knows the secret,
+is named as `/opt/<redacted>/bin/copilot` both by the installed-CLI cause and by the protocol-mismatch explanation,
+and `SecretAssert` finds the secret nowhere in the chain.
 
 #### AgentKitAgentsCopilot-CopilotRuntime-PassesCancellationThrough: Cancellation Is Not a Fault
 
@@ -398,6 +403,33 @@ data and `Data` quote the secret. Each arrives as a new `IOException` or `Invali
 with `<redacted> gho_<redacted>` in place of the values, a redacted copy naming the original type as its cause, and no
 secret anywhere `SecretAssert` looks. A clean `OperationCanceledException` from the status read and a clean
 `ObjectDisposedException` from the authentication read reach the caller as the same instances.
+
+#### AgentKitAgentsCopilot-CopilotRuntime-RedactsTheSdksDiagnostics: The SDK Logs Only Through the Redacting Logger
+
+**Tests**:
+
+- `CopilotRuntime_BuildClientOptions_CarriesTokenLogLevelAndLogger`
+- `CopilotRuntime_BuildClientOptions_Logger_RedactsTheSdksEntries`
+
+Normal operation and error paths. The client options' logger is a `CopilotRedactingLogger` over the host's, which
+receives an entry written to it, and a host that gave no logger gives the SDK none. Two clients are configured: one
+without a sign-in, whose host environment's `GITHUB_ENTERPRISE_TOKEN` is `s3cr3t-value-xyz`, and one whose sign-in
+knows that secret and learns a session token after the client was configured. Each logger receives, under a scope
+naming a CLI path that quotes both values, an entry in the SDK's shape whose message and structured error quote both,
+with a numeric value, and an exception whose data and an aggregate's second inner exception quote them. The host's
+loggers receive the secret as `<redacted>` from both clients; the session token is redacted only by the client whose
+sign-in learned it, proving the logger reads the sign-in's live secrets; the numeric value keeps its type; the
+exception arrives as a redacted copy; and `SecretAssert` finds no value the client knew in any entry or scope.
+
+#### AgentKitAgentsCopilot-CopilotRuntime-RedactsLaunchRefusals: Launch Refusals Carry No Secret
+
+**Test**: `CopilotRuntime_ResolveLaunch_RefusalQuotingAnEnvironmentSecret_IsRedacted` (named CLI missing, none found,
+too old)
+
+Error paths. The host's environment holds `GH_ENTERPRISE_TOKEN` set to `s3cr3t-value-xyz` and the host passes the
+token `s3cr3t-host-token`; both are part of the folder the named CLI, the `PATH` entry searched or the CLI found is in.
+Each refusal names that folder with `<redacted>` in place of both values, and `SecretAssert` finds neither anywhere in
+the chain.
 
 #### AgentKitAgentsCopilot-CopilotRuntime-RejectsInvalidOptions: Missing Options Are Refused
 

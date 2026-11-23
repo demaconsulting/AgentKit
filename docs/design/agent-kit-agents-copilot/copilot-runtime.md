@@ -60,7 +60,8 @@ to launch, launches it, and verifies the started runtime.
 - **`UseCopilotCliSignIn`** (`bool`, default `true`) — whether the user's Copilot CLI sign-in may be
   used. `false` removes that source; the refusal message then reports it as turned off by the host.
 - **`LogLevel`** (`CopilotLogLevel?`) — the runtime's log level, or `null` for its default.
-- **`Logger`** (`ILogger?`) — a logger for the SDK's diagnostic output.
+- **`Logger`** (`ILogger?`) — a logger for the SDK's diagnostic output, which receives it only
+  through a `CopilotRedactingLogger` (see *CopilotSignIn Unit Design*).
 - **`RuntimeSource`** (`CopilotRuntimeSource`) — `InstalledCli` (the default) or `Bundled`; an
   undefined value is refused with `ArgumentOutOfRangeException`.
 - **`CliPath`** (`string?`) — the installed CLI to run, or `null` to let discovery choose. A blank
@@ -161,7 +162,8 @@ bundled runtime or when its output named none). It travels from `ResolveLaunchAs
    status and authentication reads and the sign-in plan. A failed, canceled or unauthenticated start
    disposes the client.
 8. Return a runtime over the started client, carrying the launch, the status, the sign-in plan and the
-   authentication status, and log the sign-in through the host's logger (`CopilotSignIn.Report`).
+   authentication status, and log the sign-in through the host's logger (`CopilotSignIn.Report`, which
+   redacts every entry).
 
 **Postconditions:** The runtime process — the installed CLI or the bundled runtime — is running on
 the prepared data directory and is signed in; the caller owns the runtime and disposes it.
@@ -183,6 +185,10 @@ the prepared data directory and is signed in; the caller owns the runtime and di
    is refused with `CopilotCli.ExplainTooOld`. Output that names no version is accepted, because the SDK's protocol
    handshake at start is authoritative and fails closed.
 4. Return an installed launch with the path and the version.
+
+Every refusal in steps 2 and 3 is redacted with `CopilotSignInSecrets.FromEnvironment(hostEnvironment,
+options.GitHubToken)` — no sign-in exists yet — so a path from the options, `PATH` or discovery never
+quotes a secret; the version probe redacts its own refusals with its environment's secrets.
 
 The search context and the process runner are parameters, so every outcome is tested on a fake
 machine without a CLI.
@@ -301,7 +307,8 @@ of the system keychain, and a supplied token — so those cannot be overridden f
 **Purpose:** The single place the client is configured.
 
 **Algorithm:** Use the sign-in plan given, or, when none is (a test's client), the plan the options
-alone describe (`CopilotSignInPlan.FromOptions`: the host's token and chosen host). Build the
+and the host environment describe (`CopilotSignInPlan.FromOptions`: the host's token, the
+environment's secret values and the chosen host). Build the
 runtime's environment with `BuildRuntimeEnvironment(hostEnvironment)` and, when the plan names a host,
 set `COPILOT_GH_HOST` to its bare host name, overriding the host environment's value — which, when it
 named a valid host, is the same host, normalized, and when it named an invalid one already refused
@@ -311,7 +318,11 @@ the start. Set `Mode` to
 baseDirectory: dataDirectory)`, with no arguments and no child working directory. `cliPath` is the
 CLI `ResolveLaunchAsync` resolved, or `null` (the parameter's default) for the runtime the SDK
 provisions; the SDK would otherwise consult `COPILOT_CLI_PATH`, but reads it from the replacement
-environment, which withholds it. Copy the plan's token, and the options' log level and logger.
+environment, which withholds it. Copy the plan's token and the options' log level, and give the SDK
+the options' logger wrapped in a `CopilotRedactingLogger` over the plan's `Redact` — or none when the
+host gave none — so everything the SDK logs (the runtime's error output, RPC errors, the CLI's path,
+the exceptions it catches) reaches the host redacted of the plan's live secrets, a session token
+learned later included.
 Everything else keeps the SDK's default, which for every capability channel is none, and is identical
 for both executables.
 
@@ -336,7 +347,8 @@ The SDK's client options, classified:
 | `Models.RequestHandler` | Not expressible | Intercepts every inference request |
 | `GitHub.Token` | Allowed | The resolved sign-in's token (host's, provider's or the Copilot CLI's) |
 | ↳ `Environment["COPILOT_GH_HOST"]` | Derived | The resolved sign-in's host, a pass-through variable |
-| `Observability.LogLevel`, `Observability.Logger` | Allowed | Host-side diagnostics |
+| `Observability.LogLevel` | Allowed | Host-side diagnostics |
+| `Observability.Logger` | Allowed, wrapped | The host's logger behind the redacting logger |
 | `GitHub.UseLoggedInUser` | Derived | The SDK default: the signed-in user unless a token is given |
 | `Observability.Telemetry`, `Network`, `ClientInfo` | Not exposed | Neutral; deferred |
 | `Entra`, `Models.OnListModels`, `GitHub.OnTelemetry` | Not exposed | Neutral; deferred |
@@ -362,10 +374,8 @@ exception in the chain carries a token; the outer exception's type is unchanged.
 
 **Purpose:** Compose the explanation.
 
-**Algorithm:** The runtime's own error first, redacted: with `signIn.Redact` when a plan is given (the
-plan's token, its secrets — environment token values, the host's token, and every session token the
-host's provider returned — and token-shaped text), else with the token-shape pattern only. The
-protocol-version mismatch is detected on the error as raised. Then the cause:
+**Algorithm:** The runtime's own error first. The protocol-version mismatch is detected on the error
+as raised. Then the cause:
 
 - When the error is the SDK's protocol-version mismatch and the launch is not the bundled runtime,
   `CopilotCli.ExplainProtocolMismatch` with the CLI's path and version and the protocol the runtime
@@ -384,6 +394,10 @@ sign-in, a sign-in stored in the data directory and the signed-in GitHub CLI use
 authentication or network failure can be traced. A runtime path override can no longer be the cause,
 because `COPILOT_CLI_PATH` is withheld. A null message is tolerated. The explanation ends by saying
 the inner exception carries the runtime's own error, redacted, with its type name and stack trace.
+The whole explanation is then redacted — the runtime's error and the CLI's path alike — with
+`CopilotSignIn.Redact(signIn, text)`: the plan's token, its secrets (environment token values, the
+host's token, and every session token the host's provider returned) and token-shaped text, or, with
+no plan, the process environment's secrets and token-shaped text.
 
 #### StartOwnedAsync&lt;T&gt;(create, start, dispose, cancellationToken)
 
@@ -451,9 +465,9 @@ for that open. Disposal is not serialized against open runs, as is usual for `IA
 | Token provider fails or returns no token at start | `InvalidOperationException` naming the provider; nothing started |
 | `COPILOT_GH_HOST` invalid, no `gitHubHost` | `InvalidOperationException` naming the variable; nothing started |
 | Token provider canceled at start | `OperationCanceledException` propagates unchanged |
-| Named CLI does not exist | `InvalidOperationException` before any client exists |
-| No installed CLI found | `InvalidOperationException` listing where AgentKit looked and how to install |
-| CLI version cannot be read, or is too old | `InvalidOperationException` before any client exists |
+| Named CLI does not exist | `InvalidOperationException` before any client exists, redacted |
+| No installed CLI found | `InvalidOperationException` listing where AgentKit looked and how to install, redacted |
+| CLI version cannot be read, or is too old | `InvalidOperationException` before any client exists, redacted |
 | SDK refuses the runtime's protocol | client disposed; `InvalidOperationException` explaining too old or too new |
 | Started runtime not signed in | client disposed; `InvalidOperationException` listing what each sign-in source found |
 | Started runtime's status read fails | client disposed; relayed redacted; RPC error as `InvalidOperationException` |

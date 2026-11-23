@@ -58,7 +58,10 @@ project.
   framework
 - **File system**: A root folder under the system temporary folder per test, holding the fake user's
   profile, the data directory and every helper home, deleted afterwards
-- **Isolation**: No test reads or changes the process environment or the user's own profile
+- **Isolation**: No test reads or changes the user's own profile. No test reads or changes the process environment,
+  with one documented exception: `CopilotSignIn_Redact_WithoutAPlan_RemovesTheProcessEnvironmentsSecrets`, in the
+  `ProcessEnvironment` collection, which runs alone, sets `GITHUB_ENTERPRISE_TOKEN` to a value of its own — a variable
+  no other unit test's logic reads — and restores it afterwards
 
 ### Acceptance Criteria
 
@@ -208,6 +211,7 @@ helper home is gone.
 - `CopilotSignIn_ResolveAsync_AccountListFails_FallsThroughWithAFinding`
 - `CopilotSignIn_ResolveAsync_HelperNotSignedInAsTheAccount_DoesNotReadTheAccountList`
 - `CopilotSignIn_ResolveAsync_CallerCancels_PropagatesAndCleansUp`
+- `CopilotSignIn_ResolveAsync_CallerCanceledHelperCarryingASecret_IsRebuiltRedacted`
 - `CopilotSignIn_ReadCopilotCliAccount_UnusableConfiguration_ReportsWhy`
 - `CopilotSignIn_LookUpCopilotCliAccount_InvalidCopilotHome_ReportsWhy`
 - `CopilotSignIn_ResolveAsync_InvalidCopilotHome_FallsThroughWithAFinding`
@@ -217,7 +221,10 @@ answers within a 100 ms limit, and an account list that throws the SDK's own des
 each leave the plan to the runtime's fallbacks with a finding — redacted, for the start failure —
 rather than failing. A helper client whose construction throws (again with a token-shaped string in
 its message) likewise leaves a redacted finding, with nothing to dispose and its home deleted. The
-caller's cancellation while the helper runs propagates. A `COPILOT_HOME` holding a null character,
+caller's cancellation while the helper runs propagates. When the helper's cancellation carries a message and a cause
+quoting the secret `s3cr3t-value-xyz`, the caller receives a new `OperationCanceledException` with the same token, the
+message `helper stopped <redacted>` and a redacted copy as its cause; `SecretAssert` finds the secret nowhere, and the
+helper is still stopped and its home deleted. A `COPILOT_HOME` holding a null character,
 which no platform accepts as a path, yields no account, no configuration path and a finding that
 names `COPILOT_HOME` without quoting its value; resolving with it, though the profile's default home
 holds an account, leaves the plan to the runtime's fallbacks with that finding and runs no helper.
@@ -253,6 +260,8 @@ hour and half a second is 3601, and two hours is 7200.
 - `CopilotSignIn_ResolveAsync_HelperFailureQuotingAKnownSecret_IsRedacted`
 - `CopilotSignIn_ResolveAsync_FindingsQuotingASecret_AreRedacted`
 - `CopilotSignIn_ResolveAsync_HelperReportsAnotherSignInQuotingASecret_IsRedacted`
+- `CopilotSignIn_ResolveAsync_ProviderRefusalForAHostQuotingASecret_IsRedacted`
+- `CopilotSignIn_CreateSessionTokenProvider_NoTokenForAHostQuotingASecret_IsRedacted`
 - `CopilotSignIn_CreateSessionTokenProvider_RecordsEachTokenForRedaction`
 - `CopilotSignIn_PlanRedact_LongestSecretFirstAndTokenShapes`
 - `CopilotSignIn_PlanToString_RedactsTheToken`
@@ -284,7 +293,11 @@ configuration path, the requested host, the GitHub CLI's folder, the lookup's pr
 `SecretAssert` finds the value in no finding and in no refusal built from them. A helper that reports another sign-in
 whose kind, host and login quote the secret and a token-shaped value leaves the finding `reported another sign-in
 (kind-<redacted>: https://<redacted>.ghe.com / octo-<redacted> gho_<redacted>)`, and the entry logged for it carries
-neither value.
+neither value. With `COPILOT_GH_HOST` set to `s3cr3t-value-xyz.ghe.com`, a provider that fails and one that returns
+no token are refused naming `https://<redacted>.ghe.com`, the failing provider's own exception kept unchanged as the
+cause; a session's refusal for a host the runtime names that cannot be normalized, and that quotes the secret, names it
+with `<redacted>`; and a plan whose host name quotes the secret shows `HostName = <redacted>.ghe.com` in its string
+form.
 
 #### AgentKitAgentsCopilot-CopilotSignIn-RedactsLogEntries: The Host's Logger Receives Only Redacted Entries
 
@@ -294,6 +307,8 @@ neither value.
 - `CopilotSignIn_RedactingLogger_KeepsLevelsEventsAndPrimitiveValues`
 - `CopilotSignIn_ResolveAsync_CopilotCliNotUsed_LogsTheFindingRedacted`
 - `CopilotSignIn_ResolveAsync_HelperReportsAnotherSignInQuotingASecret_IsRedacted`
+- `CopilotSignIn_ReadCopilotCliToken_HomeNotDeleted_LogsThePathRedacted`
+- `CopilotSignIn_Report_FieldsQuotingASecret_AreLoggedRedacted`
 
 Normal operation and error paths. An entry in the shape the SDK logs an RPC failure with —
 `Error handling JSON-RPC method {Method}: {Error}`, the error quoting `s3cr3t-value-xyz` and a token-shaped value —
@@ -311,7 +326,25 @@ whose levels the redacting logger reports; and wrapping no logger yields none.
 The resolution logs through it: a Copilot CLI account found but not used, because another host was requested or the
 helper failed quoting the secret and a token-shaped value, is logged as `CopilotCliSignInNotUsed` with the login,
 the configuration's path, the requested host and the helper's error each showing `<redacted>`, and `SecretAssert` finds
-neither value in any entry.
+neither value in any entry. A helper home whose path quotes the secret and cannot be deleted is logged as
+`CopilotSignInHomeNotDeleted` with `helper-<redacted>`, through a logger the caller did not wrap. The sign-in the
+runtime reports — a host and login quoting the secret and a token-shaped value — and the Copilot CLI account it is
+warned against, whose login quotes the secret, are logged with every field redacted.
+
+#### AgentKitAgentsCopilot-CopilotSignIn-RedactsWithoutAPlan: Text Quoted Without a Sign-In Is Redacted Too
+
+**Tests**:
+
+- `CopilotSignIn_SecretsFromEnvironment_RecordsEverySecretVariable`
+- `CopilotSignIn_Redact_WithoutAPlan_RemovesTheProcessEnvironmentsSecrets`
+
+Normal operation and boundaries. A host environment holding a value in each of the five secret variables and in
+`PATH`, with a host token, yields secrets that redact the five values and the host token and nothing else; a spawned
+process's environment holding `GH_ENTERPRISE_TOKEN` and `HOME` yields secrets that redact only that value. In the
+`ProcessEnvironment` collection, with `GITHUB_ENTERPRISE_TOKEN` set to a unique value for the test's duration, text
+redacted with no sign-in — a quoted runtime message, a cause's copy, a relayed failure, a start failure's explanation
+and a provider's refusal for a host quoting the value — has the value replaced by `<redacted>`, a token-shaped value is
+still reduced to its prefix, and `SecretAssert` finds the value nowhere.
 
 #### AgentKitAgentsCopilot-CopilotSignIn-KeepsOnlyARedactedCause: A Cause Is a Redacted Copy
 

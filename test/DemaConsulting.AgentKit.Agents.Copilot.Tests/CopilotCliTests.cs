@@ -752,8 +752,8 @@ public class CopilotCliTests
     }
 
     /// <summary>
-    ///     Proves a CLI that cannot be started is refused, naming it, with the platform's failure kept
-    ///     as the cause.
+    ///     Proves a CLI that cannot be started is refused, naming it, with a redacted copy of the
+    ///     platform's failure — never the original — kept as the cause.
     /// </summary>
     [Fact]
     public async Task CopilotCli_ReadVersionAsync_CannotStart_ThrowsNamingTheCli()
@@ -773,9 +773,66 @@ public class CopilotCliTests
             TestContext.Current.CancellationToken));
 
         // Assert
-        Assert.Same(cause, failure.InnerException);
+        var copy = Assert.IsType<CopilotRedactedException>(failure.InnerException);
+        Assert.Equal(typeof(Win32Exception).FullName, copy.OriginalTypeName);
+        Assert.Equal(cause.Message, copy.Message);
         Assert.Contains(cli, failure.Message, StringComparison.Ordinal);
         Assert.Contains("could not be started", failure.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves every probe refusal — a CLI that cannot be started, one that times out, one that
+    ///     exits with an error and an npm installation without <c>node</c> — is redacted of the probe
+    ///     environment's secret values, in the CLI's path, the error output and the cause, with the
+    ///     error output redacted before its tail is cut, so a secret across the cut is not half quoted.
+    /// </summary>
+    /// <param name="kind">The failure: <c>start</c>, <c>timeout</c>, <c>exit</c> or <c>node</c>.</param>
+    [Theory]
+    [InlineData("start")]
+    [InlineData("timeout")]
+    [InlineData("exit")]
+    [InlineData("node")]
+    public async Task CopilotCli_ReadVersionAsync_ProbeQuotingASecret_IsRedacted(string kind)
+    {
+        // Arrange: a secret in the probe's environment, in the CLI's folder, and in the error output
+        // placed so the tail cut, made on the raw output, would fall inside it
+        const string secret = "s3cr3t-value-xyz";
+        const string shaped = "gho_PROBE0123456789abcdefABCDEF01234567";
+        var folder = $"/opt/{secret}/bin";
+        var suffix = $" failed with {shaped} ";
+        var standardError = new string('x', 1000) + secret + suffix + new string('y', 500 - (secret.Length / 2) - suffix.Length);
+        var machine = new FakeCopilotCliMachine
+        {
+            Result = kind == "exit"
+                ? new(3, string.Empty, standardError, TimedOut: false)
+                : new(-1, string.Empty, standardError, TimedOut: true),
+            Failure = kind == "start" ? new Win32Exception(2, $"cannot start {folder}/copilot ({secret})") : null,
+        };
+        var cli = machine.AddFile(Path.Combine(folder, kind == "node" ? "npm-loader.js" : "copilot"), length: RealCliLength);
+        var environment = new Dictionary<string, string>(StringComparer.Ordinal) { ["GH_ENTERPRISE_TOKEN"] = secret, ["PATH"] = "/usr/bin" };
+
+        // Act
+        var failure = await Assert.ThrowsAsync<InvalidOperationException>(() => CopilotCli.ReadVersionAsync(
+            cli,
+            DataDirectory,
+            environment,
+            machine.Context(CopilotCliPlatform.Linux, "/usr/bin"),
+            machine.RunAsync,
+            TestContext.Current.CancellationToken));
+
+        // Assert
+        Assert.Contains("/opt/<redacted>/bin", failure.Message, StringComparison.Ordinal);
+        if (kind is "timeout" or "exit")
+        {
+            Assert.Contains("redacted> failed with gho_<redacted>", failure.Message, StringComparison.Ordinal);
+        }
+
+        if (kind == "start")
+        {
+            Assert.Equal(typeof(Win32Exception).FullName, Assert.IsType<CopilotRedactedException>(failure.InnerException).OriginalTypeName);
+        }
+
+        SecretAssert.NoSecret(failure, secret, shaped, secret[..8], secret[^8..]);
     }
 
     /// <summary>

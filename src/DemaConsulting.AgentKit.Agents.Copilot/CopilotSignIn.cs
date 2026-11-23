@@ -76,6 +76,22 @@ namespace DemaConsulting.AgentKit.Agents.Copilot;
 ///     Only the host's own token provider's exception is kept unchanged: the host's code raised it,
 ///     AgentKit quotes none of it, and the host can then recognize its own failure.
 ///     </para>
+///     <para>
+///     <b>The sink rule.</b> Text that comes from the runtime, the SDK, the helper, the environment
+///     or the Copilot CLI's configuration is redacted where it enters a finding, a log entry, an
+///     exception message or a cause; no sink relies on another having redacted it. Every log entry —
+///     AgentKit's own and every one the SDK writes — reaches the host's logger through one
+///     <see cref="CopilotRedactingLogger"/>. The redactor is the resolved plan's; while the sign-in
+///     resolves, the environment's secrets and the host's token
+///     (<see cref="CopilotSignInSecrets.FromEnvironment(IDictionary, string?)"/>); for a version probe,
+///     its own environment's; and with no plan and no environment in hand — only a client built
+///     outside <see cref="CopilotRuntime.StartAsync"/> — the process environment's
+///     (<see cref="CopilotSignInSecrets.Ambient"/>). Left as they are, by design: a value the host
+///     passed, reflected back in its own argument validation; the host's own token provider's
+///     exception; the conversation content the model already saw; typed values the host asked for,
+///     such as the runtime's host, login and version and the catalog's models; and exception type
+///     names, which are code identifiers.
+///     </para>
 /// </remarks>
 internal static partial class CopilotSignIn
 {
@@ -353,7 +369,7 @@ internal static partial class CopilotSignIn
         if (options.GitHubTokenProvider is { } provider)
         {
             var host = requestedHost ?? DefaultHost;
-            var token = await AskProviderAsync(provider, host, cancellationToken).ConfigureAwait(false);
+            var token = await AskProviderAsync(provider, host, cancellationToken, secrets).ConfigureAwait(false);
             secrets.Add(token);
             return HostSupplied(
                 CopilotSignInSource.GitHubTokenProvider,
@@ -499,16 +515,27 @@ internal static partial class CopilotSignIn
     /// <summary>
     ///     Asks the host's token provider for the token the runtime starts with.
     /// </summary>
+    /// <remarks>
+    ///     The host the refusal names is redacted, since it may come from the environment. The
+    ///     provider's own exception is kept unchanged as the cause: the host's code raised it, AgentKit
+    ///     quotes none of it, and the host can then recognize its own failure — the one deliberate
+    ///     exception to keeping only redacted causes.
+    /// </remarks>
     /// <param name="provider">The host's provider.</param>
     /// <param name="host">The host the token is for.</param>
     /// <param name="cancellationToken">Cancels the request.</param>
+    /// <param name="secrets">
+    ///     The secrets redacted from the host the refusal names, or <see langword="null"/> for those of
+    ///     the process environment.
+    /// </param>
     /// <returns>The token.</returns>
     /// <exception cref="InvalidOperationException">The provider failed or returned no token; a failure is the inner exception.</exception>
     /// <exception cref="OperationCanceledException">The provider was canceled. It propagates unchanged.</exception>
     internal static async Task<string> AskProviderAsync(
         Func<CopilotGitHubTokenRequest, CancellationToken, Task<CopilotGitHubToken>> provider,
         string host,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        CopilotSignInSecrets? secrets = null)
     {
         CopilotGitHubToken? result;
         try
@@ -517,15 +544,18 @@ internal static partial class CopilotSignIn
         }
         catch (Exception failure) when (failure is not OperationCanceledException)
         {
+            // The host's own exception, kept unchanged by design (see the remarks)
             throw new InvalidOperationException(
                 $"The GitHub token provider (CopilotRuntimeOptions' gitHubTokenProvider) failed when AgentKit asked it "
-                + $"for a token for {host}, so the Copilot runtime was not started. The inner exception says why.",
+                + $"for a token for {(secrets ?? CopilotSignInSecrets.Ambient()).Redact(host)}, so the Copilot runtime was "
+                + "not started. The inner exception says why.",
                 failure);
         }
 
         return result?.Token ?? throw new InvalidOperationException(
-            $"The GitHub token provider (CopilotRuntimeOptions' gitHubTokenProvider) returned no token for {host}, so "
-            + "the Copilot runtime was not started. Return a CopilotGitHubToken, or throw when no token is available.");
+            $"The GitHub token provider (CopilotRuntimeOptions' gitHubTokenProvider) returned no token for "
+            + $"{(secrets ?? CopilotSignInSecrets.Ambient()).Redact(host)}, so the Copilot runtime was not started. Return a "
+            + "CopilotGitHubToken, or throw when no token is available.");
     }
 
     /// <summary>
@@ -552,7 +582,8 @@ internal static partial class CopilotSignIn
                 new CopilotGitHubTokenRequest(host, args.Reason == GitHubTokenRequestReason.Refresh),
                 CancellationToken.None).ConfigureAwait(false)
                 ?? throw new InvalidOperationException(
-                    $"The GitHub token provider (CopilotRuntimeOptions' gitHubTokenProvider) returned no token for {host}.");
+                    "The GitHub token provider (CopilotRuntimeOptions' gitHubTokenProvider) returned no token for "
+                    + $"{secrets.Redact(host ?? string.Empty)}.");
             secrets.Add(token.Token);
 
             return GitHubTokenProviderResult.FromToken(new GitHubToken
@@ -814,7 +845,10 @@ internal static partial class CopilotSignIn
     /// <param name="logger">The host's logger, or <see langword="null"/>.</param>
     /// <param name="cancellationToken">Cancels the read.</param>
     /// <returns>The token, or <see langword="null"/> with why there is none.</returns>
-    /// <exception cref="OperationCanceledException">The caller canceled.</exception>
+    /// <exception cref="OperationCanceledException">
+    ///     The caller canceled. A cancellation carrying nothing to redact propagates unchanged;
+    ///     otherwise it is rebuilt with the same token, a redacted message and a redacted copy as its cause.
+    /// </exception>
     internal static async Task<(string? Token, string? Problem)> ReadCopilotCliTokenAsync(
         CopilotCliAccount account,
         IDictionary hostEnvironment,
@@ -852,9 +886,10 @@ internal static partial class CopilotSignIn
         }
         finally
         {
-            if (!context.DeleteDirectory(home) && logger is not null)
+            // The home's path is under TEMP, from the environment: logged redacted, whoever passed the logger
+            if (!context.DeleteDirectory(home) && CopilotRedactingLogger.Wrap(logger, text => secrets.Redact(text)) is { } redacting)
             {
-                HelperHomeLeft(logger, home, null);
+                HelperHomeLeft(redacting, home, null);
             }
         }
     }
@@ -965,14 +1000,15 @@ internal static partial class CopilotSignIn
         CopilotSignInSource source,
         GetAuthStatusResponse authentication)
     {
-        if (logger is null)
+        // The runtime's host and login and the Copilot CLI account's are logged redacted
+        if (CopilotRedactingLogger.Wrap(logger, plan.Redact) is not { } redacting)
         {
             return;
         }
 
         var host = authentication.Host ?? "(unknown host)";
         var login = authentication.Login ?? "(unknown login)";
-        SignedIn(logger, source, host, login, null);
+        SignedIn(redacting, source, host, login, null);
 
         // A runtime fallback or environment token on another account than the Copilot CLI's
         if (plan.CliAccount is { } cli
@@ -980,7 +1016,7 @@ internal static partial class CopilotSignIn
             && (!SameHost(cli.Host, authentication.Host)
                 || !string.Equals(cli.Login, authentication.Login, StringComparison.OrdinalIgnoreCase)))
         {
-            OtherAccount(logger, host, login, source, cli.Host, cli.Login, null);
+            OtherAccount(redacting, host, login, source, cli.Host, cli.Login, null);
         }
     }
 
@@ -997,13 +1033,33 @@ internal static partial class CopilotSignIn
     ///     AgentKit is about to quote.
     /// </summary>
     /// <param name="plan">
-    ///     The sign-in whose tokens are removed, or <see langword="null"/> to remove token-shaped text
-    ///     only (a client built outside <see cref="CopilotRuntime.StartAsync"/>, such as a test's).
+    ///     The sign-in whose tokens are removed, or <see langword="null"/> — only a client built outside
+    ///     <see cref="CopilotRuntime.StartAsync"/>, such as a test's — to remove the process
+    ///     environment's secret values (<see cref="CopilotSignInSecrets.Ambient"/>) and token-shaped text.
     /// </param>
     /// <param name="text">The text, such as a runtime's error message, or <see langword="null"/>.</param>
     /// <returns>The text with the secrets redacted; empty for a <see langword="null"/> text.</returns>
     internal static string Redact(CopilotSignInPlan? plan, string? text) =>
-        text is null ? string.Empty : plan?.Redact(text) ?? Redact(text);
+        text is null ? string.Empty : Redactor(plan)(text);
+
+    /// <summary>
+    ///     Builds the redactor of a sign-in once, for a caller that redacts many texts.
+    /// </summary>
+    /// <param name="plan">
+    ///     The sign-in whose tokens are removed, or <see langword="null"/> for the process
+    ///     environment's secret values, read once.
+    /// </param>
+    /// <returns>A function that redacts a text; a <see langword="null"/> text becomes empty.</returns>
+    internal static Func<string?, string> Redactor(CopilotSignInPlan? plan)
+    {
+        if (plan is not null)
+        {
+            return text => text is null ? string.Empty : plan.Redact(text);
+        }
+
+        var ambient = CopilotSignInSecrets.Ambient();
+        return text => text is null ? string.Empty : ambient.Redact(text);
+    }
 
     /// <summary>
     ///     Makes the redacted copy of a runtime or SDK failure that AgentKit keeps as an inner exception
@@ -1016,12 +1072,12 @@ internal static partial class CopilotSignIn
     /// </remarks>
     /// <param name="failure">The failure the runtime or the SDK raised.</param>
     /// <param name="plan">
-    ///     The sign-in whose tokens are removed, or <see langword="null"/> to remove token-shaped text
-    ///     only.
+    ///     The sign-in whose tokens are removed, or <see langword="null"/> for the process
+    ///     environment's secret values.
     /// </param>
     /// <returns>The redacted copy, with every chained exception copied the same way.</returns>
     internal static CopilotRedactedException RedactFailure(Exception failure, CopilotSignInPlan? plan) =>
-        CopilotRedactedException.Copy(failure, text => Redact(plan, text), depth: 1);
+        CopilotRedactedException.Copy(failure, Redactor(plan), depth: 1);
 
     /// <summary>
     ///     Makes the exception AgentKit relays to a host in place of a runtime or SDK failure: a new
@@ -1063,7 +1119,7 @@ internal static partial class CopilotSignIn
     /// </remarks>
     /// <param name="failure">The failure the runtime or the SDK raised.</param>
     /// <param name="plan">
-    ///     The sign-in whose tokens are removed, or <see langword="null"/> to remove token-shaped text
+    ///     The sign-in whose tokens are removed, or <see langword="null"/> to remove the process environment's secrets and token-shaped text
     ///     only.
     /// </param>
     /// <returns>
@@ -1078,20 +1134,22 @@ internal static partial class CopilotSignIn
             return failure;
         }
 
-        var message = Redact(plan, failure.Message);
+        // One redactor for the message and the whole copied chain
+        var redact = Redactor(plan);
+        var message = redact(failure.Message);
         var clean = failure.InnerException is null && string.Equals(message, failure.Message, StringComparison.Ordinal);
         return failure switch
         {
             OperationCanceledException when clean => failure,
             ObjectDisposedException when clean => failure,
             TaskCanceledException canceled =>
-                new TaskCanceledException(message, RedactFailure(failure, plan), canceled.CancellationToken),
+                new TaskCanceledException(message, CopilotRedactedException.Copy(failure, redact, depth: 1), canceled.CancellationToken),
             OperationCanceledException canceled =>
-                new OperationCanceledException(message, RedactFailure(failure, plan), canceled.CancellationToken),
-            ObjectDisposedException => new ObjectDisposedException(message, RedactFailure(failure, plan)),
-            IOException => new IOException(message, RedactFailure(failure, plan)),
-            TimeoutException => new TimeoutException(message, RedactFailure(failure, plan)),
-            _ => new InvalidOperationException(message, RedactFailure(failure, plan)),
+                new OperationCanceledException(message, CopilotRedactedException.Copy(failure, redact, depth: 1), canceled.CancellationToken),
+            ObjectDisposedException => new ObjectDisposedException(message, CopilotRedactedException.Copy(failure, redact, depth: 1)),
+            IOException => new IOException(message, CopilotRedactedException.Copy(failure, redact, depth: 1)),
+            TimeoutException => new TimeoutException(message, CopilotRedactedException.Copy(failure, redact, depth: 1)),
+            _ => new InvalidOperationException(message, CopilotRedactedException.Copy(failure, redact, depth: 1)),
         };
     }
 
@@ -1105,7 +1163,7 @@ internal static partial class CopilotSignIn
     /// <typeparam name="T">The operation's result.</typeparam>
     /// <param name="operation">The operation, such as opening a runtime session.</param>
     /// <param name="plan">
-    ///     The sign-in whose tokens are removed, or <see langword="null"/> to remove token-shaped text
+    ///     The sign-in whose tokens are removed, or <see langword="null"/> to remove the process environment's secrets and token-shaped text
     ///     only.
     /// </param>
     /// <returns>The operation's result.</returns>
@@ -1180,7 +1238,10 @@ internal static partial class CopilotSignIn
     /// <param name="secrets">The tokens the resolution knows, redacted from the helper's text.</param>
     /// <param name="cancellationToken">Cancels the read.</param>
     /// <returns>The token, or <see langword="null"/> with why there is none.</returns>
-    /// <exception cref="OperationCanceledException">The caller canceled.</exception>
+    /// <exception cref="OperationCanceledException">
+    ///     The caller canceled. A cancellation carrying nothing to redact propagates unchanged;
+    ///     otherwise it is rebuilt with the same token, a redacted message and a redacted copy as its cause.
+    /// </exception>
     private static async Task<(string? Token, string? Problem)> RunHelperAsync(
         CopilotCliAccount account,
         CopilotClientOptions options,
@@ -1240,8 +1301,21 @@ internal static partial class CopilotSignIn
         {
             return (null, $"the Copilot CLI did not report the account within {context.HelperTimeout.TotalSeconds:0} seconds (a credential-store prompt nobody answered?).");
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (OperationCanceledException canceled)
         {
+            // The caller canceled: the SDK's cancellation may carry the helper's text and a cause, so
+            // it is relayed as any runtime failure is - unchanged only when it carries nothing
+            var relayed = RedactRelayed(canceled, new CopilotSignInPlan { Secrets = secrets });
+            if (ReferenceEquals(relayed, canceled))
+            {
+                throw;
+            }
+
+            throw relayed;
+        }
+        catch (Exception ex)
+        {
+            // The exception's type name is a code identifier; its message is the helper's text, redacted
             return (null, $"the Copilot CLI could not be run to read it ({ex.GetType().Name}: {secrets.Redact(ex.Message)}).");
         }
         finally
@@ -1449,10 +1523,16 @@ internal sealed class CopilotSignInPlan
     ///     a provider is not asked.
     /// </remarks>
     /// <param name="options">The host's options.</param>
+    /// <param name="hostEnvironment">
+    ///     The host's environment, whose secret variables' values are recorded too, or
+    ///     <see langword="null"/> to record the host's token only.
+    /// </param>
     /// <returns>The plan.</returns>
-    internal static CopilotSignInPlan FromOptions(CopilotRuntimeOptions options)
+    internal static CopilotSignInPlan FromOptions(CopilotRuntimeOptions options, IDictionary? hostEnvironment = null)
     {
-        var secrets = new CopilotSignInSecrets();
+        var secrets = hostEnvironment is null
+            ? new CopilotSignInSecrets()
+            : CopilotSignInSecrets.FromEnvironment(hostEnvironment);
         secrets.Add(options.GitHubToken);
         return new()
         {
@@ -1468,10 +1548,14 @@ internal sealed class CopilotSignInPlan
     /// <summary>
     ///     Returns a description of the plan that never contains the token.
     /// </summary>
+    /// <remarks>
+    ///     The host name may come from the environment, so the whole description is redacted like any
+    ///     text AgentKit quotes.
+    /// </remarks>
     /// <returns>The source, host and whether a token is handed over.</returns>
-    public override string ToString() =>
+    public override string ToString() => Redact(
         $"CopilotSignInPlan {{ Source = {Source?.ToString() ?? "runtime fallbacks"}, HostName = {HostName ?? "(unchanged)"}, "
-        + $"Token = {(Token is null ? "none" : "<redacted>")} }}";
+        + $"Token = {(Token is null ? "none" : "<redacted>")} }}");
 }
 
 /// <summary>
@@ -1524,6 +1608,39 @@ internal sealed class CopilotSignInSecrets
         secrets.Add(hostToken);
         return secrets;
     }
+
+    /// <summary>
+    ///     Builds the secrets a spawned process's environment holds: the value of each of its secret
+    ///     variables, read with this platform's name comparison.
+    /// </summary>
+    /// <remarks>
+    ///     The redactor of what a probe of the installed CLI could echo: its environment is all it was
+    ///     given.
+    /// </remarks>
+    /// <param name="environment">The environment, such as the one a version probe runs with.</param>
+    /// <returns>The secrets.</returns>
+    internal static CopilotSignInSecrets FromEnvironment(IReadOnlyDictionary<string, string> environment)
+    {
+        var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+        var secrets = new CopilotSignInSecrets();
+        foreach (var (name, value) in environment)
+        {
+            if (CopilotSignIn.SecretVariables.Any(secret => string.Equals(secret, name, comparison)))
+            {
+                secrets.Add(value);
+            }
+        }
+
+        return secrets;
+    }
+
+    /// <summary>
+    ///     Builds the secrets the process environment holds, for text quoted where no sign-in and no
+    ///     environment is in hand — only a client built outside <see cref="CopilotRuntime.StartAsync"/>,
+    ///     such as a test's.
+    /// </summary>
+    /// <returns>The secrets, read from the process environment now.</returns>
+    internal static CopilotSignInSecrets Ambient() => FromEnvironment(Environment.GetEnvironmentVariables());
 
     /// <summary>
     ///     Records a value as a secret.

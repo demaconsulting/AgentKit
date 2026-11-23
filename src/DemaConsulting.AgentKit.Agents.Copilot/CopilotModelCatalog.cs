@@ -312,7 +312,7 @@ public sealed class CopilotModelCatalog : CachingModelCatalog
     /// <param name="failure">The client's failure.</param>
     /// <param name="signIn">
     ///     The runtime's sign-in, whose tokens are redacted, or <see langword="null"/> to redact
-    ///     token-shaped text only.
+    ///     the process environment's secrets and token-shaped text only.
     /// </param>
     /// <returns>The failure to throw: <paramref name="failure"/> itself when it passes unchanged.</returns>
     internal static Exception ExplainReadFailure(Exception failure, CopilotSignInPlan? signIn) =>
@@ -331,7 +331,7 @@ public sealed class CopilotModelCatalog : CachingModelCatalog
     /// <param name="failure">The client's failure.</param>
     /// <param name="signIn">
     ///     The runtime's sign-in, whose tokens are redacted, or <see langword="null"/> to redact
-    ///     token-shaped text only.
+    ///     the process environment's secrets and token-shaped text only.
     /// </param>
     /// <returns>The failure to throw.</returns>
     internal static InvalidOperationException ExplainListFailure(InvalidOperationException failure, CopilotSignInPlan? signIn) =>

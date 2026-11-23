@@ -1007,21 +1007,26 @@ public sealed class CopilotSignInTests : IDisposable
     }
 
     /// <summary>
-    ///     Proves the plan's string form never carries the token.
+    ///     Proves the plan's string form never carries the token, nor a known secret its host quotes.
     /// </summary>
     [Fact]
     public void CopilotSignIn_PlanToString_RedactsTheToken()
     {
         // Arrange
+        const string secret = "s3cr3t-value-xyz";
         var plan = new CopilotSignInPlan { Source = CopilotSignInSource.CopilotCli, Token = SentinelToken, HostName = "example.ghe.com" };
+        var secretHost = new CopilotSignInPlan { HostName = $"{secret}.ghe.com", Secrets = PlanKnowing(secret).Secrets };
 
         // Act
         var text = plan.ToString();
+        var hostText = secretHost.ToString();
 
         // Assert
         Assert.DoesNotContain(SentinelToken, text, StringComparison.Ordinal);
         Assert.Contains("<redacted>", text, StringComparison.Ordinal);
         Assert.Contains("example.ghe.com", text, StringComparison.Ordinal);
+        Assert.Contains("HostName = <redacted>.ghe.com", hostText, StringComparison.Ordinal);
+        SecretAssert.NoSecretInText(hostText, secret);
     }
 
     /// <summary>
@@ -1494,6 +1499,206 @@ public sealed class CopilotSignInTests : IDisposable
         Assert.True(logger.IsEnabled(LogLevel.Information));
         Assert.Null(CopilotRedactingLogger.Wrap(null, text => text));
         SecretAssert.NoSecret(inner, secret);
+    }
+
+    /// <summary>
+    ///     Proves the caller's cancellation, when the helper's cancellation carries the helper's text
+    ///     and a cause quoting a known secret, is rebuilt redacted with the same token — not passed on
+    ///     as the SDK raised it — and the helper is still stopped and its home deleted.
+    /// </summary>
+    [Fact]
+    public async Task CopilotSignIn_ResolveAsync_CallerCanceledHelperCarryingASecret_IsRebuiltRedacted()
+    {
+        // Arrange
+        const string secret = "s3cr3t-value-xyz";
+        WriteUserConfiguration(UserConfiguration);
+        using var cancellation = new CancellationTokenSource();
+        var raised = new OperationCanceledException($"helper stopped {secret}", new IOException($"pipe {secret}"), cancellation.Token);
+        Helper.OnStart = cancellation.Cancel;
+        Helper.StartFailure = raised;
+
+        // Act
+        var failure = await Assert.ThrowsAsync<OperationCanceledException>(() => ResolveAsync(
+            new CopilotRuntimeOptions(DataDirectory),
+            new Hashtable { ["GH_ENTERPRISE_TOKEN"] = secret },
+            cancellationToken: cancellation.Token));
+
+        // Assert
+        Assert.NotSame(raised, failure);
+        Assert.Equal(cancellation.Token, failure.CancellationToken);
+        Assert.Equal("helper stopped <redacted>", failure.Message);
+        Assert.IsType<CopilotRedactedException>(failure.InnerException);
+        SecretAssert.NoSecret(failure, secret);
+        Assert.True(Helper.Disposed);
+        Assert.All(_helperHomes, home => Assert.False(Directory.Exists(home)));
+    }
+
+    /// <summary>
+    ///     Proves a helper home that could not be deleted is logged with its path redacted, through a
+    ///     logger the caller did not wrap.
+    /// </summary>
+    [Fact]
+    public async Task CopilotSignIn_ReadCopilotCliToken_HomeNotDeleted_LogsThePathRedacted()
+    {
+        // Arrange: a home whose path quotes a known secret, and a deletion that fails
+        const string secret = "s3cr3t-value-xyz";
+        var home = Path.Combine(_root, $"helper-{secret}");
+        var context = new CopilotSignInContext(
+            new FakeCopilotCliMachine().Context(CopilotCliPlatform.Linux),
+            Profile,
+            () =>
+            {
+                Directory.CreateDirectory(home);
+                return home;
+            },
+            Helper.Create,
+            _ => false,
+            TimeSpan.FromMinutes(1));
+        var logger = new CapturingLogger();
+
+        // Act
+        var (token, _) = await CopilotSignIn.ReadCopilotCliTokenAsync(
+            new CopilotCliAccount(AccountHost, AccountLogin),
+            new Hashtable(),
+            cliPath: null,
+            context,
+            PlanKnowing(secret).Secrets,
+            logger,
+            TestContext.Current.CancellationToken);
+
+        // Assert
+        Assert.Equal(SentinelToken, token);
+        var entry = Assert.Single(logger.Entries);
+        Assert.Equal("CopilotSignInHomeNotDeleted", entry.EventId.Name);
+        Assert.Contains("helper-<redacted>", entry.Message, StringComparison.Ordinal);
+        SecretAssert.NoSecret(logger, secret, SentinelToken);
+    }
+
+    /// <summary>
+    ///     Proves the sign-in the runtime reports, and the Copilot CLI account it is warned against,
+    ///     are logged with every field redacted.
+    /// </summary>
+    [Fact]
+    public void CopilotSignIn_Report_FieldsQuotingASecret_AreLoggedRedacted()
+    {
+        // Arrange
+        const string secret = "s3cr3t-value-xyz";
+        var logger = new CapturingLogger();
+        var plan = new CopilotSignInPlan
+        {
+            CliAccount = new CopilotCliAccount(AccountHost, $"octo-{secret}"),
+            Secrets = PlanKnowing(secret).Secrets,
+        };
+        var authentication = new GetAuthStatusResponse
+        {
+            IsAuthenticated = true,
+            AuthType = "gh-cli",
+            Host = $"https://{secret}.ghe.com",
+            Login = $"web-{secret} {SentinelToken}",
+        };
+
+        // Act
+        CopilotSignIn.Report(logger, plan, CopilotSignInSource.GitHubCli, authentication);
+
+        // Assert
+        var entries = logger.Entries;
+        Assert.Equal(2, entries.Count);
+        Assert.Contains("https://<redacted>.ghe.com / web-<redacted> gho_<redacted>", entries[0].Message, StringComparison.Ordinal);
+        Assert.Contains("octo-<redacted>", entries[1].Message, StringComparison.Ordinal);
+        SecretAssert.NoSecret(logger, secret, SentinelToken);
+    }
+
+    /// <summary>
+    ///     Proves the refusal of a provider that fails or returns no token names the host redacted when
+    ///     the host quotes a known secret, while the provider's own exception is kept unchanged.
+    /// </summary>
+    [Fact]
+    public async Task CopilotSignIn_ResolveAsync_ProviderRefusalForAHostQuotingASecret_IsRedacted()
+    {
+        // Arrange
+        const string secret = "s3cr3t-value-xyz";
+        var environment = new Hashtable { ["GH_ENTERPRISE_TOKEN"] = secret, ["COPILOT_GH_HOST"] = $"{secret}.ghe.com" };
+        var cause = new HttpRequestException("token service unavailable");
+
+        // Act
+        var failed = await Assert.ThrowsAsync<InvalidOperationException>(() => ResolveAsync(
+            new CopilotRuntimeOptions(DataDirectory, gitHubTokenProvider: (_, _) => Task.FromException<CopilotGitHubToken>(cause)),
+            environment));
+        var empty = await Assert.ThrowsAsync<InvalidOperationException>(() => ResolveAsync(
+            new CopilotRuntimeOptions(DataDirectory, gitHubTokenProvider: (_, _) => Task.FromResult<CopilotGitHubToken>(null!)),
+            environment));
+        var withoutSecrets = await Assert.ThrowsAsync<InvalidOperationException>(() => CopilotSignIn.AskProviderAsync(
+            (_, _) => Task.FromResult<CopilotGitHubToken>(null!),
+            AccountHost,
+            TestContext.Current.CancellationToken));
+
+        // Assert
+        Assert.Same(cause, failed.InnerException);
+        Assert.Contains("for a token for https://<redacted>.ghe.com", failed.Message, StringComparison.Ordinal);
+        Assert.Contains("no token for https://<redacted>.ghe.com", empty.Message, StringComparison.Ordinal);
+        Assert.Contains($"no token for {AccountHost}", withoutSecrets.Message, StringComparison.Ordinal);
+        SecretAssert.NoSecret(failed, secret);
+        SecretAssert.NoSecret(empty, secret);
+    }
+
+    /// <summary>
+    ///     Proves a session's refusal for a host the runtime names that cannot be normalized, and that
+    ///     quotes a known secret, carries the host redacted.
+    /// </summary>
+    [Fact]
+    public async Task CopilotSignIn_CreateSessionTokenProvider_NoTokenForAHostQuotingASecret_IsRedacted()
+    {
+        // Arrange
+        const string secret = "s3cr3t-value-xyz";
+        var sessionProvider = CopilotSignIn.CreateSessionTokenProvider(
+            (_, _) => Task.FromResult<CopilotGitHubToken>(null!),
+            PlanKnowing(secret).Secrets);
+
+        // Act
+        var failure = await Assert.ThrowsAsync<InvalidOperationException>(() => sessionProvider(
+            new GitHubTokenProviderArgs { Host = $"https://user:{secret}@example.ghe.com", Reason = GitHubTokenRequestReason.Initial }));
+
+        // Assert
+        Assert.Contains("no token for https://user:<redacted>@example.ghe.com", failure.Message, StringComparison.Ordinal);
+        SecretAssert.NoSecret(failure, secret);
+    }
+
+    /// <summary>
+    ///     Proves the secrets an environment holds are the value of each secret variable, read with the
+    ///     platform's name comparison, and the host's token — from a host environment and from a
+    ///     spawned process's environment alike — and nothing else.
+    /// </summary>
+    [Fact]
+    public void CopilotSignIn_SecretsFromEnvironment_RecordsEverySecretVariable()
+    {
+        // Arrange
+        var host = new Hashtable
+        {
+            ["COPILOT_GITHUB_TOKEN"] = "s3cr3t-copilot",
+            ["GH_TOKEN"] = "s3cr3t-gh",
+            ["GITHUB_TOKEN"] = "s3cr3t-github",
+            ["GH_ENTERPRISE_TOKEN"] = "s3cr3t-ghe",
+            ["GITHUB_ENTERPRISE_TOKEN"] = "s3cr3t-github-enterprise",
+            ["PATH"] = "/usr/bin",
+        };
+        IReadOnlyDictionary<string, string> spawned = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["GH_ENTERPRISE_TOKEN"] = "s3cr3t-spawned",
+            ["HOME"] = "/home/user",
+        };
+        const string text = "copilot gh github ghe github-enterprise host spawned: s3cr3t-copilot s3cr3t-gh s3cr3t-github "
+            + "s3cr3t-ghe s3cr3t-github-enterprise s3cr3t-host s3cr3t-spawned /usr/bin /home/user";
+
+        // Act
+        var fromHost = CopilotSignInSecrets.FromEnvironment(host, "s3cr3t-host").Redact(text);
+        var fromSpawned = CopilotSignInSecrets.FromEnvironment(spawned).Redact(text);
+
+        // Assert
+        Assert.Equal(
+            "copilot gh github ghe github-enterprise host spawned: <redacted> <redacted> <redacted> <redacted> <redacted> "
+            + "<redacted> s3cr3t-spawned /usr/bin /home/user",
+            fromHost);
+        Assert.EndsWith("s3cr3t-github-enterprise s3cr3t-host <redacted> /usr/bin /home/user", fromSpawned, StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -2097,6 +2302,69 @@ public sealed class CopilotSignInTests : IDisposable
         {
             Disposed = true;
             return ValueTask.CompletedTask;
+        }
+    }
+}
+
+/// <summary>
+///     The collection of tests that set a process environment variable: they run alone, never in
+///     parallel with another test.
+/// </summary>
+[CollectionDefinition("ProcessEnvironment", DisableParallelization = true)]
+public sealed class ProcessEnvironmentCollection
+{
+}
+
+/// <summary>
+///     Unit tests for the redaction <see cref="CopilotSignIn"/> applies when no sign-in and no
+///     environment is in hand, which reads the process environment.
+/// </summary>
+/// <remarks>
+///     The one documented exception to the rule that no unit test reads or changes the process
+///     environment: the test sets <c>GITHUB_ENTERPRISE_TOKEN</c> to a value of its own, which no other
+///     unit test's logic reads, restores it afterwards, and runs alone.
+/// </remarks>
+[Collection("ProcessEnvironment")]
+public sealed class CopilotSignInProcessEnvironmentTests
+{
+    /// <summary>
+    ///     Proves text redacted without a sign-in — a quoted runtime message, a cause's copy, a relayed
+    ///     failure, a start failure's explanation and a provider's refusal — has the process
+    ///     environment's secret values removed, not only the text shaped like a GitHub token.
+    /// </summary>
+    [Fact]
+    public async Task CopilotSignIn_Redact_WithoutAPlan_RemovesTheProcessEnvironmentsSecrets()
+    {
+        // Arrange
+        var secret = $"s3cr3t-ambient-{Guid.NewGuid():N}";
+        const string shaped = "gho_AMBIENT0123456789abcdefABCDEF012345";
+        var previous = Environment.GetEnvironmentVariable("GITHUB_ENTERPRISE_TOKEN");
+        Environment.SetEnvironmentVariable("GITHUB_ENTERPRISE_TOKEN", secret);
+        try
+        {
+            // Act
+            var text = CopilotSignIn.Redact(plan: null, $"runtime said {secret} {shaped}");
+            var copy = CopilotSignIn.RedactFailure(new IOException($"lost {secret}"), plan: null);
+            var relayed = CopilotSignIn.RedactRelayed(new IOException($"lost {secret}"), plan: null);
+            var explained = CopilotRuntime.ExplainStartFailure(new IOException($"exited {secret}"), launch: null, signIn: null);
+            var refusal = await Assert.ThrowsAsync<InvalidOperationException>(() => CopilotSignIn.AskProviderAsync(
+                (_, _) => Task.FromResult<CopilotGitHubToken>(null!),
+                $"https://{secret}.ghe.com",
+                TestContext.Current.CancellationToken));
+
+            // Assert
+            Assert.Equal("runtime said <redacted> gho_<redacted>", text);
+            Assert.Equal("lost <redacted>", copy.Message);
+            Assert.Equal("lost <redacted>", relayed.Message);
+            Assert.Contains("could not start: exited <redacted>", explained, StringComparison.Ordinal);
+            SecretAssert.NoSecret(copy, secret);
+            SecretAssert.NoSecret(relayed, secret);
+            SecretAssert.NoSecret(refusal, secret);
+            SecretAssert.NoSecretInText(explained, secret);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("GITHUB_ENTERPRISE_TOKEN", previous);
         }
     }
 }

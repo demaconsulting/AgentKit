@@ -105,7 +105,7 @@ internal sealed class CopilotAgent : AIAgent
 
     /// <summary>
     ///     The sign-in of the runtime the agent's sessions run on, whose tokens are redacted from a
-    ///     session error, or <see langword="null"/> to redact token-shaped text only.
+    ///     session error, or <see langword="null"/> to redact the process environment's secrets and token-shaped text only.
     /// </summary>
     private readonly CopilotSignInPlan? _signIn;
 
@@ -128,7 +128,7 @@ internal sealed class CopilotAgent : AIAgent
     /// <param name="name">The agent's name, or <see langword="null"/>/blank for <see cref="DefaultName"/>.</param>
     /// <param name="signIn">
     ///     The sign-in of the runtime the sessions run on, whose tokens are redacted from a session
-    ///     error, or <see langword="null"/> to redact token-shaped text only.
+    ///     error, or <see langword="null"/> to redact the process environment's secrets and token-shaped text only.
     /// </param>
     /// <exception cref="ArgumentNullException">Any delegate is <see langword="null"/>.</exception>
     internal CopilotAgent(
@@ -506,7 +506,7 @@ internal sealed class CopilotAgent : AIAgent
 
         /// <summary>
         ///     The runtime's sign-in, whose tokens are redacted from a session error, or
-        ///     <see langword="null"/> to redact token-shaped text only.
+        ///     <see langword="null"/> to redact the process environment's secrets and token-shaped text only.
         /// </summary>
         private readonly CopilotSignInPlan? _signIn;
 
@@ -558,6 +558,12 @@ internal sealed class CopilotAgent : AIAgent
         /// <summary>
         ///     Maps one root-agent event onto an update, or nothing.
         /// </summary>
+        /// <remarks>
+        ///     Not redacted, by design: assistant text, tool calls and results and the raw event are
+        ///     conversation content the model already saw and the host subscribed to; rewriting them
+        ///     would make the transcript disagree with the runtime's conversation. See the sink rule on
+        ///     <see cref="CopilotSignIn"/>.
+        /// </remarks>
         /// <param name="sessionEvent">The event.</param>
         /// <returns>The update, or <see langword="null"/> for an event with no agent-visible content.</returns>
         private AgentResponseUpdate? ToUpdate(SessionEvent sessionEvent)

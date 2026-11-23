@@ -127,7 +127,7 @@ public sealed class CopilotProviderSessionFactory : IProviderSessionFactory
     /// <summary>
     ///     The sign-in of the runtime the sessions run on, whose tokens each session redacts from the
     ///     runtime text a refusal quotes and from a turn's relayed failure, and this factory from a
-    ///     relayed failure to open a session, or <see langword="null"/> to redact token-shaped text
+    ///     relayed failure to open a session, or <see langword="null"/> to redact the process environment's secrets and token-shaped text
     ///     only.
     /// </summary>
     private readonly CopilotSignInPlan? _signIn;
@@ -222,7 +222,7 @@ public sealed class CopilotProviderSessionFactory : IProviderSessionFactory
     /// <param name="selection">A validated model selection, or <see langword="null"/>; see the public constructor.</param>
     /// <param name="signIn">
     ///     The sign-in whose tokens each session redacts from the runtime text a refusal quotes, or
-    ///     <see langword="null"/> to redact token-shaped text only.
+    ///     <see langword="null"/> to redact the process environment's secrets and token-shaped text only.
     /// </param>
     /// <exception cref="ArgumentNullException"><paramref name="opener"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException">

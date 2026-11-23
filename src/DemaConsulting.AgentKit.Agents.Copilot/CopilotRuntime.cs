@@ -1037,7 +1037,7 @@ public sealed class CopilotRuntime : IAsyncDisposable
         string? cliPath = null,
         CopilotSignInPlan? signIn = null)
     {
-        signIn ??= CopilotSignInPlan.FromOptions(options);
+        signIn ??= CopilotSignInPlan.FromOptions(options, hostEnvironment);
 
         // The runtime's environment, with the GitHub host of the chosen sign-in when it names one
         var environment = BuildRuntimeEnvironment(hostEnvironment);
@@ -1060,10 +1060,12 @@ public sealed class CopilotRuntime : IAsyncDisposable
                 baseDirectory: dataDirectory),
         };
 
-        // Neutral options only: the resolved sign-in and host-side diagnostics.
+        // Neutral options only: the resolved sign-in and host-side diagnostics. Everything the SDK
+        // logs - the runtime's error output, RPC errors, paths and exceptions - reaches the host's
+        // logger only redacted with the sign-in's live secrets.
         clientOptions.GitHub.Token = signIn.Token;
         clientOptions.Observability.LogLevel = options.LogLevel;
-        clientOptions.Observability.Logger = options.Logger;
+        clientOptions.Observability.Logger = CopilotRedactingLogger.Wrap(options.Logger, signIn.Redact);
 
         return clientOptions;
     }
@@ -1110,18 +1112,22 @@ public sealed class CopilotRuntime : IAsyncDisposable
             return new CopilotRuntimeLaunch(CopilotRuntimeSource.Bundled, null, null);
         }
 
+        // Every refusal quotes paths from the host's options, PATH or discovery: redacted with the
+        // host environment's secrets and the host's token, as no sign-in exists yet
+        var secrets = CopilotSignInSecrets.FromEnvironment(hostEnvironment, options.GitHubToken);
+
         // The host's own choice wins; otherwise discovery chooses, never the ambient environment
         string cliPath;
         if (options.CliPath is not null)
         {
             cliPath = context.FileExists(options.CliPath)
                 ? options.CliPath
-                : throw new InvalidOperationException(CopilotCli.ExplainExplicitPathMissing(options.CliPath));
+                : throw new InvalidOperationException(secrets.Redact(CopilotCli.ExplainExplicitPathMissing(options.CliPath)));
         }
         else
         {
             var found = CopilotCli.FindInstalled(context);
-            cliPath = found.Path ?? throw new InvalidOperationException(CopilotCli.ExplainNotFound(found));
+            cliPath = found.Path ?? throw new InvalidOperationException(secrets.Redact(CopilotCli.ExplainNotFound(found)));
         }
 
         // The version the runtime will run, checked before a runtime process exists
@@ -1134,7 +1140,7 @@ public sealed class CopilotRuntime : IAsyncDisposable
             cancellationToken).ConfigureAwait(false);
         if (version is not null && !CopilotCli.IsSupported(version))
         {
-            throw new InvalidOperationException(CopilotCli.ExplainTooOld(cliPath, version));
+            throw new InvalidOperationException(secrets.Redact(CopilotCli.ExplainTooOld(cliPath, version)));
         }
 
         return new CopilotRuntimeLaunch(CopilotRuntimeSource.InstalledCli, cliPath, version);
@@ -1216,7 +1222,7 @@ public sealed class CopilotRuntime : IAsyncDisposable
     /// <param name="launch">What was launched, or <see langword="null"/> when it is not known.</param>
     /// <param name="signIn">
     ///     The sign-in plan whose tokens are redacted from the quoted error, or <see langword="null"/>
-    ///     to redact token-shaped text only.
+    ///     to redact the process environment's secrets and token-shaped text only.
     /// </param>
     /// <param name="cancellationToken">Cancels the start.</param>
     /// <returns>A task that completes when the start has completed.</returns>
@@ -1275,20 +1281,20 @@ public sealed class CopilotRuntime : IAsyncDisposable
     ///     still explained.
     ///     </para>
     ///     <para>
-    ///     The runtime's error is quoted redacted: every token <paramref name="signIn"/> knows (the
-    ///     start token, the environment's token values, and each session token the host's provider
-    ///     returned), and any text shaped like a GitHub token, is removed. The protocol mismatch is
-    ///     detected on the error as raised.
+    ///     The whole explanation is redacted: every token <paramref name="signIn"/> knows (the start
+    ///     token, the environment's token values, and each session token the host's provider
+    ///     returned), and any text shaped like a GitHub token, is removed from the runtime's error and
+    ///     from the CLI path the cause names alike. The protocol mismatch is detected on the error as
+    ///     raised.
     ///     </para>
     /// </remarks>
     /// <param name="failure">The failure the start raised.</param>
     /// <param name="launch">What was launched, or <see langword="null"/> when it is not known.</param>
-    /// <param name="signIn">The sign-in plan whose tokens are redacted, or <see langword="null"/> to redact token-shaped text only.</param>
+    /// <param name="signIn">The sign-in plan whose tokens are redacted, or <see langword="null"/> to redact the process environment's secrets and token-shaped text only.</param>
     /// <returns>The explanation.</returns>
     internal static string ExplainStartFailure(Exception failure, CopilotRuntimeLaunch? launch, CopilotSignInPlan? signIn)
     {
         var message = failure.Message;
-        var quoted = CopilotSignIn.Redact(signIn, message);
         string cause;
         if (launch?.Source != CopilotRuntimeSource.Bundled && CopilotCli.IsProtocolMismatch(message))
         {
@@ -1309,12 +1315,14 @@ public sealed class CopilotRuntime : IAsyncDisposable
             };
         }
 
-        return "The Copilot runtime could not start: " + quoted + " " + cause + " The runtime receives none of the "
+        return CopilotSignIn.Redact(
+            signIn,
+            "The Copilot runtime could not start: " + message + " " + cause + " The runtime receives none of the "
             + "host's COPILOT_ or GITHUB_COPILOT_ variables except "
             + string.Join(", ", PassThroughVariables.Order(StringComparer.Ordinal)) + "; it signs in with, in order, "
             + "CopilotRuntimeOptions' gitHubToken or gitHubTokenProvider, COPILOT_GITHUB_TOKEN, GH_TOKEN or GITHUB_TOKEN, "
             + "the user's Copilot CLI sign-in, a sign-in stored in its data directory, or the signed-in GitHub CLI user. "
-            + "The inner exception carries the runtime's own error, redacted, with its type name and stack trace.";
+            + "The inner exception carries the runtime's own error, redacted, with its type name and stack trace.");
     }
 
     /// <summary>

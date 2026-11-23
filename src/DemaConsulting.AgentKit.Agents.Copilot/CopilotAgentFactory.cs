@@ -392,7 +392,7 @@ public static class CopilotAgentFactory
     /// </param>
     /// <param name="signIn">
     ///     The sign-in of the runtime the sessions run on, whose tokens are redacted from a session
-    ///     error, or <see langword="null"/> to redact token-shaped text only.
+    ///     error, or <see langword="null"/> to redact the process environment's secrets and token-shaped text only.
     /// </param>
     /// <returns>The agent.</returns>
     /// <exception cref="ArgumentNullException">

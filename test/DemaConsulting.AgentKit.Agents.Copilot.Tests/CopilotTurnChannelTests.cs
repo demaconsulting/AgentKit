@@ -290,6 +290,37 @@ public class CopilotTurnChannelTests
     }
 
     /// <summary>
+    ///     Proves the seal's refusal, which names the servers the runtime kept enabled, reaches a host
+    ///     redacted when relayed as every opener relays it: a server name quoting a known secret is
+    ///     replaced, and nothing in the relayed chain carries the secret.
+    /// </summary>
+    [Fact]
+    public async Task CopilotSessionChannel_Seal_RefusalNamingASecret_IsRedactedWhenRelayed()
+    {
+        // Arrange: the runtime keeps a server enabled whose name quotes a known secret
+        const string secret = "s3cr3t-value-xyz";
+        IList<McpConfiguredServer> listing = [Server($"docs-{secret}", enabled: true)];
+
+        // Act
+        var failure = await Assert.ThrowsAsync<InvalidOperationException>(() => CopilotSignIn.RelayAsync(
+            async () =>
+            {
+                await CopilotSessionChannel.SealAsync(
+                    _ => Task.CompletedTask,
+                    _ => Task.FromResult(listing),
+                    (_, _) => Task.CompletedTask,
+                    TestContext.Current.CancellationToken);
+                return true;
+            },
+            CopilotSignInTests.PlanKnowing(secret)));
+
+        // Assert
+        Assert.Contains("'docs-<redacted>'", failure.Message, StringComparison.Ordinal);
+        Assert.IsType<CopilotRedactedException>(failure.InnerException);
+        SecretAssert.NoSecret(failure, secret);
+    }
+
+    /// <summary>
     ///     Proves the plugins patch replaces the session's installed plugins with an empty list rather
     ///     than leaving the list unset, which the runtime would read as "no change".
     /// </summary>

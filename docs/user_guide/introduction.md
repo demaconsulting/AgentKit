@@ -1278,7 +1278,16 @@ than for a lost or unsigned connection — it arrives as a new exception of the 
 `TimeoutException` or `InvalidOperationException`; any other type as `InvalidOperationException`), with the message
 redacted and that redacted copy as its inner exception. A cancellation or disposal that carries nothing to redact
 reaches you unchanged. A cancellation that carries a cause or a token, including a canceled runtime start, is rebuilt
-with the same token, a redacted message and that redacted copy as its cause; a `TaskCanceledException` stays one.
+with the same token, a redacted message and that redacted copy as its cause; a `TaskCanceledException` stays one. A
+failed read of a started runtime's status is relayed the same way.
+
+**What your logger receives.** Every entry AgentKit writes to the logger you pass, and every entry the SDK writes to
+it, is redacted the same way: the message, every structured value except numbers, Booleans, enumerations, dates,
+times, durations and GUIDs (which keep their value and type; any other value arrives as its redacted text), every
+scope, and a logged exception, which arrives as its redacted copy. Levels and event IDs are unchanged. Paths and
+messages AgentKit quotes before the sign-in is resolved — a CLI that was not found or is too old, a version check that
+failed — are redacted of the environment's token values and your `gitHubToken:`. AgentKit removes exact values, so a
+very short or common token value can also replace unrelated text with `<redacted>`.
 
 **GitHub Enterprise Cloud hosts.** Each source is used with its own host. The Copilot CLI sign-in
 uses its account's host. A token needs its host too: GitHub refuses a token for a `*.ghe.com` account
@@ -1499,7 +1508,9 @@ for answer quality across a long conversation, not to save money.
   through `cliPath:`, or opt into the bundled runtime.
 - **`InvalidOperationException`: "AgentKit could not read the version of the Copilot CLI".** The CLI
   could not be started, exited with an error, or did not answer within two minutes; the message carries
-  its error output. An npm installation also needs `node` on `PATH`.
+  the end of its error output, redacted. When the CLI could not be started, the inner exception is a
+  redacted copy of the platform's error: read its message or `ToString()`, which starts with the
+  original type name. An npm installation also needs `node` on `PATH`.
 - **`ArgumentException`: the Copilot CLI path "is a batch file".** The `cliPath` names a `copilot.cmd`
   or `.bat`, which Windows would run through `cmd.exe`. Name `copilot.exe` — such as the one
   `CopilotCli.FindInstalled()` returns — or, for an npm installation, the package's `npm-loader.js`.
@@ -1625,7 +1636,16 @@ GitHub host:
   Code that caught such a type should catch `InvalidOperationException` and read the inner exception's
   `ToString()`, which starts with the original type name. In particular, `runtime.DeleteSessionAsync`
   now reports a session the runtime does not hold as an `InvalidOperationException`, not the SDK's
-  `RemoteRpcException`.
+  `RemoteRpcException`. A failed read of a started runtime's status is relayed the same way.
+- **Your logger receives redacted entries.** The SDK's entries reach your logger through AgentKit's
+  redacting logger, as AgentKit's own do. Structured values other than numbers, Booleans, enumerations,
+  dates, times, durations and GUIDs arrive as redacted text rather than their original objects, and a
+  logged exception arrives as a redacted copy whose `ToString()` starts with the original type name, not
+  as the SDK's exception. Code that inspected logged exception types or structured values should read
+  the text instead.
+- **A failed version check's inner exception is a redacted copy.** When the installed CLI could not be
+  started, the inner exception is no longer the platform's own exception, but a redacted copy whose
+  `ToString()` starts with the original type name.
 
 ### Migrating from the Earlier Adapter
 

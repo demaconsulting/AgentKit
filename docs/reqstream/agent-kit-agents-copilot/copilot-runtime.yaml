@@ -239,8 +239,9 @@ sections:
               provisioned; for an installed CLI, the CLI and its version and no package-reference
               advice — and the sources the runtime authenticates from, keeping a redacted copy of the
               original failure, its type name, message and stack trace, as the cause, so no exception
-              in the chain carries a token the sign-in knows, and shall quote the runtime's error with
-              every token the sign-in knows and any text shaped like a GitHub token redacted.
+              in the chain carries a token the sign-in knows, and shall redact the whole explanation —
+              the runtime's error and the CLI's path alike — of every token the sign-in knows and any
+              text shaped like a GitHub token.
             justification: |
               The SDK provisions its runtime only into a project that references it directly, and the
               AgentKit library deliberately ships none, so a host that opted into the bundled runtime
@@ -256,6 +257,7 @@ sections:
               - CopilotRuntime_StartClient_InstalledCliFailure_DoesNotBlameTheSdkReference
               - CopilotRuntime_StartClient_Succeeds_DoesNotThrow
               - CopilotRuntime_StartClient_FailureQuotingASignInToken_IsRedacted
+              - CopilotRuntime_StartClient_InstalledCliPathQuotingASecret_IsRedacted
 
           - id: AgentKitAgentsCopilot-CopilotRuntime-PassesCancellationThrough
             title: >-
@@ -344,6 +346,37 @@ sections:
             tests:
               - CopilotRuntime_VerifyStarted_ReadFailureQuotingASecret_IsRelayedRedacted
               - CopilotRuntime_VerifyStarted_CleanCancellation_PassesUnchanged
+
+          - id: AgentKitAgentsCopilot-CopilotRuntime-RedactsTheSdksDiagnostics
+            title: >-
+              The runtime shall give the SDK the host's logger only wrapped in the sign-in's redacting
+              logger, so every entry the SDK writes reaches the host redacted of every secret the
+              sign-in knows at the time it is written, including a session token learned after the
+              runtime started, and of any text shaped like a GitHub token, and shall give the SDK no
+              logger when the host gave none.
+            tags: [security]
+            justification: |
+              The SDK logs the runtime's error output, RPC errors, the CLI's path and the exceptions it
+              catches, with their whole chains, to the logger it is given; none of that text is
+              AgentKit's to vouch for. Only a logger between the SDK and the host's can redact it, and
+              reading the sign-in's live secrets keeps a session token the host's provider returns
+              later out of later entries.
+            tests:
+              - CopilotRuntime_BuildClientOptions_CarriesTokenLogLevelAndLogger
+              - CopilotRuntime_BuildClientOptions_Logger_RedactsTheSdksEntries
+
+          - id: AgentKitAgentsCopilot-CopilotRuntime-RedactsLaunchRefusals
+            title: >-
+              The runtime shall redact every refusal to launch an installed CLI — a named CLI that does
+              not exist, none found, or one too old — of the host environment's secret values, the
+              host's token and any text shaped like a GitHub token.
+            tags: [security]
+            justification: |
+              These refusals quote paths from the host's options, PATH and discovery, which the host's
+              environment shapes, before any sign-in exists. Redacting them with the environment's
+              secrets and the host's token applies the same rule as every later refusal.
+            tests:
+              - CopilotRuntime_ResolveLaunch_RefusalQuotingAnEnvironmentSecret_IsRedacted
 
           - id: AgentKitAgentsCopilot-CopilotRuntime-RejectsInvalidOptions
             title: >-

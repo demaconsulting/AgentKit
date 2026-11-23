@@ -856,15 +856,26 @@ so no path can acquire capability another path withholds.
   listing failure's) is a redacted copy carrying the original's type name, message and stack trace,
   never the original. A runtime or SDK failure AgentKit relays to a host — a turn that fails on an
   agent, a provider session or a consolidation, a session the runtime fails to create or resume for
-  any of them, a session the host asks the runtime to delete that it refuses or fails, a start
-  cancellation carrying a cause or a token, or a model listing failure other than a lost or unsigned
-  connection — is a new
+  any of them, a session the host asks the runtime to delete that it refuses or fails, a started
+  runtime's status read that fails, a start cancellation carrying a cause or a token, or a model
+  listing failure other than a lost or unsigned connection — is a new
   exception of the same base class library type with a redacted message and a redacted copy as its
   cause (`CopilotSignIn.RedactRelayed`); only a cancellation or disposal carrying nothing to redact
   passes unchanged, and a type outside the base class library arrives as `InvalidOperationException`.
   The boundary is deliberate: conversation content the model already received — tool results and the
   event objects carried as raw representations — is not rewritten, because the transcript must agree
   with the runtime's conversation.
+- **One sink rule, and one choke point for logs.** Text from the runtime, the SDK, the sign-in
+  helper, the environment or the Copilot CLI's configuration is redacted where it enters a finding, a
+  log entry, an exception message or a cause, and no sink relies on another having redacted it. Every
+  entry AgentKit writes and every entry the SDK writes reaches the host's logger through one
+  redacting logger, which redacts the message, the structured values that can hold text, the scopes
+  and a logged exception (passed on as its redacted copy). Text quoted before a sign-in exists — a
+  launch refusal, a version probe's error — is redacted with the secrets of the environment in hand;
+  a client built without a sign-in falls back to the process environment's. The exclusions are few
+  and stated: a value the host passed, reflected in its own argument validation; the host's own token
+  provider's exception; conversation content; typed values the host asked for; and exception type
+  names.
 
 Two further measures protect the conversation rather than the machine: the runtime's own compaction
 threshold is held clear of the engine's rotation point, with every runtime rewrite of the

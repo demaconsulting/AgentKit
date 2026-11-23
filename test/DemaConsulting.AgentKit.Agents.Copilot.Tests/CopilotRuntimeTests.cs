@@ -1,5 +1,6 @@
 using System.Collections;
 using Microsoft.Copilot;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace DemaConsulting.AgentKit.Agents.Copilot.Tests;
@@ -122,23 +123,85 @@ public class CopilotRuntimeTests
 
     /// <summary>
     ///     Proves the neutral options a host may set — token, log level and logger — reach the client
-    ///     options.
+    ///     options, the logger only through the redacting logger, and no logger as none.
     /// </summary>
     [Fact]
     public void CopilotRuntime_BuildClientOptions_CarriesTokenLogLevelAndLogger()
     {
         // Arrange
         using var directory = new TemporaryDirectory();
-        var logger = NullLogger.Instance;
+        var logger = new CapturingLogger();
         var options = new CopilotRuntimeOptions(directory.Path, "gho_token", CopilotLogLevel.Warning, logger);
 
         // Act
         var clientOptions = CopilotRuntime.BuildClientOptions(options, directory.Path, new Hashtable());
+        var withoutLogger = CopilotRuntime.BuildClientOptions(new CopilotRuntimeOptions(directory.Path), directory.Path, new Hashtable());
+        clientOptions.Observability.Logger!.Log(LogLevel.Information, new EventId(1, "Sdk"), "started", null, (state, _) => state);
 
         // Assert
         Assert.Equal("gho_token", clientOptions.GitHub.Token);
         Assert.Equal(CopilotLogLevel.Warning, clientOptions.Observability.LogLevel);
-        Assert.Same(logger, clientOptions.Observability.Logger);
+        Assert.IsType<CopilotRedactingLogger>(clientOptions.Observability.Logger);
+        Assert.Equal("started", Assert.Single(logger.Entries).Message);
+        Assert.Null(withoutLogger.Observability.Logger);
+    }
+
+    /// <summary>
+    ///     Proves every entry the SDK writes to the host's logger arrives redacted — its message, its
+    ///     structured values, its scope and its exception, whose data and an aggregate's second inner
+    ///     exception quote the secret — with the environment's secrets known when no sign-in is given,
+    ///     and with a session token the sign-in learns after the client was configured.
+    /// </summary>
+    [Fact]
+    public void CopilotRuntime_BuildClientOptions_Logger_RedactsTheSdksEntries()
+    {
+        // Arrange: one client without a sign-in, whose environment holds the secret, and one whose
+        // sign-in knows the secret and learns a session token after the client was configured
+        const string secret = "s3cr3t-value-xyz";
+        const string sessionToken = "s3cr3t-session-abc";
+        using var directory = new TemporaryDirectory();
+        var environmentLog = new CapturingLogger();
+        var planLog = new CapturingLogger();
+        var plan = CopilotSignInTests.PlanKnowing(secret);
+        var fromEnvironment = CopilotRuntime.BuildClientOptions(
+            new CopilotRuntimeOptions(directory.Path, logger: environmentLog),
+            directory.Path,
+            new Hashtable { ["GITHUB_ENTERPRISE_TOKEN"] = secret });
+        var fromPlan = CopilotRuntime.BuildClientOptions(
+            new CopilotRuntimeOptions(directory.Path, logger: planLog),
+            directory.Path,
+            new Hashtable(),
+            signIn: plan);
+        var failure = new InvalidOperationException(
+            "CopilotClient.StartAsync failed",
+            new AggregateException("both failed", new IOException("first"), new IOException($"second {secret} {sessionToken}")));
+        failure.Data["token"] = secret;
+
+        // Act: entries in the SDK's shape, under a scope naming the CLI's path
+        plan.Secrets.Add(sessionToken);
+        foreach (var sdkLogger in new[] { fromEnvironment.Observability.Logger!, fromPlan.Observability.Logger! })
+        {
+            using (sdkLogger.BeginScope(new Dictionary<string, object?> { ["CliPath"] = $"/opt/{secret}/{sessionToken}/copilot" }))
+            {
+                sdkLogger.Log(
+                    LogLevel.Error,
+                    new EventId(5, "StartFailed"),
+                    new Dictionary<string, object?> { ["Error"] = $"stderr: {secret} {sessionToken}", ["Elapsed"] = 12 },
+                    failure,
+                    (_, _) => $"CopilotClient.StartAsync failed: {secret} {sessionToken}");
+            }
+        }
+
+        // Assert
+        var environmentEntry = Assert.Single(environmentLog.Entries);
+        var planEntry = Assert.Single(planLog.Entries);
+        Assert.Equal("CopilotClient.StartAsync failed: <redacted> s3cr3t-session-abc", environmentEntry.Message);
+        Assert.Equal("CopilotClient.StartAsync failed: <redacted> <redacted>", planEntry.Message);
+        Assert.Contains(planEntry.State, pair => pair.Key == "Elapsed" && Equals(pair.Value, 12));
+        Assert.Contains(Assert.Single(planLog.Scopes).State, pair => pair.Key == "CliPath");
+        Assert.IsType<CopilotRedactedException>(planEntry.Exception);
+        SecretAssert.NoSecret(environmentLog, secret);
+        SecretAssert.NoSecret(planLog, secret, sessionToken);
     }
 
     /// <summary>
@@ -953,6 +1016,36 @@ public class CopilotRuntimeTests
     }
 
     /// <summary>
+    ///     Proves the whole start-failure explanation is redacted, the installed CLI's path the cause
+    ///     names included, for an ordinary failure and for a protocol mismatch alike.
+    /// </summary>
+    /// <param name="mismatch">Whether the failure is the SDK's protocol-version mismatch.</param>
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task CopilotRuntime_StartClient_InstalledCliPathQuotingASecret_IsRedacted(bool mismatch)
+    {
+        // Arrange
+        const string secret = "s3cr3t-value-xyz";
+        var cause = new InvalidOperationException(mismatch
+            ? "SDK protocol version mismatch: SDK supports versions 4-4, but server reports version 3. Please update your SDK or server to ensure compatibility."
+            : "The pipe has been ended.");
+        var launch = new CopilotRuntimeLaunch(CopilotRuntimeSource.InstalledCli, $"/opt/{secret}/bin/copilot", new Version(1, 0, 114));
+
+        // Act
+        var failure = await Assert.ThrowsAsync<InvalidOperationException>(() => CopilotRuntime.StartClientAsync(
+            _ => Task.FromException(cause),
+            launch,
+            CopilotSignInTests.PlanKnowing(secret),
+            TestContext.Current.CancellationToken));
+
+        // Assert
+        Assert.Contains("/opt/<redacted>/bin/copilot", failure.Message, StringComparison.Ordinal);
+        Assert.Contains(mismatch ? "speaks SDK protocol version 3" : "(version 1.0.114)", failure.Message, StringComparison.Ordinal);
+        SecretAssert.NoSecret(failure, secret);
+    }
+
+    /// <summary>
     ///     Proves a canceled start propagates its cancellation unchanged rather than being explained
     ///     as a fault.
     /// </summary>
@@ -1429,6 +1522,51 @@ public class CopilotRuntimeTests
         Assert.Contains("1.0.106", failure.Message, StringComparison.Ordinal);
         Assert.Contains($"{CopilotCli.MinimumVersion} or later", failure.Message, StringComparison.Ordinal);
         Assert.Contains("copilot --no-auto-update --version", failure.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves every launch refusal — a named CLI that does not exist, no CLI found, and a CLI too
+    ///     old — is redacted of the host environment's secret values and the host's token, wherever a
+    ///     path quotes them.
+    /// </summary>
+    /// <param name="kind">The refusal: <c>missing</c>, <c>notFound</c> or <c>tooOld</c>.</param>
+    [Theory]
+    [InlineData("missing")]
+    [InlineData("notFound")]
+    [InlineData("tooOld")]
+    public async Task CopilotRuntime_ResolveLaunch_RefusalQuotingAnEnvironmentSecret_IsRedacted(string kind)
+    {
+        // Arrange: a GitHub Enterprise token, not shaped like a GitHub token, and the host's token,
+        // each also part of the folder a path names
+        const string secret = "s3cr3t-value-xyz";
+        const string hostToken = "s3cr3t-host-token";
+        var machine = new FakeCopilotCliMachine
+        {
+            Result = new(0, "GitHub Copilot CLI 1.0.106.\n", string.Empty, TimedOut: false),
+        };
+        var folder = $"/opt/{secret}/{hostToken}/bin";
+        if (kind == "tooOld")
+        {
+            machine.AddFile(Path.Combine(folder, "copilot"));
+        }
+
+        var named = Path.GetFullPath(Path.Combine(Path.GetTempPath(), $"missing-{secret}-{hostToken}", "copilot"));
+        var options = kind == "missing"
+            ? new CopilotRuntimeOptions("copilot-runtime", gitHubToken: hostToken, cliPath: named)
+            : new CopilotRuntimeOptions("copilot-runtime", gitHubToken: hostToken);
+
+        // Act
+        var failure = await Assert.ThrowsAsync<InvalidOperationException>(() => CopilotRuntime.ResolveLaunchAsync(
+            options,
+            FakeDataDirectory,
+            new Hashtable { ["GH_ENTERPRISE_TOKEN"] = secret },
+            machine.Context(CopilotCliPlatform.Linux, folder),
+            machine.RunAsync,
+            TestContext.Current.CancellationToken));
+
+        // Assert
+        Assert.Contains(kind == "missing" ? "missing-<redacted>-<redacted>" : "/opt/<redacted>/<redacted>/bin", failure.Message, StringComparison.Ordinal);
+        SecretAssert.NoSecret(failure, secret, hostToken);
     }
 
     /// <summary>

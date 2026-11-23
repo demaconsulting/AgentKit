@@ -129,7 +129,7 @@ sections:
               oversized or malformed Copilot CLI configuration, a missing account, a helper that
               fails, times out, reports another account or yields no token, and an account list the
               SDK cannot read, and shall then let the next source apply; the caller's cancellation
-              shall propagate.
+              shall propagate, relayed as RelaysFailuresRedacted relays a cancellation.
             justification: |
               The Copilot CLI sign-in relies on undocumented CLI contracts and on a credential store the
               user may not unlock, so it must never make a start fail that the next source could have
@@ -144,6 +144,7 @@ sections:
               - CopilotSignIn_ResolveAsync_AccountListFails_FallsThroughWithAFinding
               - CopilotSignIn_ResolveAsync_HelperNotSignedInAsTheAccount_DoesNotReadTheAccountList
               - CopilotSignIn_ResolveAsync_CallerCancels_PropagatesAndCleansUp
+              - CopilotSignIn_ResolveAsync_CallerCanceledHelperCarryingASecret_IsRebuiltRedacted
               - CopilotSignIn_ReadCopilotCliAccount_UnusableConfiguration_ReportsWhy
               - CopilotSignIn_LookUpCopilotCliAccount_InvalidCopilotHome_ReportsWhy
               - CopilotSignIn_ResolveAsync_InvalidCopilotHome_FallsThroughWithAFinding
@@ -174,7 +175,8 @@ sections:
               The sign-in shall explain a runtime that is not signed in by listing every source, in
               order, with what it found and the remedies, shall log the source, host and login the
               runtime signed in with and warn when that is not the Copilot CLI's account, shall put
-              no token in any finding, message, log entry or string form, and shall redact from any
+              no token in any finding, message, log entry or string form — the plan's string form
+              redacted whole — and shall redact from any
               runtime, SDK or exception text it quotes every exact token it knows — the host's token,
               the host's provider's tokens at start and for each session, the Copilot CLI's token and
               the environment's token values — whatever its shape, and any text shaped like a GitHub
@@ -196,6 +198,8 @@ sections:
               - CopilotSignIn_ResolveAsync_HelperFailureQuotingAKnownSecret_IsRedacted
               - CopilotSignIn_ResolveAsync_FindingsQuotingASecret_AreRedacted
               - CopilotSignIn_ResolveAsync_HelperReportsAnotherSignInQuotingASecret_IsRedacted
+              - CopilotSignIn_ResolveAsync_ProviderRefusalForAHostQuotingASecret_IsRedacted
+              - CopilotSignIn_CreateSessionTokenProvider_NoTokenForAHostQuotingASecret_IsRedacted
               - CopilotSignIn_CreateSessionTokenProvider_RecordsEachTokenForRedaction
               - CopilotSignIn_PlanRedact_LongestSecretFirstAndTokenShapes
               - CopilotSignIn_PlanToString_RedactsTheToken
@@ -221,6 +225,24 @@ sections:
               - CopilotSignIn_RedactingLogger_KeepsLevelsEventsAndPrimitiveValues
               - CopilotSignIn_ResolveAsync_CopilotCliNotUsed_LogsTheFindingRedacted
               - CopilotSignIn_ResolveAsync_HelperReportsAnotherSignInQuotingASecret_IsRedacted
+              - CopilotSignIn_ReadCopilotCliToken_HomeNotDeleted_LogsThePathRedacted
+              - CopilotSignIn_Report_FieldsQuotingASecret_AreLoggedRedacted
+
+          - id: AgentKitAgentsCopilot-CopilotSignIn-RedactsWithoutAPlan
+            title: >-
+              The sign-in shall redact text quoted before a sign-in is resolved with the secrets of the
+              environment in hand and the host's token, and text quoted with no sign-in and no
+              environment in hand with the process environment's secret values, in each case with any
+              text shaped like a GitHub token.
+            tags: [security]
+            justification: |
+              Some text is quoted before the sign-in exists, such as a launch refusal or a version
+              probe's error, and a client built outside StartAsync has no sign-in at all. Redacting
+              only token shapes there would let a token of any other shape through; the environment in
+              hand holds exactly the values such text could quote.
+            tests:
+              - CopilotSignIn_SecretsFromEnvironment_RecordsEverySecretVariable
+              - CopilotSignIn_Redact_WithoutAPlan_RemovesTheProcessEnvironmentsSecrets
 
           - id: AgentKitAgentsCopilot-CopilotSignIn-KeepsOnlyARedactedCause
             title: >-

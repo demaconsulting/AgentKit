@@ -494,8 +494,9 @@ sections:
           fails on an agent, a provider session or a consolidation, a session the runtime or the SDK
           fails to create or resume for an agent, a provider session or a consolidation, a session the
           host asks the runtime to delete, a started runtime's status read, a canceled start's cause,
-          a provider session's refusals, and a model listing failure and its redacted cause; and
-          shall put none in any entry it writes to the host's logger.
+          a provider session's refusals, a launch refusal, a failed version probe and its cause,
+          and a model listing failure and its redacted cause; and shall put none in any entry it or
+          the SDK writes to the host's logger.
         tags: [security]
         justification: |
           An exception is built to be shown, logged and attached to crash reports, which print its
@@ -511,11 +512,15 @@ sections:
         children:
           - AgentKitAgentsCopilot-CopilotSignIn-ReportsWhatEachSourceFound
           - AgentKitAgentsCopilot-CopilotSignIn-RedactsLogEntries
+          - AgentKitAgentsCopilot-CopilotSignIn-RedactsWithoutAPlan
           - AgentKitAgentsCopilot-CopilotSignIn-KeepsOnlyARedactedCause
           - AgentKitAgentsCopilot-CopilotSignIn-RelaysFailuresRedacted
           - AgentKitAgentsCopilot-CopilotRuntime-ExplainsAMissingRuntime
           - AgentKitAgentsCopilot-CopilotRuntime-RelaysDeletionFailuresRedacted
           - AgentKitAgentsCopilot-CopilotRuntime-RelaysStatusReadFailuresRedacted
+          - AgentKitAgentsCopilot-CopilotRuntime-RedactsTheSdksDiagnostics
+          - AgentKitAgentsCopilot-CopilotRuntime-RedactsLaunchRefusals
+          - AgentKitAgentsCopilot-CopilotCli-ExplainsAProbeThatFails
           - AgentKitAgentsCopilot-CopilotRuntime-PassesCancellationThrough
           - AgentKitAgentsCopilot-CopilotAgent-ReportsRuntimeErrors
           - AgentKitAgentsCopilot-CopilotProviderSession-RefusesASilentSession

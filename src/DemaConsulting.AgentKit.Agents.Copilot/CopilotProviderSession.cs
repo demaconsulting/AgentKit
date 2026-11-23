@@ -104,7 +104,7 @@ public sealed class CopilotProviderSession : IProviderSession
 
     /// <summary>
     ///     The sign-in of the runtime this session runs on, whose tokens are redacted from the runtime
-    ///     text a refusal quotes, or <see langword="null"/> to redact token-shaped text only.
+    ///     text a refusal quotes, or <see langword="null"/> to redact the process environment's secrets and token-shaped text only.
     /// </summary>
     private readonly CopilotSignInPlan? _signIn;
 
@@ -131,7 +131,7 @@ public sealed class CopilotProviderSession : IProviderSession
     /// </param>
     /// <param name="signIn">
     ///     The sign-in of the runtime the session runs on, whose tokens are redacted from the runtime
-    ///     text a refusal quotes, or <see langword="null"/> to redact token-shaped text only.
+    ///     text a refusal quotes, or <see langword="null"/> to redact the process environment's secrets and token-shaped text only.
     /// </param>
     /// <exception cref="ArgumentNullException">
     ///     <paramref name="channel"/> or <paramref name="observer"/> is <see langword="null"/>.

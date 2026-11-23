@@ -231,9 +231,18 @@ read; another message is neither.
 - `CopilotCli_ReadVersionAsync_TimedOut_ThrowsNamingTheTimeout`
 - `CopilotCli_ReadVersionAsync_NonZeroExit_ThrowsWithStandardError`
 - `CopilotCli_ReadVersionAsync_CannotStart_ThrowsNamingTheCli`
+- `CopilotCli_ReadVersionAsync_ProbeQuotingASecret_IsRedacted` (cannot start, timed out, non-zero exit, no `node`)
 
 Error paths. An `npm-loader.js` on Windows with no `node.exe` on `PATH` is refused naming the loader,
 Node.js and `node.exe`, and no process runs. A probe that timed out is refused naming the CLI, the
 quoted `--no-auto-update --version` arguments, the time limit in seconds and its error output. One that
 exited with code 2 is refused with the code and the CLI's error. One that could not be started is
-refused naming the CLI and "could not be started", the platform's failure kept as the inner exception.
+refused naming the CLI and "could not be started", with a redacted copy of the platform's failure —
+naming its type, with its message — as the inner exception, never the original.
+
+The probe's environment holds `GH_ENTERPRISE_TOKEN` set to `s3cr3t-value-xyz`, which also names the CLI's folder.
+For a CLI that cannot be started, one that times out, one that exits with an error and an npm installation without
+`node`, the refusal names the folder as `/opt/<redacted>/bin`. The error output holds the secret placed so that a cut
+of its last 500 characters made on the raw text would fall inside it, followed by a token-shaped value: the refusal
+quotes `redacted> failed with gho_<redacted>`, proving the output is redacted before it is cut, and `SecretAssert`
+finds neither the secret, nor its first or last eight characters, nor the token-shaped value anywhere in the chain.
