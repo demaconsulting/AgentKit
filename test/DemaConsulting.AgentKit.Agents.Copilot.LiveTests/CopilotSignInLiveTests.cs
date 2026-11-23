@@ -16,7 +16,9 @@ namespace DemaConsulting.AgentKit.Agents.Copilot.LiveTests;
 ///     under the run's root; the user's own GitHub CLI sign-in is never changed.
 ///     </para>
 ///     <para>
-///     Nothing secret is logged: hosts, logins, sources and token lengths only.
+///     Nothing secret is logged: hosts, logins, sources, and token and refusal lengths only. A
+///     refusal's text is never logged, and is checked for secrets with assertions that do not echo it
+///     before any assertion that would.
 ///     </para>
 /// </remarks>
 [Collection(CopilotLiveCollection.Name)]
@@ -97,9 +99,9 @@ public sealed class CopilotSignInLiveTests
     }
 
     /// <summary>
-    ///     L-S3: an explicit token with its host signs the runtime in with that token on that host; the
-    ///     same token without a host is observed and recorded, and any refusal carries no secret. The
-    ///     token is the Copilot CLI account's, obtained in-process and never logged.
+    ///     L-S3: an explicit token with its host signs the runtime in with that token on that host; for a
+    ///     GitHub Enterprise Cloud account, the same token without a host is refused, with the host hint
+    ///     and no secret. The token is the Copilot CLI account's, obtained in-process and never logged.
     /// </summary>
     [Fact]
     public async Task AgentKitAgentsCopilotLive_SignIn_ExplicitTokenAndHost_AreUsed()
@@ -123,35 +125,42 @@ public sealed class CopilotSignInLiveTests
                 TestContext.Current.CancellationToken));
         _live.Log($"L-S3 with host: source={runtime.SignInSource} host={runtime.GitHubHost} login={runtime.GitHubLogin}");
 
-        // Act: the same token without its host (only meaningful for a GitHub Enterprise Cloud account)
-        string? withoutHost = null;
-        if (!string.Equals(account.Host, "https://github.com", StringComparison.Ordinal))
-        {
-            try
-            {
-                await using var withoutHostRuntime = await WithEnvironmentAsync(
-                    hideGitHubCli: true,
-                    () => CopilotRuntime.StartAsync(
-                        new CopilotRuntimeOptions(DataDirectory("ls3-no-host-home"), gitHubToken: token, useCopilotCliSignIn: false),
-                        TestContext.Current.CancellationToken));
-                _live.Log($"L-S3 without host: started; source={withoutHostRuntime.SignInSource} host={withoutHostRuntime.GitHubHost} login={withoutHostRuntime.GitHubLogin}");
-            }
-            catch (InvalidOperationException refused)
-            {
-                withoutHost = refused.Message;
-                _live.Log($"L-S3 without host: refused: {refused.Message}");
-            }
-        }
-
-        // Assert
+        // Assert: the token with its host
         Assert.Equal(CopilotSignInSource.GitHubToken, runtime.SignInSource);
         Assert.Equal(account.Host, runtime.GitHubHost);
         Assert.Equal(account.Login, runtime.GitHubLogin, ignoreCase: true);
-        if (withoutHost is not null)
+
+        // Act / Assert: the same token without its host must be refused (GitHub Enterprise Cloud only)
+        var isEnterprise = !string.Equals(account.Host, "https://github.com", StringComparison.Ordinal);
+        if (!isEnterprise)
         {
-            Assert.DoesNotContain(token, withoutHost, StringComparison.Ordinal);
-            Assert.Contains("also needs its host", withoutHost, StringComparison.Ordinal);
+            _live.Log("L-S3 without host: not applicable to a github.com account.");
+            return;
         }
+
+        string message;
+        try
+        {
+            await using var withoutHostRuntime = await WithEnvironmentAsync(
+                hideGitHubCli: true,
+                () => CopilotRuntime.StartAsync(
+                    new CopilotRuntimeOptions(DataDirectory("ls3-no-host-home"), gitHubToken: token, useCopilotCliSignIn: false),
+                    TestContext.Current.CancellationToken));
+            Assert.Fail(
+                $"L-S3: a GitHub Enterprise Cloud token without its host started a runtime (source={withoutHostRuntime.SignInSource} "
+                + $"host={withoutHostRuntime.GitHubHost} login={withoutHostRuntime.GitHubLogin}); it must be refused.");
+            return;
+        }
+        catch (InvalidOperationException refused)
+        {
+            message = refused.Message;
+        }
+
+        // The secret check comes first and never echoes the text; only metadata is logged
+        Assert.False(message.Contains(token, StringComparison.Ordinal), "L-S3: the refusal carries the token.");
+        var hostHint = message.Contains("also needs its host", StringComparison.Ordinal);
+        _live.Log($"L-S3 without host: refused; message-length={message.Length} host-hint={hostHint}");
+        Assert.True(hostHint, "L-S3: the refusal does not say that a GitHub Enterprise Cloud token also needs its host.");
     }
 
     /// <summary>
@@ -232,21 +241,31 @@ public sealed class CopilotSignInLiveTests
                     runtimeSource: _live.RuntimeSource ?? CopilotRuntimeSource.InstalledCli,
                     cliPath: _live.RuntimeSource == CopilotRuntimeSource.Bundled ? null : _live.CliPath),
                 TestContext.Current.CancellationToken)));
-        _live.Log($"L-S5 refused: {failure.Message}");
+        var message = failure.Message;
 
-        // Assert
-        Assert.Contains("1. gitHubToken / gitHubTokenProvider: not supplied.", failure.Message, StringComparison.Ordinal);
-        Assert.Contains("2. COPILOT_GITHUB_TOKEN, GH_TOKEN, GITHUB_TOKEN: none set.", failure.Message, StringComparison.Ordinal);
-        Assert.Contains("3. Copilot CLI sign-in: turned off by the host", failure.Message, StringComparison.Ordinal);
-        Assert.Contains("4. Runtime fallbacks", failure.Message, StringComparison.Ordinal);
-        foreach (var prefix in new[] { "gho_", "ghu_", "ghp_", "ghs_", "ghr_", "github_pat_" })
-        {
-            Assert.DoesNotContain(prefix, failure.Message, StringComparison.Ordinal);
-        }
-
+        // Assert: the secret checks come first and never echo the text
         if (token is not null)
         {
-            Assert.DoesNotContain(token, failure.Message, StringComparison.Ordinal);
+            Assert.False(message.Contains(token, StringComparison.Ordinal), "L-S5: the refusal carries the Copilot CLI token.");
+        }
+
+        foreach (var prefix in new[] { "gho_", "ghu_", "ghp_", "ghs_", "ghr_", "github_pat_" })
+        {
+            Assert.False(message.Contains(prefix, StringComparison.Ordinal), $"L-S5: the refusal carries a '{prefix}' token shape.");
+        }
+
+        var steps = new[]
+        {
+            "1. gitHubToken / gitHubTokenProvider: not supplied.",
+            "2. COPILOT_GITHUB_TOKEN, GH_TOKEN, GITHUB_TOKEN: none set.",
+            "3. Copilot CLI sign-in: turned off by the host",
+            "4. Runtime fallbacks",
+        };
+        var present = steps.Select(step => message.Contains(step, StringComparison.Ordinal)).ToArray();
+        _live.Log($"L-S5 refused; message-length={message.Length} steps-present={string.Join(",", present)}");
+        for (var index = 0; index < steps.Length; index++)
+        {
+            Assert.True(present[index], $"L-S5: the refusal does not list step {index + 1} as expected.");
         }
     }
 

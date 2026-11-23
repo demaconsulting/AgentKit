@@ -703,8 +703,9 @@ few that rest on the model's prose are marked.
   still signs in as the Copilot CLI account. The user's own GitHub CLI sign-in is never changed.
 - **L-S3**: the Copilot CLI account's token, obtained in-process through the same helper and never
   logged, passed as `gitHubToken` with the account's host as `gitHubHost`, signs the runtime in as
-  `GitHubToken` on that host. For a GitHub Enterprise Cloud account the same token without the host is
-  recorded; when refused, the refusal carries the host hint and not the token.
+  `GitHubToken` on that host. For a GitHub Enterprise Cloud account the same token without the host
+  must be refused, with the host hint and not the token; a runtime that starts with it fails the
+  scenario. For a `github.com` account the no-host case does not apply and is logged as such.
 - **L-S4**: a token provider returning that token, with the account's host, signs the runtime in as
   `GitHubTokenProvider`, is asked exactly once at start, and is asked again for the session a turn
   runs on — so a client-level token from the provider and a session-level provider work together —
@@ -712,13 +713,14 @@ few that rest on the model's prose are marked.
 - **L-S5**: with the Copilot CLI sign-in turned off, the token variables cleared and the GitHub CLI
   hidden, the start is refused with the four sources listed in order with their findings, and the
   message holds no `gho_`, `ghu_`, `ghp_`, `ghs_`, `ghr_` or `github_pat_` text and not the token.
+  The secret checks run before any assertion that would echo the message.
 
-Every L-S scenario clears `COPILOT_GITHUB_TOKEN`, `GH_TOKEN` and `GITHUB_TOKEN` in the process
-environment for its own runtimes and restores them, and logs hosts, logins, sources and token lengths
-only. L-S1 to L-S4 need a Copilot CLI sign-in and skip without one, as in CI; L-S5 runs everywhere.
-They have been run on Windows with the installed CLI only; macOS, Linux and the bundled runtime as the
-helper are untested. A token refresh (`IsRefresh` true) was not observed live, because a session does
-not outlive its token in a run; it is covered by the unit tests.
+Every L-S scenario clears `COPILOT_GITHUB_TOKEN`, `GH_TOKEN` and `GITHUB_TOKEN` in the process environment for its own
+runtimes and restores them, and logs hosts, logins, sources, and token and refusal lengths only. A refusal's text is
+never logged, and is checked for secrets with assertions that do not echo it before any assertion that would. L-S1 to
+L-S4 need a Copilot CLI sign-in and skip without one, as in CI; L-S5 runs everywhere. They have been run on Windows with
+the installed CLI only; macOS, Linux and the bundled runtime as the helper are untested. A token refresh (`IsRefresh`
+true) was not observed live, because a session does not outlive its token in a run; it is covered by the unit tests.
 
 ### Live Acceptance Criteria
 
@@ -743,7 +745,8 @@ reaches a session; of L16, that the catalog cannot list the service's models for
 automatic choice; of L17, that a chosen effort or tier is not accepted by the runtime, or that no limit is reported
 for it; of L18, that an unoffered effort reaches a session; of L-S1 or L-S2, that the Copilot CLI sign-in is not used,
 or is used on another host or account; of L-S3 or L-S4, that a host's token or token provider, or its host, is not
-used as given, or that a session does not ask the provider; of L-S5, that a refusal omits a source's finding or carries
+used as given, or that a session does not ask the provider, or, for a GitHub Enterprise Cloud account, that L-S3's
+token without its host is not refused; of L-S5, that a refusal omits a source's finding or carries
 a secret. Any such failure is investigated before a release.
 
 ### Recorded Run
@@ -834,6 +837,13 @@ lightweight, low-cost `gpt-5.6-luna`. L-S1 and L-S2 reported `CopilotCli` on the
 account's host; L-S5 was refused with the four sources listed. Before and after the run, the names, users, last-written
 times and sizes of the machine's credential-store entries for GitHub and Copilot were identical, and no temporary
 sign-in folder was left behind.
+
+When L-S3 came to require the refusal of the token without its host, and L-S3 and L-S5 to check a refusal for secrets
+before any assertion that echoes it and to log only its length, the two were re-run on 2026-11-22, on the same machine,
+installed CLI 1.0.114 and model `gpt-5.6-luna`, with `COPILOT_CLI_PATH` removed from the shell first, filtered to those
+two tests; both passed. The account was on the machine's GitHub Enterprise Cloud host, as before. L-S3 signed in as
+`GitHubToken` on that host, and the same token without the host was refused with the host hint and without the token;
+L-S5 was refused listing all four sources and carrying no secret.
 
 Before the helper was built, it was confirmed on the same machine that the confined runtime cannot read the credential
 store itself: an Empty-mode runtime on a home holding only the account entry, with the variable that disables the system
