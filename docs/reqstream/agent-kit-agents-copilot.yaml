@@ -472,6 +472,7 @@ sections:
         children:
           - AgentKitAgentsCopilot-CopilotSignIn-OrdersTheSources
           - AgentKitAgentsCopilot-CopilotSignIn-KeepsTheHostWithTheSource
+          - AgentKitAgentsCopilot-CopilotSignIn-RefusesAnInvalidEnvironmentHost
           - AgentKitAgentsCopilot-CopilotSignIn-ReusesTheCopilotCliSignIn
           - AgentKitAgentsCopilot-CopilotSignIn-SharesOnlyTheAccountEntry
           - AgentKitAgentsCopilot-CopilotSignIn-FallsThroughOnFailure

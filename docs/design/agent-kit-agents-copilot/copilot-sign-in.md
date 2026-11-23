@@ -66,7 +66,7 @@ equality prints or compares the token):
   environment's token; `null` when the runtime's own fallbacks decide.
 - **`Token`** (`string?`) — the token handed to the runtime, or `null`. Never logged or written.
 - **`HostName`** (`string?`) — the bare host name the runtime's `COPILOT_GH_HOST` is set to, or `null`
-  to leave the environment's value.
+  when no host was chosen, leaving the environment's value, which is then unset or blank.
 - **`RequestedHost`** (`string?`) — the host the host chose (`gitHubHost`, else `COPILOT_GH_HOST`),
   normalized, or `null`.
 - **`Provider`** — the host's token provider, which sessions ask, or `null`.
@@ -130,7 +130,8 @@ Constants: `DefaultHost` (`https://github.com`), `ConfigurationSizeLimit` (1 MiB
 credential-store prompt the user answers), `DefaultTokenLifetime` (eight hours, the usual lifetime of
 a GitHub user token), `TokenVariables` (`COPILOT_GITHUB_TOKEN`, `GH_TOKEN`, `GITHUB_TOKEN`),
 `SecretVariables` (the token variables plus `GH_ENTERPRISE_TOKEN` and `GITHUB_ENTERPRISE_TOKEN`,
-whose values are redacted).
+whose values are redacted), `InvalidEnvironmentHostMessage` (the refusal of an invalid
+`COPILOT_GH_HOST`, which never quotes the value).
 
 ### Key Methods
 
@@ -140,9 +141,16 @@ whose values are redacted).
 
 **Algorithm:**
 
-1. The requested host is `options.GitHubHost`, else a valid `COPILOT_GH_HOST` from the host's
-   environment. Only `options.GitHubHost` overrides the runtime's `COPILOT_GH_HOST`; the environment's
-   value already passes through. One `CopilotSignInSecrets` is created and seeded with the value of
+1. The requested host is `options.GitHubHost`, else `COPILOT_GH_HOST` from the host's environment
+   (`ReadEnvironmentHost`): a blank value is unset, and a value `TryNormalizeHost` rejects — the
+   same validation as the option's — refuses the start with `InvalidEnvironmentHostMessage`, an
+   `InvalidOperationException` naming the variable, the accepted forms and the remedies (correct it,
+   unset it for `github.com`, or pass `gitHubHost`, which takes precedence) without quoting the value,
+   which may carry a user name and password. When the option is given, the environment's value is
+   not read at all. The requested host, from either, becomes the plan's `HostName` as a bare
+   lower-case name on every path but the Copilot CLI's (which uses its account's host, the same host
+   when one was requested), so the runtime's `COPILOT_GH_HOST` is always exactly the host the token
+   was resolved for. One `CopilotSignInSecrets` is created and seeded with the value of
    each `SecretVariables` variable that is set and with `options.GitHubToken`; every plan returned
    carries it as `Secrets`.
 2. A host-supplied token: plan with that token and source `GitHubToken`; every later step reads "not
@@ -157,7 +165,7 @@ whose values are redacted).
 6. The Copilot CLI sign-in: skipped with a finding when there is no account or when another host was
    requested; otherwise `ReadCopilotCliTokenAsync`. With a token, record it as a secret and plan with
    it, source `CopilotCli` and the account's bare host name.
-7. Otherwise plan with no token, the requested host name from the option, and a finding saying whether
+7. Otherwise plan with no token, the requested host name, and a finding saying whether
    the GitHub CLI is on `PATH` (`CopilotCli.FindOnPath`, nothing is run).
 
 **Postconditions:** The process environment and the user's Copilot CLI home are unchanged; any helper
@@ -169,10 +177,14 @@ home created is deleted.
 only.
 
 **Algorithm:** The home is `COPILOT_HOME` from the host's environment (made full), else `.copilot` in
-the profile. A home whose full path equals the data directory's (compared case-insensitively on
-Windows) is not read. `config.json` is read when it
+the profile. A `COPILOT_HOME` the platform cannot make full — `Path.GetFullPath` throws
+`ArgumentException`, `NotSupportedException`, `PathTooLongException` or `SecurityException`, for
+example for a value holding a null character — is a `Problem` naming the variable and the exception
+type, not the value, and the next source applies. A home whose full path equals the data directory's
+(compared case-insensitively on Windows) is not read. `config.json` is read when it
 exists and is at most `ConfigurationSizeLimit` bytes, parsed with comments and trailing commas
-allowed. `lastLoggedInUser` is the account; when it is missing, a `loggedInUsers` array of exactly one
+allowed; a file the platform cannot open (an I/O, access, argument or not-supported failure) is a
+`Problem` too. `lastLoggedInUser` is the account; when it is missing, a `loggedInUsers` array of exactly one
 entry is. The host must normalize (`TryNormalizeHost`) and the login must be non-blank, at most
 `MaximumLoginLength` characters, with no control characters. Every other key is ignored. Each failure
 is a `Problem` naming the file.
@@ -277,7 +289,9 @@ example by URL-encoding or truncating it; the token-shape pattern still applies 
 | Condition | Handling |
 | --- | --- |
 | Token provider fails or returns no token | `InvalidOperationException` naming the provider; failure as cause |
+| `COPILOT_GH_HOST` invalid, no `gitHubHost` | `InvalidOperationException` naming the variable, not its value |
 | Provider or caller canceled | `OperationCanceledException` propagates; helper stopped, home deleted |
+| `COPILOT_HOME` not a valid path | Finding naming the variable, not its value; next source |
 | No, unreadable, oversized or malformed Copilot CLI configuration; no or invalid account | Finding; next source |
 | Copilot CLI account on another host than the one requested | Finding; next source |
 | Helper home cannot be created or written | Finding; next source |

@@ -42,7 +42,10 @@ namespace DemaConsulting.AgentKit.Agents.Copilot;
 ///     host chose (<see cref="CopilotRuntimeOptions.GitHubHost"/>, else <c>COPILOT_GH_HOST</c>, else
 ///     <c>github.com</c>). The Copilot CLI sign-in is used with its account's host, and is skipped when
 ///     the host chose a different one. <c>COPILOT_GH_HOST</c> is given to the runtime as a bare host
-///     name, the form the runtime reads.
+///     name, the form the runtime reads — the environment's own value too, normalized, so the token
+///     and the runtime's endpoint always agree. A <c>COPILOT_GH_HOST</c> that is not a valid host is
+///     refused, unless the host passed <see cref="CopilotRuntimeOptions.GitHubHost"/>, which takes
+///     precedence over it.
 ///     </para>
 ///     <para>
 ///     <b>Why a helper runtime reads the Copilot CLI's token.</b> The Copilot CLI keeps its token in
@@ -103,6 +106,16 @@ internal static partial class CopilotSignIn
     /// </summary>
     private const string FallbackHeading =
         "Runtime fallbacks (a sign-in stored in AgentKit's data directory, then the GitHub CLI)";
+
+    /// <summary>
+    ///     The refusal of a <c>COPILOT_GH_HOST</c> that is not a valid GitHub host. It does not quote
+    ///     the value, which may carry a user name and password.
+    /// </summary>
+    internal const string InvalidEnvironmentHostMessage =
+        "The COPILOT_GH_HOST environment variable is not a valid GitHub host, so the Copilot runtime was not "
+        + "started. Set it to a host name such as 'example.ghe.com', or an https URL such as "
+        + "'https://example.ghe.com', without a path, query, user name or port; unset it to sign in to "
+        + "github.com; or pass CopilotRuntimeOptions' gitHubHost, which takes precedence over it.";
 
     /// <summary>
     ///     The environment variables a GitHub token can come from, in the runtime's order.
@@ -293,7 +306,11 @@ internal static partial class CopilotSignIn
     /// <param name="context">The machine the resolution reads and the helper it starts.</param>
     /// <param name="cancellationToken">Cancels the resolution.</param>
     /// <returns>The sign-in plan.</returns>
-    /// <exception cref="InvalidOperationException">The host's token provider failed or returned no token.</exception>
+    /// <exception cref="InvalidOperationException">
+    ///     The host's token provider failed or returned no token; or <c>COPILOT_GH_HOST</c> is set to
+    ///     something that is not a valid GitHub host and no <see cref="CopilotRuntimeOptions.GitHubHost"/>
+    ///     was given.
+    /// </exception>
     /// <exception cref="OperationCanceledException">The resolution was canceled.</exception>
     internal static async Task<CopilotSignInPlan> ResolveAsync(
         CopilotRuntimeOptions options,
@@ -303,11 +320,11 @@ internal static partial class CopilotSignIn
         CopilotSignInContext context,
         CancellationToken cancellationToken)
     {
-        // The host the host chose, if any: its option, else the environment's COPILOT_GH_HOST
-        var environmentHost = ReadVariable(hostEnvironment, "COPILOT_GH_HOST");
-        var requestedHost = options.GitHubHost
-            ?? (TryNormalizeHost(environmentHost, out var fromEnvironment) ? fromEnvironment : null);
-        var overrideHostName = options.GitHubHost is null ? null : HostName(options.GitHubHost);
+        // The host the host chose, if any: its option, else the environment's COPILOT_GH_HOST, which
+        // must then be a valid host. Either is handed to the runtime as a bare name, so the token and
+        // the runtime's endpoint always agree; the option, when given, overrides the environment's.
+        var requestedHost = options.GitHubHost ?? ReadEnvironmentHost(hostEnvironment);
+        var overrideHostName = requestedHost is null ? null : HostName(requestedHost);
 
         // Every token this resolution is given or obtains, so text it quotes can never carry one
         var secrets = new CopilotSignInSecrets();
@@ -416,6 +433,30 @@ internal static partial class CopilotSignIn
                 : $"left to the runtime; the GitHub CLI was found at '{gh}' (signed in to {requestedHost ?? DefaultHost} or not).",
             Secrets = secrets,
         };
+    }
+
+    /// <summary>
+    ///     Reads the GitHub host the host's environment chose in <c>COPILOT_GH_HOST</c>, refusing one
+    ///     that is not valid.
+    /// </summary>
+    /// <remarks>
+    ///     A blank value is unset. The value is validated as <see cref="CopilotRuntimeOptions.GitHubHost"/>
+    ///     is, and a rejected one is not quoted: it may carry a user name and password.
+    /// </remarks>
+    /// <param name="hostEnvironment">The host's environment.</param>
+    /// <returns>The host, normalized, or <see langword="null"/> when none is set.</returns>
+    /// <exception cref="InvalidOperationException"><c>COPILOT_GH_HOST</c> is not a valid GitHub host.</exception>
+    internal static string? ReadEnvironmentHost(IDictionary hostEnvironment)
+    {
+        var value = ReadVariable(hostEnvironment, "COPILOT_GH_HOST");
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        return TryNormalizeHost(value, out var normalized)
+            ? normalized
+            : throw new InvalidOperationException(InvalidEnvironmentHostMessage);
     }
 
     /// <summary>
@@ -537,6 +578,10 @@ internal static partial class CopilotSignIn
     /// <param name="hostEnvironment">The host's environment.</param>
     /// <param name="userProfile">The user's profile folder, or <see langword="null"/> when unknown.</param>
     /// <returns>The home's full path, or <see langword="null"/> when it cannot be known.</returns>
+    /// <exception cref="ArgumentException"><c>COPILOT_HOME</c> is not a valid path on this platform.</exception>
+    /// <exception cref="NotSupportedException"><c>COPILOT_HOME</c> is not a valid path on this platform.</exception>
+    /// <exception cref="PathTooLongException"><c>COPILOT_HOME</c> is longer than this platform allows.</exception>
+    /// <exception cref="System.Security.SecurityException">The path cannot be made full.</exception>
     internal static string? FindCopilotHome(IDictionary hostEnvironment, string? userProfile)
     {
         var configured = ReadVariable(hostEnvironment, "COPILOT_HOME");
@@ -558,13 +603,28 @@ internal static partial class CopilotSignIn
     ///     compared as text and links are not resolved, a known limitation the link-confinement
     ///     follow-up tracks.
     /// </param>
-    /// <returns>The account and where it came from, or why there is none.</returns>
+    /// <returns>
+    ///     The account and where it came from, or why there is none — including a <c>COPILOT_HOME</c>
+    ///     that is not a valid path, which is named but not quoted, since it may hold anything.
+    /// </returns>
     internal static CopilotCliAccountLookup LookUpCopilotCliAccount(
         IDictionary hostEnvironment,
         string? userProfile,
         string dataDirectory)
     {
-        var home = FindCopilotHome(hostEnvironment, userProfile);
+        string? home;
+        try
+        {
+            home = FindCopilotHome(hostEnvironment, userProfile);
+        }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException or System.Security.SecurityException)
+        {
+            return new CopilotCliAccountLookup(
+                null,
+                null,
+                $"COPILOT_HOME is not a valid path ({ex.GetType().Name}), so the Copilot CLI's configuration could not be located.");
+        }
+
         if (home is null)
         {
             return new CopilotCliAccountLookup(null, null, "the user's Copilot CLI home could not be located (no COPILOT_HOME and no user profile).");
@@ -611,7 +671,7 @@ internal static partial class CopilotSignIn
 
             content = File.ReadAllBytes(configurationPath);
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
         {
             return new CopilotCliAccountLookup(null, configurationPath, $"'{configurationPath}' could not be read ({ex.GetType().Name}).");
         }
@@ -1203,7 +1263,8 @@ internal sealed class CopilotSignInPlan
 
     /// <summary>
     ///     Gets the bare host name the runtime's <c>COPILOT_GH_HOST</c> is set to, or
-    ///     <see langword="null"/> to leave the host's environment's value.
+    ///     <see langword="null"/> when no host was chosen, leaving the environment's value, which is
+    ///     then unset or blank.
     /// </summary>
     internal string? HostName { get; init; }
 

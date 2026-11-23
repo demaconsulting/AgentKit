@@ -1259,21 +1259,20 @@ process or job — CI, a container, a service account — and a sign-in stored f
 quietly replace it. If a stray `GITHUB_TOKEN` is set for another tool, unset it for the application,
 or pass `gitHubToken:` explicitly.
 
-**What the Copilot CLI sign-in shares.** Only the login. AgentKit reads the signed-in account's host
-and login from the Copilot CLI's `config.json` (in `COPILOT_HOME`, or `.copilot` in the user's
-profile) and asks the Copilot CLI itself for that account's token: it runs the same CLI once more,
-for a moment, on a new temporary folder holding nothing but that host and login, with no session,
-and deletes the folder afterwards. The CLI reads the token from the system credential store, where
-`copilot login` put it; AgentKit never reads the credential store itself. The runtime then receives
-the token and the host, nothing else: none of the user's MCP servers, hooks, agents, skills, plugins,
-instructions, settings or history, and its data directory stays private. The token is kept in memory
-and handed only to the runtime process, in its environment; AgentKit never writes or logs it. This
-adds a second or two to the start. Any token AgentKit was given or obtained, or that your token
-provider returns, is also removed from the runtime and SDK text AgentKit quotes in its own messages —
-a failed start, a session error that fails an agent's run, a provider session's refusal — along with
-any text shaped like a GitHub token. When AgentKit keeps a runtime or SDK failure as an inner
-exception, it keeps a redacted copy: the original's type name, message and stack trace, with the
-same text removed, so no exception in the chain carries a token.
+**What the Copilot CLI sign-in shares.** Only the login. AgentKit reads the signed-in account's host and login from the
+Copilot CLI's `config.json` (in `COPILOT_HOME`, or `.copilot` in the user's profile; a `COPILOT_HOME` that is not a
+valid path is reported, and the next source applies) and asks the Copilot CLI itself for that account's token: it runs
+the same CLI once more, for a moment, on a new temporary folder holding nothing but that host and login, with no
+session, and deletes the folder afterwards. The CLI reads the token from the system credential store, where
+`copilot login` put it; AgentKit never reads the credential store itself. The runtime then receives the token and the
+host, nothing else: none of the user's MCP servers, hooks, agents, skills, plugins, instructions, settings or history,
+and its data directory stays private. The token is kept in memory and handed only to the runtime process, in its
+environment; AgentKit never writes or logs it. This adds a second or two to the start. Any token AgentKit was given or
+obtained, or that your token provider returns, is also removed from the runtime and SDK text AgentKit quotes in its own
+messages — a failed start, a session error that fails an agent's run, a provider session's refusal — along with any text
+shaped like a GitHub token. When AgentKit keeps a runtime or SDK failure as an inner exception, it keeps a redacted
+copy: the original's type name, message and stack trace, with the same text removed, so no exception in the chain
+carries a token.
 
 **GitHub Enterprise Cloud hosts.** Each source is used with its own host. The Copilot CLI sign-in
 uses its account's host. A token needs its host too: GitHub refuses a token for a `*.ghe.com` account
@@ -1288,6 +1287,10 @@ var options = new CopilotRuntimeOptions(
 ```
 
 When a host is chosen this way, the Copilot CLI sign-in is used only if its account is on that host.
+`COPILOT_GH_HOST` must be a host name or an https URL without a path, query, user name or port, as
+`gitHubHost:` must: any other value stops the start with an explanation, unless `gitHubHost:` is
+passed, which takes precedence over it. A valid value is handed to the runtime as a bare host name,
+whatever form it was written in, so the runtime always signs in to the host the token is for.
 
 **A token provider** is asked once when the runtime starts, and again by each session the runtime
 opens, so the runtime can refresh a token before it expires. It receives the host and whether the
@@ -1506,6 +1509,11 @@ for answer quality across a long conversation, not to save money.
   `GITHUB_TOKEN` comes before the Copilot CLI sign-in; otherwise the Copilot CLI's account comes before
   the GitHub CLI's. Pass `gitHubHost:` to choose a host, or `useCopilotCliSignIn: false` to skip the
   Copilot CLI sign-in.
+- **`InvalidOperationException`: "The COPILOT_GH_HOST environment variable is not a valid GitHub
+  host".** `COPILOT_GH_HOST` is set to something other than a host name such as `example.ghe.com` or
+  an https URL such as `https://example.ghe.com` — for example an `http` URL, or one with a path or
+  port. The message does not repeat the value. Correct it, unset it to sign in to `github.com`, or
+  pass `gitHubHost:`, which takes precedence over it.
 - **The Copilot CLI account was found but its token could not be read.** The message names the account
   and the reason. Run `copilot` once to check that it is still signed in (`copilot login` again if
   not); on macOS, allow access to the keychain item if asked. AgentKit moves on to the GitHub CLI
@@ -1589,6 +1597,10 @@ GitHub host:
   reads the account's token.
 - **The "not signed in" message has changed.** It now lists what each source found. Code that matched
   its earlier text should match the exception type instead.
+- **An invalid `COPILOT_GH_HOST` now stops the start.** It was ignored: AgentKit resolved the sign-in
+  for `github.com` while the runtime still received the invalid value. Correct or unset it, or pass
+  `gitHubHost:`. A valid `COPILOT_GH_HOST` written as a URL is now handed to the runtime as a bare
+  host name.
 - **A failed start's and a failed model listing's inner exception is a redacted copy.** It is no
   longer the runtime's or the SDK's own exception, but a copy carrying its type name, message and
   stack trace with any token removed; the outer exception is still an `InvalidOperationException`.

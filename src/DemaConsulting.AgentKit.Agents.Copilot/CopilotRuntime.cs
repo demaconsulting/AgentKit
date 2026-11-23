@@ -437,7 +437,9 @@ public sealed class CopilotRuntime : IAsyncDisposable
     ///     copy of the original failure — its type name, message and stack trace — is the
     ///     <see cref="Exception.InnerException"/>; or the started runtime is not signed in —
     ///     the message lists what each sign-in source found and how to sign in; or the host's token
-    ///     provider failed or returned no token — a failure is the <see cref="Exception.InnerException"/>.
+    ///     provider failed or returned no token — a failure is the <see cref="Exception.InnerException"/>;
+    ///     or <c>COPILOT_GH_HOST</c> is set to something that is not a valid GitHub host and no
+    ///     <c>gitHubHost</c> was given — the message says how to correct it, without quoting it.
     /// </exception>
     /// <exception cref="IOException">The data directory or its marker could not be created or read.</exception>
     /// <exception cref="UnauthorizedAccessException">The data directory is not writable, or its marker is not readable.</exception>
@@ -960,7 +962,8 @@ public sealed class CopilotRuntime : IAsyncDisposable
     ///     Everything left unset keeps the SDK's default, which for each capability channel is none.
     ///     The mode, environment and data directory are the same whichever executable runs; the sign-in
     ///     adds only a token, which the SDK passes in a variable of its own, and the GitHub host
-    ///     (<c>COPILOT_GH_HOST</c>, one of <see cref="PassThroughVariables"/>).
+    ///     (<c>COPILOT_GH_HOST</c>, one of <see cref="PassThroughVariables"/>), set to the bare name of
+    ///     the chosen host — the host's environment's own value too, normalized.
     /// </remarks>
     /// <param name="options">The host's options.</param>
     /// <param name="dataDirectory">The prepared data directory's full path.</param>

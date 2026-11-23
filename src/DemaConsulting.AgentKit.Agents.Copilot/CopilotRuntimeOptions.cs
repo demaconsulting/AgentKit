@@ -113,7 +113,9 @@ public sealed class CopilotRuntimeOptions
     ///     the sign-in source: <c>COPILOT_GH_HOST</c> in the application's environment, the Copilot CLI
     ///     account's host, or <c>github.com</c>. A token or token provider is used with this host; the
     ///     Copilot CLI sign-in is used only when its account is on this host. Only an https host without
-    ///     a path, query, user name or port is accepted.
+    ///     a path, query, user name or port is accepted. <c>COPILOT_GH_HOST</c> must meet the same rule:
+    ///     one that does not is refused when the runtime starts, unless this host is passed, which takes
+    ///     precedence over it.
     /// </param>
     /// <param name="gitHubTokenProvider">
     ///     A callback that supplies GitHub tokens, so a host that can refresh its token (an OAuth app, a

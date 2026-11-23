@@ -102,8 +102,9 @@ sections:
           - id: AgentKitAgentsCopilot-CopilotRuntime-UsesTheResolvedSignIn
             title: >-
               The runtime shall start the Copilot runtime with the token and GitHub host the sign-in
-              resolution chose, and with neither changed from the host's environment when the
-              resolution leaves the sign-in to the runtime.
+              resolution chose — a host the host's environment chose given as the normalized bare
+              host name — and with neither changed from the host's environment when the resolution
+              chose no host and leaves the sign-in to the runtime.
             tags: [security]
             justification: |
               The token reaches the runtime only through the SDK's own token option, which keeps it

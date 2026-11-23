@@ -35,6 +35,12 @@ public sealed class CopilotSignInTests : IDisposable
     private const string SentinelToken = "gho_SENTINEL0123456789abcdefABCDEF0123";
 
     /// <summary>
+    ///     A path no platform accepts: it holds a null character, so <see cref="Path.GetFullPath(string)"/>
+    ///     refuses it with <see cref="ArgumentException"/>.
+    /// </summary>
+    private const string InvalidPath = "home\0bad";
+
+    /// <summary>
     ///     The user's Copilot CLI configuration the tests write: comments, a trailing comma, and keys
     ///     besides the account entry that must never be copied.
     /// </summary>
@@ -339,6 +345,110 @@ public sealed class CopilotSignInTests : IDisposable
         Assert.Equal(0, Helper.Created);
         Assert.Contains("was requested", plan.CopilotCliFinding, StringComparison.Ordinal);
         Assert.Equal(new CopilotCliAccount(AccountHost, AccountLogin), plan.CliAccount);
+    }
+
+    /// <summary>
+    ///     Proves a <c>COPILOT_GH_HOST</c> that is not a valid GitHub host refuses the start with a
+    ///     message naming the variable and the remedies, without quoting the value, before any token is
+    ///     resolved or helper run.
+    /// </summary>
+    /// <param name="environmentHost">The environment's invalid <c>COPILOT_GH_HOST</c>.</param>
+    [Theory]
+    [InlineData("http://x.ghe.com")]
+    [InlineData("x.ghe.com/path")]
+    [InlineData("https://x.ghe.com:8443")]
+    [InlineData("https://user:s3cr3t-host-xyz@x.ghe.com")]
+    [InlineData("not a host")]
+    public async Task CopilotSignIn_ResolveAsync_InvalidEnvironmentHost_IsRefused(string environmentHost)
+    {
+        // Arrange: a Copilot CLI account the start would otherwise use, and a provider never to be asked
+        WriteUserConfiguration(UserConfiguration);
+        var asked = 0;
+        var options = new CopilotRuntimeOptions(
+            DataDirectory,
+            gitHubTokenProvider: (_, _) =>
+            {
+                asked++;
+                return Task.FromResult(new CopilotGitHubToken(SentinelToken));
+            });
+
+        // Act
+        var failure = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => ResolveAsync(options, new Hashtable { ["COPILOT_GH_HOST"] = environmentHost }));
+        var withoutProvider = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => ResolveAsync(new CopilotRuntimeOptions(DataDirectory), new Hashtable { ["COPILOT_GH_HOST"] = environmentHost }));
+
+        // Assert
+        Assert.Equal(CopilotSignIn.InvalidEnvironmentHostMessage, failure.Message);
+        Assert.Equal(CopilotSignIn.InvalidEnvironmentHostMessage, withoutProvider.Message);
+        Assert.Contains("COPILOT_GH_HOST", failure.Message, StringComparison.Ordinal);
+        Assert.Contains("gitHubHost", failure.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain(environmentHost, failure.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("s3cr3t-host-xyz", failure.Message, StringComparison.Ordinal);
+        Assert.Equal(0, asked);
+        Assert.Equal(0, Helper.Created);
+    }
+
+    /// <summary>
+    ///     Proves the host's <c>gitHubHost</c> takes precedence over an invalid <c>COPILOT_GH_HOST</c>,
+    ///     which is then neither consulted nor refused, and a blank one is treated as unset.
+    /// </summary>
+    [Fact]
+    public async Task CopilotSignIn_ResolveAsync_InvalidEnvironmentHostWithTheOption_UsesTheOption()
+    {
+        // Act
+        var plan = await ResolveAsync(
+            new CopilotRuntimeOptions(DataDirectory, gitHubToken: SentinelToken, gitHubHost: "example.ghe.com"),
+            new Hashtable { ["COPILOT_GH_HOST"] = "http://not-valid.example" });
+        var blank = await ResolveAsync(
+            new CopilotRuntimeOptions(DataDirectory, gitHubToken: SentinelToken),
+            new Hashtable { ["COPILOT_GH_HOST"] = "   " });
+
+        // Assert
+        Assert.Equal("example.ghe.com", plan.HostName);
+        Assert.Equal(AccountHost, plan.RequestedHost);
+        Assert.Null(blank.HostName);
+        Assert.Null(blank.RequestedHost);
+    }
+
+    /// <summary>
+    ///     Proves a valid <c>COPILOT_GH_HOST</c> in any accepted form is handed to the runtime
+    ///     normalized, as a bare lower-case host name, on every path — a host token, an environment
+    ///     token and the runtime's own fallbacks — so the token and the runtime's endpoint agree.
+    /// </summary>
+    [Fact]
+    public async Task CopilotSignIn_ResolveAsync_EnvironmentHost_IsGivenToTheRuntimeNormalized()
+    {
+        // Arrange
+        const string environmentHost = "https://Example.GHE.com/";
+
+        // Act
+        var token = await ResolveAsync(
+            new CopilotRuntimeOptions(DataDirectory, gitHubToken: SentinelToken),
+            new Hashtable { ["COPILOT_GH_HOST"] = environmentHost });
+        var environmentToken = await ResolveAsync(
+            new CopilotRuntimeOptions(DataDirectory),
+            new Hashtable { ["COPILOT_GH_HOST"] = environmentHost, ["GH_TOKEN"] = "gho_environment" });
+        var fallbacks = await ResolveAsync(
+            new CopilotRuntimeOptions(DataDirectory),
+            new Hashtable { ["COPILOT_GH_HOST"] = environmentHost });
+        var clientOptions = CopilotRuntime.BuildClientOptions(
+            new CopilotRuntimeOptions(DataDirectory),
+            DataDirectory,
+            new Hashtable { ["COPILOT_GH_HOST"] = environmentHost },
+            signIn: fallbacks);
+
+        // Assert
+        Assert.All(
+            new[] { token, environmentToken, fallbacks },
+            plan =>
+            {
+                Assert.Equal("example.ghe.com", plan.HostName);
+                Assert.Equal(AccountHost, plan.RequestedHost);
+            });
+        Assert.Equal(
+            "example.ghe.com",
+            Assert.IsType<SpawnedStdioRuntimeConnection>(clientOptions.Runtime).Environment!["COPILOT_GH_HOST"]);
     }
 
     /// <summary>
@@ -697,6 +807,44 @@ public sealed class CopilotSignInTests : IDisposable
         // Assert
         Assert.Null(lookup.Account);
         Assert.Contains("AgentKit's own data directory", lookup.Problem, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves a <c>COPILOT_HOME</c> that is not a valid path yields no account and a finding naming
+    ///     the variable, without quoting its value, rather than an exception.
+    /// </summary>
+    [Fact]
+    public void CopilotSignIn_LookUpCopilotCliAccount_InvalidCopilotHome_ReportsWhy()
+    {
+        // Act
+        var lookup = CopilotSignIn.LookUpCopilotCliAccount(new Hashtable { ["COPILOT_HOME"] = InvalidPath }, Profile, DataDirectory);
+
+        // Assert
+        Assert.Null(lookup.Account);
+        Assert.Null(lookup.ConfigurationPath);
+        Assert.Contains("COPILOT_HOME is not a valid path", lookup.Problem, StringComparison.Ordinal);
+        Assert.DoesNotContain(InvalidPath, lookup.Problem, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves a <c>COPILOT_HOME</c> that is not a valid path does not fail the start: the Copilot CLI
+    ///     step records why, and the next source applies.
+    /// </summary>
+    [Fact]
+    public async Task CopilotSignIn_ResolveAsync_InvalidCopilotHome_FallsThroughWithAFinding()
+    {
+        // Arrange: an account in the profile's default home, which COPILOT_HOME overrides
+        WriteUserConfiguration(UserConfiguration);
+
+        // Act
+        var plan = await ResolveAsync(new CopilotRuntimeOptions(DataDirectory), new Hashtable { ["COPILOT_HOME"] = InvalidPath });
+
+        // Assert
+        Assert.Null(plan.Source);
+        Assert.Null(plan.Token);
+        Assert.Null(plan.CliAccount);
+        Assert.Contains("COPILOT_HOME is not a valid path", plan.CopilotCliFinding, StringComparison.Ordinal);
+        Assert.Equal(0, Helper.Created);
     }
 
     /// <summary>

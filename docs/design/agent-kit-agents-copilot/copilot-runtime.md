@@ -151,7 +151,8 @@ bundled runtime or when its output named none). It travels from `ResolveLaunchAs
 5. Resolve the sign-in (`CopilotSignIn.ResolveAsync`) with the current machine's sign-in context: the
    host's token or token provider, a token in the environment, the user's Copilot CLI sign-in
    (through the token-fetch helper, on the same executable as the launch) or the runtime's own
-   fallbacks, each with its host. A token provider that fails refuses the start here.
+   fallbacks, each with its host. A token provider that fails, or a `COPILOT_GH_HOST` that is not a
+   valid host when no `gitHubHost` was given, refuses the start here, before any runtime process.
 6. Build the client options (`BuildClientOptions`) from the options, the prepared directory, the
    environment, the resolved CLI path and the sign-in plan.
 7. Create the client and start it through `StartOwnedAsync`, whose start step is `StartClientAsync`
@@ -298,7 +299,9 @@ of the system keychain, and a supplied token — so those cannot be overridden f
 **Algorithm:** Use the sign-in plan given, or, when none is (a test's client), the plan the options
 alone describe (`CopilotSignInPlan.FromOptions`: the host's token and chosen host). Build the
 runtime's environment with `BuildRuntimeEnvironment(hostEnvironment)` and, when the plan names a host,
-set `COPILOT_GH_HOST` to its bare host name, overriding the host environment's value. Set `Mode` to
+set `COPILOT_GH_HOST` to its bare host name, overriding the host environment's value — which, when it
+named a valid host, is the same host, normalized, and when it named an invalid one already refused
+the start. Set `Mode` to
 `CopilotClientMode.Empty` and `Runtime` to
 `RuntimeConnection.ForSpawnedStdio(path: cliPath, environment: <that environment>,
 baseDirectory: dataDirectory)`, with no arguments and no child working directory. `cliPath` is the
@@ -425,6 +428,7 @@ for that open. Disposal is not serialized against open runs, as is usual for `IA
 | GitHub host not an https host without a path, query, user name or port | `ArgumentException` naming `gitHubHost` |
 | Both a GitHub token and a token provider | `ArgumentException` naming `gitHubTokenProvider` |
 | Token provider fails or returns no token at start | `InvalidOperationException` naming the provider; nothing started |
+| `COPILOT_GH_HOST` invalid, no `gitHubHost` | `InvalidOperationException` naming the variable; nothing started |
 | Token provider canceled at start | `OperationCanceledException` propagates unchanged |
 | Named CLI does not exist | `InvalidOperationException` before any client exists |
 | No installed CLI found | `InvalidOperationException` listing where AgentKit looked and how to install |

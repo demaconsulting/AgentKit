@@ -66,7 +66,10 @@ GitHub CLI folder; a helper environment carrying a token or host variable, the h
 configuration, or a `PATH` folder holding the GitHub CLI (other than one holding `node` for a script
 CLI); a helper in another mode, on another executable or with a token; an account list read before
 the status shows the account's stored sign-in; a token taken from another account's entry; a helper
-failure, time-out or account-list failure that fails the start; a helper not disposed or a helper home
+failure, time-out or account-list failure that fails the start; a `COPILOT_HOME` that is not a valid
+path that fails the start or is quoted; an invalid `COPILOT_GH_HOST` that is ignored, quoted, or
+refused when `gitHubHost` was given; a valid one handed to the runtime other than normalized; a helper
+not disposed or a helper home
 not deleted on any outcome; a configuration with comments and trailing commas not read; an unusable
 configuration that yields an account; a refusal missing a source, its finding or a remedy; a token
 in any finding, message, log entry or string form; a known token of any shape left in quoted runtime,
@@ -104,6 +107,7 @@ to `Unknown`.
 - `CopilotSignIn_ResolveAsync_Provider_IsAskedForTheEffectiveHost` (option, `COPILOT_GH_HOST`, default)
 - `CopilotSignIn_ResolveAsync_RequestedHostDiffers_SkipsTheCopilotCli` (option and `COPILOT_GH_HOST`)
 - `CopilotSignIn_ResolveAsync_Fallbacks_KeepTheChosenHostAndReportTheGitHubCli`
+- `CopilotSignIn_ResolveAsync_EnvironmentHost_IsGivenToTheRuntimeNormalized`
 - `CopilotSignIn_NormalizeHost_AcceptedForms_Normalize`
 - `CopilotSignIn_NormalizeHost_RejectedForms_Throw`
 
@@ -112,9 +116,27 @@ Normal operation and boundaries. A token with `https://Example.ghe.com/` gives t
 `COPILOT_GH_HOST` without the option, and for `https://github.com` without either. A Copilot CLI
 account on `example.ghe.com` is not used when `github.com` or another host is requested, and the
 finding says which. The fallbacks get the option's host name and none otherwise, and their finding
-names the GitHub CLI found on `PATH`, or says none was found. Bare names, https URLs and one trailing
+names the GitHub CLI found on `PATH`, or says none was found. A `COPILOT_GH_HOST` of
+`https://Example.GHE.com/` is handed over as `example.ghe.com` with a host token, with an environment
+token and to the runtime's own fallbacks alike, and the client options built from the fallbacks' plan
+set the runtime's `COPILOT_GH_HOST` to `example.ghe.com`. Bare names, https URLs and one trailing
 slash normalize to lower case; `http`, other schemes, a path, query, fragment, user name, port, an
 empty authority or a non-host are refused naming the parameter.
+
+#### AgentKitAgentsCopilot-CopilotSignIn-RefusesAnInvalidEnvironmentHost: An Invalid COPILOT_GH_HOST Stops the Start
+
+**Tests**:
+
+- `CopilotSignIn_ResolveAsync_InvalidEnvironmentHost_IsRefused` (`http://x.ghe.com`, `x.ghe.com/path`,
+  `https://x.ghe.com:8443`, a URL with a user name and password, `not a host`)
+- `CopilotSignIn_ResolveAsync_InvalidEnvironmentHostWithTheOption_UsesTheOption`
+
+Error paths and boundaries. Each invalid `COPILOT_GH_HOST`, with a Copilot CLI account present and
+with or without a token provider, refuses the resolution with exactly the refusal message, which
+names `COPILOT_GH_HOST` and `gitHubHost` and quotes neither the value nor the password a URL carried;
+the provider is never asked and no helper is created. With `gitHubHost` given, an invalid
+`COPILOT_GH_HOST` is not consulted and the option's host is used; a blank `COPILOT_GH_HOST` counts as
+unset.
 
 #### AgentKitAgentsCopilot-CopilotSignIn-ReusesTheCopilotCliSignIn: The Account, Read Through the CLI
 
@@ -174,13 +196,18 @@ helper home is gone.
 - `CopilotSignIn_ResolveAsync_HelperNotSignedInAsTheAccount_DoesNotReadTheAccountList`
 - `CopilotSignIn_ResolveAsync_CallerCancels_PropagatesAndCleansUp`
 - `CopilotSignIn_ReadCopilotCliAccount_UnusableConfiguration_ReportsWhy`
+- `CopilotSignIn_LookUpCopilotCliAccount_InvalidCopilotHome_ReportsWhy`
+- `CopilotSignIn_ResolveAsync_InvalidCopilotHome_FallsThroughWithAFinding`
 
 Error paths. A helper whose start throws (with a token-shaped string in its message), one that never
 answers within a 100 ms limit, and an account list that throws the SDK's own deserialization error
 each leave the plan to the runtime's fallbacks with a finding — redacted, for the start failure —
 rather than failing. A helper client whose construction throws (again with a token-shaped string in
 its message) likewise leaves a redacted finding, with nothing to dispose and its home deleted. The
-caller's cancellation while the helper runs propagates.
+caller's cancellation while the helper runs propagates. A `COPILOT_HOME` holding a null character,
+which no platform accepts as a path, yields no account, no configuration path and a finding that
+names `COPILOT_HOME` without quoting its value; resolving with it, though the profile's default home
+holds an account, leaves the plan to the runtime's fallbacks with that finding and runs no helper.
 
 #### AgentKitAgentsCopilot-CopilotSignIn-AsksTheHostsTokenProvider: The Host's Provider, at Start and per Session
 

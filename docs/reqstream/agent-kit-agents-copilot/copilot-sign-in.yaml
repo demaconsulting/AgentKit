@@ -37,19 +37,42 @@ sections:
             title: >-
               The sign-in shall use a host-supplied token or token provider with the host the host
               chose, else COPILOT_GH_HOST, else github.com; shall use the Copilot CLI sign-in with its
-              account's host, and not at all when another host was chosen; and shall give the runtime
-              the chosen host for its own fallbacks.
+              account's host, and not at all when another host was chosen; shall give the runtime
+              the chosen host for its own fallbacks; and shall give the runtime a host chosen in
+              COPILOT_GH_HOST as the normalized bare host name, so the token and the runtime's
+              endpoint agree.
             justification: |
               A GitHub Enterprise Cloud token used without its host is refused by GitHub with 401 Bad
               credentials, and a user whose GitHub CLI and Copilot CLI are signed in on different hosts
-              would otherwise be signed in on the wrong one without notice.
+              would otherwise be signed in on the wrong one without notice. Handing the runtime the
+              environment's host in another form than the one the token was resolved for, such as an
+              https URL, would leave the two to agree by chance.
             tests:
               - CopilotSignIn_ResolveAsync_ExplicitTokenWithHost_SetsTheHostName
               - CopilotSignIn_ResolveAsync_Provider_IsAskedForTheEffectiveHost
               - CopilotSignIn_ResolveAsync_RequestedHostDiffers_SkipsTheCopilotCli
               - CopilotSignIn_ResolveAsync_Fallbacks_KeepTheChosenHostAndReportTheGitHubCli
+              - CopilotSignIn_ResolveAsync_EnvironmentHost_IsGivenToTheRuntimeNormalized
               - CopilotSignIn_NormalizeHost_AcceptedForms_Normalize
               - CopilotSignIn_NormalizeHost_RejectedForms_Throw
+
+          - id: AgentKitAgentsCopilot-CopilotSignIn-RefusesAnInvalidEnvironmentHost
+            title: >-
+              The sign-in shall refuse a non-blank COPILOT_GH_HOST that is not a valid GitHub host,
+              validated as the gitHubHost option is, with a message that names the variable, the
+              accepted forms and the remedies and does not quote the value, unless the host passed
+              gitHubHost, which takes precedence over it; a blank COPILOT_GH_HOST shall count as unset.
+            tags: [security]
+            justification: |
+              Ignoring an invalid host would resolve the token for github.com while the runtime still
+              reads the invalid value from its environment, so the token and the runtime's endpoint
+              would disagree without notice. Refusing names the problem where it can be fixed. The
+              value is not quoted because a rejected URL may carry a user name and password. The
+              option takes precedence because, when it is given, the environment's value never
+              reaches the runtime.
+            tests:
+              - CopilotSignIn_ResolveAsync_InvalidEnvironmentHost_IsRefused
+              - CopilotSignIn_ResolveAsync_InvalidEnvironmentHostWithTheOption_UsesTheOption
 
           - id: AgentKitAgentsCopilot-CopilotSignIn-ReusesTheCopilotCliSignIn
             title: >-
@@ -101,15 +124,18 @@ sections:
 
           - id: AgentKitAgentsCopilot-CopilotSignIn-FallsThroughOnFailure
             title: >-
-              The sign-in shall record a missing, unreadable, oversized or malformed Copilot CLI
-              configuration, a missing account, a helper that fails, times out, reports another account
-              or yields no token, and an account list the SDK cannot read, and shall then let the next
-              source apply; the caller's cancellation shall propagate.
+              The sign-in shall record a COPILOT_HOME that is not a valid path, a missing, unreadable,
+              oversized or malformed Copilot CLI configuration, a missing account, a helper that
+              fails, times out, reports another account or yields no token, and an account list the
+              SDK cannot read, and shall then let the next source apply; the caller's cancellation
+              shall propagate.
             justification: |
               The Copilot CLI sign-in relies on undocumented CLI contracts and on a credential store the
               user may not unlock, so it must never make a start fail that the next source could have
               signed in. The SDK 2.0.1 account list fails to deserialize any account but a stored
-              sign-in, so that failure is a finding too.
+              sign-in, so that failure is a finding too. A malformed COPILOT_HOME is the user's
+              Copilot CLI setting, not the application's, so it is named in the finding but not
+              quoted.
             tests:
               - CopilotSignIn_ResolveAsync_HelperFails_FallsThroughWithAFinding
               - CopilotSignIn_ResolveAsync_HelperCannotBeCreated_FallsThroughWithAFinding
@@ -118,6 +144,8 @@ sections:
               - CopilotSignIn_ResolveAsync_HelperNotSignedInAsTheAccount_DoesNotReadTheAccountList
               - CopilotSignIn_ResolveAsync_CallerCancels_PropagatesAndCleansUp
               - CopilotSignIn_ReadCopilotCliAccount_UnusableConfiguration_ReportsWhy
+              - CopilotSignIn_LookUpCopilotCliAccount_InvalidCopilotHome_ReportsWhy
+              - CopilotSignIn_ResolveAsync_InvalidCopilotHome_FallsThroughWithAFinding
 
           - id: AgentKitAgentsCopilot-CopilotSignIn-AsksTheHostsTokenProvider
             title: >-
