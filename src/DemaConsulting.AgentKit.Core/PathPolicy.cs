@@ -44,10 +44,15 @@ namespace DemaConsulting.AgentKit.Core;
 ///     with <c>..</c> is refused exactly as an absolute one is.
 ///     </para>
 ///     <para>
-///     <b>Containment is judged on normalized paths.</b> A symbolic link, junction or mount
-///     inside a granted location is neither followed nor detected, so a path that leaves a
-///     granted location through one is judged on the location it is spelled as. Links are not a
-///     protection boundary here; see the note in the README.
+///     <b>Containment is judged on normalized paths, and optionally on linked ones too.</b> The
+///     lexical decisions (<see cref="TryResolveRead"/>, <see cref="TryResolveWrite"/>) neither
+///     follow nor detect a symbolic link, junction or mount inside a granted location, so a
+///     path that leaves a granted location through one is judged on the location it is spelled
+///     as; see the note in the README. The decisions that follow links
+///     (<see cref="TryResolveReadFollowingLinks"/>, <see cref="TryResolveWriteFollowingLinks"/>)
+///     take the lexical decision first and then also judge the location the path reaches
+///     through its links, for a tool that must not be steered out of the grants that way. They
+///     are pre-flight checks; see their remarks for what they cannot cover.
 ///     </para>
 ///     <para>
 ///     <b>Denial is a return value, not an exception.</b> A refused path is reported by returning
@@ -433,7 +438,7 @@ public sealed class PathPolicy
         [NotNullWhen(true)] out string? realPath,
         [NotNullWhen(false)] out string? denialMessage)
     {
-        return TryResolve(path, requireWrite: false, out realPath, out denialMessage);
+        return TryResolve(path, requireWrite: false, out realPath, out denialMessage, out _, out _);
     }
 
     /// <summary>
@@ -465,7 +470,104 @@ public sealed class PathPolicy
         [NotNullWhen(true)] out string? realPath,
         [NotNullWhen(false)] out string? denialMessage)
     {
-        return TryResolve(path, requireWrite: true, out realPath, out denialMessage);
+        return TryResolve(path, requireWrite: true, out realPath, out denialMessage, out _, out _);
+    }
+
+    /// <summary>
+    ///     Attempts to resolve a path for reading, confirming that some grant permits both the
+    ///     location it is spelled as and the location it reaches through its links.
+    /// </summary>
+    /// <remarks>
+    ///     <para>
+    ///     <b>Why it exists.</b> <see cref="TryResolveRead"/> judges the location a path is spelled
+    ///     as, so a symbolic link or junction spelled inside a granted location can lead a read
+    ///     anywhere. A tool that opens the file itself and must not be steered that way asks this
+    ///     question instead. The built-in <c>image_view</c> tool uses it for its input.
+    ///     </para>
+    ///     <para>
+    ///     <b>The decision.</b> The lexical read decision is taken first, and its denial is returned
+    ///     unchanged. The permitted location is then resolved through
+    ///     <see cref="RealPathResolver.ResolveLinks"/>, and the read is permitted only when some
+    ///     grant permits that linked location as well. A rooted grant is compared through its own
+    ///     linked location, because the author may have spelled the root through a link (on macOS,
+    ///     every temporary folder lies beneath the <c>/var</c> link); its denied patterns are applied
+    ///     to the names the linked location carries beneath the root. A link from one granted
+    ///     location into another is therefore permitted.
+    ///     </para>
+    ///     <para>
+    ///     <b>What is reported.</b> On success <paramref name="realPath"/> is the same lexical
+    ///     location <see cref="TryResolveRead"/> reports, so a tool names the file as the caller
+    ///     spelled it; the linked location is used only to decide. A denial echoes the request and
+    ///     lists the permitted locations as usual, and never names where the link leads.
+    ///     </para>
+    ///     <para>
+    ///     <b>A pre-flight check.</b> The answer describes the file system at the moment of the
+    ///     call. A process that can write inside a granted location can still replace a component
+    ///     of the path between this check and the caller's open. Portable .NET has no
+    ///     handle-relative, no-follow open to close that window, so it remains; this check removes
+    ///     the standing escape a link already in place would give. Safe for concurrent use; reads
+    ///     link metadata only.
+    ///     </para>
+    /// </remarks>
+    /// <param name="path">
+    ///     The requested path, interpreted exactly as <see cref="TryResolveRead"/> interprets it.
+    ///     Need not exist.
+    /// </param>
+    /// <param name="realPath">
+    ///     On success, the lexical location the caller may read; otherwise <see langword="null"/>.
+    /// </param>
+    /// <param name="denialMessage">
+    ///     On refusal, a message stating what was asked for, how it was interpreted when it was
+    ///     relative, why it was refused, and which locations are permitted; otherwise
+    ///     <see langword="null"/>.
+    /// </param>
+    /// <returns>
+    ///     <see langword="true"/> when the read is permitted; otherwise <see langword="false"/>.
+    /// </returns>
+    public bool TryResolveReadFollowingLinks(
+        string? path,
+        [NotNullWhen(true)] out string? realPath,
+        [NotNullWhen(false)] out string? denialMessage)
+    {
+        return TryResolveFollowingLinks(path, requireWrite: false, out realPath, out denialMessage);
+    }
+
+    /// <summary>
+    ///     Attempts to resolve a path for writing, confirming that some read-write grant permits
+    ///     both the location it is spelled as and the location it reaches through its links.
+    /// </summary>
+    /// <remarks>
+    ///     <para>
+    ///     The write counterpart of <see cref="TryResolveReadFollowingLinks"/>, with the same
+    ///     decision, report and pre-flight limits, consulting only
+    ///     <see cref="AccessLevel.ReadWrite"/> grants. A file that does not exist yet is judged by
+    ///     its folder's linked location followed by its name, so a write through a linked folder
+    ///     that leads outside the grants is refused before anything is created. A destination that
+    ///     is itself a link is judged by where it leads. The built-in <c>diagram_render</c> tool
+    ///     uses it for <c>save_as</c>.
+    ///     </para>
+    /// </remarks>
+    /// <param name="path">
+    ///     The requested path, interpreted exactly as <see cref="TryResolveRead"/> interprets it.
+    ///     Need not exist.
+    /// </param>
+    /// <param name="realPath">
+    ///     On success, the lexical location the caller may write; otherwise <see langword="null"/>.
+    /// </param>
+    /// <param name="denialMessage">
+    ///     On refusal, a message stating what was asked for, how it was interpreted when it was
+    ///     relative, why it was refused, and which locations are permitted; otherwise
+    ///     <see langword="null"/>.
+    /// </param>
+    /// <returns>
+    ///     <see langword="true"/> when the write is permitted; otherwise <see langword="false"/>.
+    /// </returns>
+    public bool TryResolveWriteFollowingLinks(
+        string? path,
+        [NotNullWhen(true)] out string? realPath,
+        [NotNullWhen(false)] out string? denialMessage)
+    {
+        return TryResolveFollowingLinks(path, requireWrite: true, out realPath, out denialMessage);
     }
 
     /// <summary>
@@ -731,6 +833,13 @@ public sealed class PathPolicy
     /// <param name="requireWrite">Whether a read-write grant is required; false consults every grant.</param>
     /// <param name="realPath">On success, the real location; otherwise <see langword="null"/>.</param>
     /// <param name="denialMessage">On refusal, the constructed reason; otherwise <see langword="null"/>.</param>
+    /// <param name="wasRelative">
+    ///     On return, whether the request was interpreted against the working directory, so a
+    ///     later decision about the same request can build its denial the same way.
+    /// </param>
+    /// <param name="interpretedAbsolute">
+    ///     On return, the absolute location the request was interpreted as.
+    /// </param>
     /// <returns>
     ///     <see langword="true"/> when a grant of the required access permits the resolved path;
     ///     otherwise <see langword="false"/>.
@@ -739,11 +848,13 @@ public sealed class PathPolicy
         string? path,
         bool requireWrite,
         [NotNullWhen(true)] out string? realPath,
-        [NotNullWhen(false)] out string? denialMessage)
+        [NotNullWhen(false)] out string? denialMessage,
+        out bool wasRelative,
+        out string interpretedAbsolute)
     {
         // Build the absolute candidate and remember how it was interpreted, so a denial can echo
         // the input and, when it was relative, state what it was interpreted as.
-        var candidate = BuildCandidate(path, out var wasRelative, out var interpretedAbsolute);
+        var candidate = BuildCandidate(path, out wasRelative, out interpretedAbsolute);
 
         string resolved;
         try
@@ -781,6 +892,139 @@ public sealed class PathPolicy
         var reason = ClassifyDenial(resolved, requireWrite);
         denialMessage = BuildDenial(reason, path, wasRelative, interpretedAbsolute);
         return false;
+    }
+
+    /// <summary>
+    ///     Takes the lexical decision, then confirms that a grant of the required access also
+    ///     permits the location the path reaches through its links.
+    /// </summary>
+    /// <remarks>
+    ///     <para>
+    ///     Shared by both link-following entry points for the same reason <see cref="TryResolve"/>
+    ///     is shared by the lexical ones: reads and writes must differ only in which grants they
+    ///     consult. The lexical decision runs first and its denial is returned unchanged, so every
+    ///     path the lexical decision refuses is refused here with the same words.
+    ///     </para>
+    ///     <para>
+    ///     A path whose links cannot be resolved — a cycle, or a target the platform cannot
+    ///     express — is refused with the same reason a path that cannot be resolved lexically is
+    ///     given; denying what cannot be determined is the fail-safe reading.
+    ///     </para>
+    /// </remarks>
+    /// <param name="path">The requested path; may be null, which denotes the working directory.</param>
+    /// <param name="requireWrite">Whether a read-write grant is required; false consults every grant.</param>
+    /// <param name="realPath">On success, the lexical location; otherwise <see langword="null"/>.</param>
+    /// <param name="denialMessage">On refusal, the constructed reason; otherwise <see langword="null"/>.</param>
+    /// <returns>
+    ///     <see langword="true"/> when a grant of the required access permits both locations;
+    ///     otherwise <see langword="false"/>.
+    /// </returns>
+    private bool TryResolveFollowingLinks(
+        string? path,
+        bool requireWrite,
+        [NotNullWhen(true)] out string? realPath,
+        [NotNullWhen(false)] out string? denialMessage)
+    {
+        // The lexical decision first; its refusal already says everything that needs saying.
+        if (!TryResolve(path, requireWrite, out var lexical, out denialMessage, out var wasRelative, out var interpretedAbsolute))
+        {
+            realPath = null;
+            return false;
+        }
+
+        string linked;
+        try
+        {
+            // The location the path actually reaches once every link on it is followed.
+            linked = RealPathResolver.ResolveLinks(lexical);
+        }
+        catch (Exception exception) when (IsResolutionFailure(exception))
+        {
+            realPath = null;
+            denialMessage = BuildDenial(
+                "could not be resolved to a real location",
+                path,
+                wasRelative,
+                interpretedAbsolute);
+            return false;
+        }
+
+        // Some grant of the required access must permit where the path leads, too. The lexical
+        // location is what is reported; the linked one only decides.
+        if (Applicable(requireWrite).Any(grant => PermitsLinkedLocation(grant, linked)))
+        {
+            realPath = lexical;
+            denialMessage = null;
+            return true;
+        }
+
+        realPath = null;
+        denialMessage = BuildDenial(
+            "leads through a link to a location no grant permits for this access",
+            path,
+            wasRelative,
+            interpretedAbsolute);
+        return false;
+    }
+
+    /// <summary>
+    ///     Determines whether a grant permits a location that has already been resolved through
+    ///     its links.
+    /// </summary>
+    /// <remarks>
+    ///     <para>
+    ///     An unrestricted grant has no root, so it judges the linked location directly; only its
+    ///     denied patterns can refuse it.
+    ///     </para>
+    ///     <para>
+    ///     A rooted grant is compared through its own linked root, resolved on every call because
+    ///     the root may be created, removed or relinked after the policy is built. The grant root
+    ///     and its ancestry are the application author's choice, so a link there is followed rather
+    ///     than refused; a link beneath the root has been vetted by nobody, so it must lead back
+    ///     inside the linked root. The location is then spelled beneath the grant's own root and
+    ///     handed to <see cref="PathRule.Allows"/>, which applies the denied patterns to the names
+    ///     the location really carries. A root whose links cannot be resolved permits nothing.
+    ///     </para>
+    /// </remarks>
+    /// <param name="grant">The grant to consult.</param>
+    /// <param name="linked">The absolute location, resolved through its links.</param>
+    /// <returns><see langword="true"/> when the grant permits the location.</returns>
+    private static bool PermitsLinkedLocation(PathRule grant, string linked)
+    {
+        if (grant.Root is null)
+        {
+            return grant.Allows(linked);
+        }
+
+        string linkedRoot;
+        try
+        {
+            linkedRoot = RealPathResolver.ResolveLinks(grant.Root);
+        }
+        catch (Exception exception) when (IsResolutionFailure(exception))
+        {
+            return false;
+        }
+
+        // The location must be the linked root or lie beneath it. The separator is required for
+        // the "beneath" case, so a sibling that merely shares the root's name prefix is not
+        // contained.
+        if (string.Equals(linked, linkedRoot, PathComparison))
+        {
+            return grant.Allows(grant.Root);
+        }
+
+        var prefix = linkedRoot.EndsWith(Path.DirectorySeparatorChar)
+            ? linkedRoot
+            : linkedRoot + Path.DirectorySeparatorChar;
+        if (!linked.StartsWith(prefix, PathComparison))
+        {
+            return false;
+        }
+
+        // Spell the location beneath the grant's own root, so the grant judges it in its own
+        // terms and its denied patterns see the names the location really carries.
+        return grant.Allows(Path.Join(grant.Root, linked[prefix.Length..]));
     }
 
     /// <summary>

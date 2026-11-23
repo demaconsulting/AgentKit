@@ -326,6 +326,162 @@ public class PathPolicyTests
     }
 
     // ---------------------------------------------------------------------------------------------
+    // Decisions that follow links. Each scenario uses a genuine junction (Windows) or symbolic
+    // link (elsewhere); a link that cannot be created fails the test rather than skipping it.
+    // ---------------------------------------------------------------------------------------------
+
+    /// <summary>
+    ///     Proves that a read through a link inside the grant that leads outside it is refused by
+    ///     the link-following decision, although the lexical decision permits it, and that the
+    ///     refusal does not name where the link leads.
+    /// </summary>
+    [Fact]
+    public void PathPolicy_TryResolveReadFollowingLinks_LinkLeavingTheGrant_IsDenied()
+    {
+        // Arrange: a secret outside the grant, reachable through a link spelled inside it
+        using var fixture = new TempDirectoryFixture();
+        TempDirectoryFixture.WriteFile(fixture.Outside, "secret.txt", "outside-content");
+        using var link = DirectoryLink.Create(Path.Combine(fixture.Root, "jn"), fixture.Outside);
+        var policy = CreateRootedPolicy(fixture.Root);
+
+        // Act: ask both decisions about the same spelling
+        var lexical = policy.TryResolveRead("jn/secret.txt", out _, out _);
+        var followed = policy.TryResolveReadFollowingLinks("jn/secret.txt", out var realPath, out var denial);
+
+        // Assert: only the lexical decision is steered; the refusal names no outside location
+        Assert.True(lexical);
+        Assert.False(followed);
+        Assert.Null(realPath);
+        Assert.StartsWith(
+            "Denied: leads through a link to a location no grant permits for this access.",
+            denial,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(fixture.Outside, denial, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(RealPathResolver.ResolveLinks(fixture.Outside), denial, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    ///     Proves that a write to a file not yet created beneath a linked folder that leads outside
+    ///     the grant is refused, before anything is created.
+    /// </summary>
+    [Fact]
+    public void PathPolicy_TryResolveWriteFollowingLinks_ParentLinkLeavingTheGrant_IsDenied()
+    {
+        // Arrange: a link inside the writable grant pointing at an empty folder outside it
+        using var fixture = new TempDirectoryFixture();
+        using var link = DirectoryLink.Create(Path.Combine(fixture.Root, "jn"), fixture.Outside);
+        var policy = CreateRootedPolicy(fixture.Root);
+
+        // Act: ask both write decisions about a destination beneath the link
+        var lexical = policy.TryResolveWrite("jn/new.txt", out _, out _);
+        var followed = policy.TryResolveWriteFollowingLinks("jn/new.txt", out var realPath, out var denial);
+
+        // Assert: refused by the link-following decision, and the outside folder is untouched
+        Assert.True(lexical);
+        Assert.False(followed);
+        Assert.Null(realPath);
+        Assert.NotNull(denial);
+        Assert.Empty(Directory.GetFileSystemEntries(fixture.Outside));
+    }
+
+    /// <summary>
+    ///     Proves that a link leading into a location granted only for reading permits a read
+    ///     through it but refuses a write.
+    /// </summary>
+    [Fact]
+    public void PathPolicy_TryResolveWriteFollowingLinks_LinkIntoReadOnlyGrant_IsDenied()
+    {
+        // Arrange: a writable root holding a link into a second, read-only location
+        using var fixture = new TempDirectoryFixture();
+        TempDirectoryFixture.WriteFile(fixture.Outside, "reference.txt", "read-only-content");
+        using var link = DirectoryLink.Create(Path.Combine(fixture.Root, "jn"), fixture.Outside);
+        var policy = new PathPolicy(
+            fixture.Root,
+            [PathRule.ReadWrite(fixture.Root), PathRule.ReadOnly(fixture.Outside)]);
+
+        // Act: read and write through the link
+        var read = policy.TryResolveReadFollowingLinks("jn/reference.txt", out _, out _);
+        var write = policy.TryResolveWriteFollowingLinks("jn/reference.txt", out _, out var denial);
+
+        // Assert: the read-only grant permits the read and nothing permits the write
+        Assert.True(read);
+        Assert.False(write);
+        Assert.NotNull(denial);
+    }
+
+    /// <summary>
+    ///     Proves that a link from one place inside the grant to another is permitted, and that the
+    ///     location reported is the one the caller spelled.
+    /// </summary>
+    [Fact]
+    public void PathPolicy_TryResolveReadFollowingLinks_LinkWithinTheGrant_IsPermittedAndReportsSpelledLocation()
+    {
+        // Arrange: a file in one folder of the grant, and a link to that folder in the same grant
+        using var fixture = new TempDirectoryFixture();
+        TempDirectoryFixture.WriteFile(Path.Combine(fixture.Root, "real"), "file.txt", "content");
+        using var link = DirectoryLink.Create(Path.Combine(fixture.Root, "alias"), Path.Combine(fixture.Root, "real"));
+        var policy = CreateRootedPolicy(fixture.Root);
+
+        // Act: read the file through the link
+        var permitted = policy.TryResolveReadFollowingLinks("alias/file.txt", out var realPath, out var denial);
+
+        // Assert: permitted, and reported as spelled, exactly as the lexical decision reports it
+        Assert.True(permitted, denial);
+        Assert.Equal(Path.Combine(RealPathResolver.Resolve(fixture.Root), "alias", "file.txt"), realPath);
+    }
+
+    /// <summary>
+    ///     Proves that a grant whose root the author spelled through a link permits the files
+    ///     beneath it, which is the shape every macOS temporary folder has.
+    /// </summary>
+    /// <remarks>
+    ///     The grant root and its ancestry are the application author's choice, so the decision
+    ///     compares the path against the grant's own linked location instead of refusing it.
+    /// </remarks>
+    [Fact]
+    public void PathPolicy_TryResolveReadFollowingLinks_GrantRootReachedThroughLink_IsPermitted()
+    {
+        // Arrange: a grant rooted at a link, whose files really live in the folder it leads to
+        using var fixture = new TempDirectoryFixture();
+        TempDirectoryFixture.WriteFile(fixture.Outside, "file.txt", "content");
+        var linkedRoot = Path.Combine(fixture.Root, "jn");
+        using var link = DirectoryLink.Create(linkedRoot, fixture.Outside);
+        var policy = CreateRootedPolicy(linkedRoot);
+
+        // Act: read and write beneath the linked grant root
+        var read = policy.TryResolveReadFollowingLinks("file.txt", out var realPath, out var readDenial);
+        var write = policy.TryResolveWriteFollowingLinks("new.txt", out _, out var writeDenial);
+
+        // Assert: both permitted, and the read reported beneath the root as the author spelled it
+        Assert.True(read, readDenial);
+        Assert.True(write, writeDenial);
+        Assert.Equal(Path.Combine(RealPathResolver.Resolve(linkedRoot), "file.txt"), realPath);
+    }
+
+    /// <summary>
+    ///     Proves that a grant's denied patterns apply to the names the linked location carries,
+    ///     so a link cannot rename a denied folder into a permitted one.
+    /// </summary>
+    [Fact]
+    public void PathPolicy_TryResolveReadFollowingLinks_LinkIntoDeniedFolder_IsDenied()
+    {
+        // Arrange: a denied folder inside the grant, and a link with an innocent name leading to it
+        using var fixture = new TempDirectoryFixture();
+        TempDirectoryFixture.WriteFile(Path.Combine(fixture.Root, "secrets"), "key.txt", "content");
+        using var link = DirectoryLink.Create(Path.Combine(fixture.Root, "public"), Path.Combine(fixture.Root, "secrets"));
+        var policy = new PathPolicy(fixture.Root, [PathRule.ReadWrite(fixture.Root, ["secrets"])]);
+
+        // Act: read the denied file through the innocent name
+        var lexical = policy.TryResolveRead("public/key.txt", out _, out _);
+        var followed = policy.TryResolveReadFollowingLinks("public/key.txt", out _, out var denial);
+
+        // Assert: the spelled name passes the patterns, the linked name does not
+        Assert.True(lexical);
+        Assert.False(followed);
+        Assert.NotNull(denial);
+    }
+
+    // ---------------------------------------------------------------------------------------------
     // Constructor guards.
     // ---------------------------------------------------------------------------------------------
 

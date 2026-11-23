@@ -113,6 +113,16 @@ internal static partial class RenderErrorShaper
         "Check that the source draws visible content; the notes name anything that was not drawn.";
 
     /// <summary>
+    ///     Whether two spellings of a host path that differ only in case name the same folder here.
+    /// </summary>
+    /// <remarks>
+    ///     True on Windows and macOS, as <see cref="PathPolicy"/> treats them. A scrubber that
+    ///     compared more strictly than the policy would leave a differently cased host path in text
+    ///     bound for the model.
+    /// </remarks>
+    private static readonly bool NamesIgnoreCase = OperatingSystem.IsWindows() || OperatingSystem.IsMacOS();
+
+    /// <summary>
     ///     Classifies the exception a render threw.
     /// </summary>
     /// <remarks>
@@ -327,7 +337,9 @@ internal static partial class RenderErrorShaper
     ///     The working directory, every grant root and the input's folder are replaced, longest
     ///     first, by their form relative to the working directory, or by <c>&lt;outside&gt;</c>
     ///     when they lie outside it. Both separator spellings are replaced, because a document may
-    ///     write a path either way and the library echoes what it was given.
+    ///     write a path either way and the library echoes what it was given. Case is ignored on
+    ///     Windows and macOS, as <see cref="PathPolicy"/> ignores it, so a host path the library
+    ///     reports in another case is still replaced.
     /// </remarks>
     /// <param name="text">The text to scrub. Must not be null.</param>
     /// <param name="policy">The access policy whose folders are the host's. Must not be null.</param>
@@ -339,7 +351,7 @@ internal static partial class RenderErrorShaper
         ArgumentNullException.ThrowIfNull(text);
         ArgumentNullException.ThrowIfNull(policy);
 
-        var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+        var comparison = NamesIgnoreCase ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
         var folders = policy.Grants
             .Where(grant => grant.Root is not null)
             .Select(grant => grant.Root!)
@@ -348,7 +360,7 @@ internal static partial class RenderErrorShaper
             .Where(folder => !string.IsNullOrEmpty(folder))
             .Select(folder => Path.TrimEndingDirectorySeparator(folder!))
             .Where(folder => folder.Length > 1)
-            .Distinct(OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal)
+            .Distinct(NamesIgnoreCase ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal)
             .OrderByDescending(folder => folder.Length);
 
         foreach (var folder in folders)

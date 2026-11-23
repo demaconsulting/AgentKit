@@ -94,8 +94,10 @@ Console.WriteLine(response.Text);
 ```
 
 Every tool in that list observes the same policy: a request that names a path outside `/workspace` is refused
-with a reason the model can act on. The policy is a path guardrail, not an OS sandbox: a link inside a grant is not a
-boundary, so read *Path Policy* in the [User Guide][link-releases] for the link and race caveats. To keep a long
+with a reason the model can act on. The policy is a path guardrail, not an OS sandbox: for most tools a link inside a
+grant is not a boundary. `image_view` (its input) and `diagram_render` (its `save_as` destination) also judge where a
+link leads, as a pre-flight check. Read *Path Policy* in the [User Guide][link-releases] for the link and race caveats.
+To keep a long
 conversation alive past the model's context window, run the agent on a `CompactingAgentSession`, as the User Guide
 describes.
 

@@ -33,6 +33,32 @@ public class AgentKitCoreTests
     }
 
     /// <summary>
+    ///     Proves that the system's link-following decisions refuse a read and a write that a link
+    ///     inside the permitted location would lead outside it.
+    /// </summary>
+    [Fact]
+    public void AgentKitCore_SystemPathContainment_LinkEscape_IsDeniedByLinkFollowingDecision()
+    {
+        // Arrange: a system configured for one location, holding a link to a secret outside it
+        using var fixture = new TempDirectoryFixture();
+        TempDirectoryFixture.WriteFile(fixture.Outside, "secret.txt", "outside-content");
+        using var link = DirectoryLink.Create(Path.Combine(fixture.Root, "jn"), fixture.Outside);
+        var policy = CreateRootedPolicy(fixture.Root);
+
+        // Act: read the secret and write beside it through the public API
+        var read = policy.TryResolveReadFollowingLinks("jn/secret.txt", out var readPath, out var readDenial);
+        var write = policy.TryResolveWriteFollowingLinks("jn/planted.txt", out var writePath, out var writeDenial);
+
+        // Assert: both refused with a denial, and no location handed back
+        Assert.False(read);
+        Assert.False(write);
+        Assert.Null(readPath);
+        Assert.Null(writePath);
+        Assert.NotNull(readDenial);
+        Assert.NotNull(writeDenial);
+    }
+
+    /// <summary>
     ///     Proves that a listing of the permitted location reports the files it contains and does
     ///     not reach into a sibling directory outside it.
     /// </summary>

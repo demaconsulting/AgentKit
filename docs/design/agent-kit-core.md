@@ -706,8 +706,9 @@ The measure is segregated into three units whose responsibilities do not overlap
 
 - **RealPathResolver** establishes *one spelling for a location*, making a path absolute and
   collapsing relative segments, so that containment is a comparison between two values expressed
-  the same way. Links are not followed and not detected; containment rests on paths alone.
-  Isolating this keeps the normalization separately reviewable and separately testable.
+  the same way, and, for the link-following decisions, *the location a path reaches* once its
+  symbolic links and junctions are followed. Isolating this keeps the normalization and the link
+  walk separately reviewable and separately testable.
 - **PathRule** establishes *what a location grants*, carrying an access level that is permission
   only: read-only or read-write. It has no addressing meaning and cannot silently change where a
   relative path resolves.
@@ -716,7 +717,12 @@ The measure is segregated into three units whose responsibilities do not overlap
   also holds *the one location a relative request means*, so that a bare file name a model states
   is made absolute against the working directory before the normalization and the containment
   test are applied. That anchor grants no permission; the application grants it, or does not
-  grant it, exactly as it grants any other location.
+  grant it, exactly as it grants any other location. Its lexical decisions judge a path as it is
+  spelled, so a link inside a granted location is not a boundary for them; its link-following
+  decisions also judge where the path leads, for a tool that must not be steered through a link.
+  Both are pre-flight checks over paths: a process that can write inside a granted location can
+  still replace a component between the check and the tool's open, and portable .NET offers no
+  handle-relative, no-follow open to close that window.
 
 Three further properties are part of the control: a refused access is reported as a returned
 denial rather than an exception, so a refusal cannot terminate an agent's turn; that denial

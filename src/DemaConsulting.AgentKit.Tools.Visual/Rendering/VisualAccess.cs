@@ -79,10 +79,13 @@ internal static class VisualAccess
     internal const string OutsideHint = "reference a file inside a location you may read";
 
     /// <summary>
-    ///     The comparison two file system paths are equal under on this platform.
+    ///     The comparison two file system paths are equal under on this platform: ignoring case on
+    ///     Windows and macOS, as <see cref="PathPolicy"/> compares them.
     /// </summary>
     private static readonly StringComparison PathComparison =
-        OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+        OperatingSystem.IsWindows() || OperatingSystem.IsMacOS()
+            ? StringComparison.OrdinalIgnoreCase
+            : StringComparison.Ordinal;
 
     /// <summary>
     ///     Creates the file-access policy that confines a render's referenced files to what the

@@ -68,13 +68,18 @@ sections:
                 title: >-
                   The error shaper shall replace the working directory, every grant root and the
                   input's folder in the text it produces with their form relative to the working
-                  directory, or a placeholder when they lie outside it.
+                  directory, or a placeholder when they lie outside it, ignoring case where the
+                  platform's file names ignore case.
                 tags: [security]
                 justification: |
                   The text joins a transcript that leaves the host, and must not disclose the
-                  host's directory layout or the user name an absolute path carries.
+                  host's directory layout or the user name an absolute path carries. On Windows and
+                  macOS a renderer may report a host path in another case, and the access policy
+                  treats both spellings as one location, so the scrubber must as well.
                 tests:
                   - RenderErrorShaper_Shape_HostPaths_AreScrubbed
+                  - windows@RenderErrorShaper_Shape_HostPathInOtherCase_IsScrubbedWhereNamesIgnoreCase
+                  - macos@RenderErrorShaper_Shape_HostPathInOtherCase_IsScrubbedWhereNamesIgnoreCase
 
               - id: AgentKitToolsVisual-Rendering-RenderErrorShaper-NotesListed
                 title: >-

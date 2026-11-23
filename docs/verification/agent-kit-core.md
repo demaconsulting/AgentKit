@@ -45,7 +45,7 @@ System tests reside in `AgentKitCoreTests.cs`, `AgentKitSessionsTests.cs`,
 `CompactingAgentSessionTests.cs`, `PublicSurfaceTests.cs` and `XmlDocExampleTests.cs` within the
 `DemaConsulting.AgentKit.Core.Tests` project, with helpers in `FakeSummarizer.cs`,
 `SessionTestData.cs`, `DivergentTokenizerProviderSession.cs`, `ProviderTestDoubles.cs`,
-`ScriptedChatClient.cs`, `StubToolPack.cs` and `TempDirectoryFixture.cs`.
+`ScriptedChatClient.cs`, `StubToolPack.cs`, `TempDirectoryFixture.cs` and `DirectoryLink.cs`.
 
 ## Test Environment
 
@@ -56,7 +56,9 @@ System tests reside in `AgentKitCoreTests.cs`, `AgentKitSessionsTests.cs`,
   *ImagePromotingChatClient Unit Verification Design* for why a real provider would not observe
   the behavior under test
 - **File system**: The path-containment scenarios require a writable temporary directory. The
-  session scenarios need none; transcripts and provider sessions are held in memory
+  link-escape scenario also creates a real link in it — an NTFS junction on Windows, which needs
+  no privilege, and a symbolic link elsewhere — and fails rather than skips when the link cannot be
+  created. The session scenarios need none; transcripts and provider sessions are held in memory
 - **Models**: None; consolidation is performed by deterministic summarizer fakes
 - **Isolation**: Each test method constructs its own policy, tool, temporary directory tree, or
   provider factory, summarizer, options and session; no state is shared between tests
@@ -79,6 +81,16 @@ Verifies that the system judges access by the normalized location a path denotes
 policy confined to one location and requests a file in a sibling directory by climbing out of the
 permitted location with a parent segment. Asserts the request is refused, that no location is
 handed back, and that a reason is supplied.
+
+### Path Containment: A Link Escape Is Denied by the Link-Following Decisions
+
+**Test**: `AgentKitCore_SystemPathContainment_LinkEscape_IsDeniedByLinkFollowingDecision`
+
+Verifies that the system's link-following decisions judge where a path leads. Configures a policy
+confined to one location holding a link that points at a sibling directory outside it, then asks
+the link-following read decision for a secret beyond the link and the link-following write
+decision for a new file beyond it. Asserts both are refused, that no location is handed back, and
+that a reason is supplied for each.
 
 ### Path Containment: Enumeration Lists Only Permitted Files
 
@@ -460,7 +472,7 @@ the provider carrying the model identifier, `ReasoningEffort.Low` and the output
 
 ## Acceptance Criteria
 
-A system-level test run passes when all forty-two scenarios above pass without error or exception
+A system-level test run passes when all forty-three scenarios above pass without error or exception
 beyond those explicitly asserted. Any unexpected exception, wrong exception type, wrong return
 value, permitted path that should have been refused, relative path resolved against the process
 working directory, escaped file appearing in a listing, denial message that fails to echo the

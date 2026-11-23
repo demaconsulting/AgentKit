@@ -94,8 +94,11 @@ Help: <help tool> topic '<tag>/diagnostics'.
 roots" with "the locations the agent may read", and removes a trailing "Hint: …" the library
 appended. `Scrub` replaces, longest first and in both separator spellings, the working directory,
 every grant root and the input's folder with their form relative to the working directory (`.` for
-the working directory itself) or `<outside>` when they lie outside it. A path the model wrote itself
-— an absolute reference in its own document — may still appear, because the model supplied it.
+the working directory itself) or `<outside>` when they lie outside it. Paths are matched ignoring
+case on Windows and macOS and exactly elsewhere, the same rule `PathPolicy` applies, so a host path
+the library reports in another case on a platform whose file names ignore case is still replaced.
+A path the model wrote itself — an absolute reference in its own document — may still appear,
+because the model supplied it.
 
 #### Error Handling
 

@@ -195,6 +195,7 @@ sections:
         children:
           - AgentKitToolsVisual-Rendering-ReferencesConfined
           - AgentKitToolsVisual-Image-ViewTool-InputCheckedBeforeRead
+          - AgentKitToolsVisual-Image-ViewTool-InputLinkConfined
           - AgentKitToolsVisual-Diagram-RenderTool-InlineReferencesConfined
           - AgentKit-OTS-CanvasNet-FileAccessPolicy
           - AgentKit-OTS-CanvasNet-NoNetwork
@@ -264,18 +265,20 @@ sections:
       - id: AgentKitToolsVisual-RenderedPicturesSavedUnderWriteGrant
         title: >-
           The library shall save a rendered picture only to a destination the access policy's
-          write decision permits, naming a PNG file inside a folder that already exists, and shall
-          replace an earlier rendering at that destination in one step, so that a reader never
-          sees a partly written picture.
+          write decision permits, both as the destination is spelled and where it leads through a
+          symbolic link or directory junction, naming a PNG file inside a folder that already
+          exists, and shall replace an earlier rendering at that destination in one step, so that a
+          reader never sees a partly written picture.
         tags: [system, security]
         justification: |
           A model that draws a diagram for a document saves it where the document can reference
           it, then looks at it, fixes the source and saves again under the same name. Admitting
           the destination by the write decision alone keeps a read-wide, write-narrow policy
-          meaningful, refusing to create folders keeps a mistyped path from scattering directories
-          the agent then believes are real, and replacing the earlier rendering in one step keeps
-          the draw, look, fix loop from being stopped by its own previous result or leaving a
-          broken picture behind.
+          meaningful, judging where a linked folder leads keeps a link inside a grant from
+          carrying the write outside it, refusing to create folders keeps a mistyped path from
+          scattering directories the agent then believes are real, and replacing the earlier
+          rendering in one step keeps the draw, look, fix loop from being stopped by its own
+          previous result or leaving a broken picture behind.
         children:
           - AgentKitToolsVisual-Rendering-SavedUnderWriteGrant
           - AgentKitToolsVisual-Diagram-RenderTool-SaveAs

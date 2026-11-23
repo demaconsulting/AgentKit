@@ -23,11 +23,14 @@ namespace DemaConsulting.AgentKit.Tools.Visual.Image;
 ///     <para>
 ///     <b>The input is judged by the policy before anything is learned about it.</b> The
 ///     rendering library never judges the file it is asked to draw, only the files that file
-///     references, so this tool calls <see cref="PathPolicy.TryResolveRead"/> on the input itself
-///     and returns the policy's refusal unchanged. It then reads the file once, inside the
-///     binary ceiling, and draws those same bytes — the library is never given the input's path,
-///     so the bytes judged and the bytes drawn are the same, and no message the library composes
-///     can name the input's absolute location.
+///     references, so this tool calls <see cref="PathPolicy.TryResolveReadFollowingLinks"/> on
+///     the input itself and returns the policy's refusal unchanged. That decision follows
+///     links, so a symbolic link or junction inside a grant that leads outside every grant is
+///     refused rather than read through; like every path check it is taken before the open, so
+///     a component replaced between the check and the read is not covered. It then reads the
+///     file once, inside the binary ceiling, and draws those same bytes — the library is never
+///     given the input's path, so the bytes judged and the bytes drawn are the same, and no
+///     message the library composes can name the input's absolute location.
 ///     </para>
 ///     <para>
 ///     <b>Every file the input references is confined.</b> Pictures, includes and data files are
@@ -196,8 +199,9 @@ public static class ImageViewTool
         }
 
         // The single read decision, taken before anything is learned about the file. The library
-        // never judges its input, so this is the input's only judgment.
-        if (!policy.TryResolveRead(path, out var realPath, out var denialMessage))
+        // never judges its input, so this is the input's only judgment, and it follows links so a
+        // link inside a grant cannot lead the read outside it.
+        if (!policy.TryResolveReadFollowingLinks(path, out var realPath, out var denialMessage))
         {
             return ToolResult.Denied(DenialReason.PathNotPermitted, denialMessage);
         }

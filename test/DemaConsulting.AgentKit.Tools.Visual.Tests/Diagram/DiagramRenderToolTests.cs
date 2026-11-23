@@ -182,6 +182,28 @@ public class DiagramRenderToolTests
     }
 
     /// <summary>
+    ///     Proves a <c>save_as</c> destination beneath a link inside the grant that leads outside it
+    ///     is refused, and nothing is written outside — neither the picture nor a temporary file.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task DiagramRenderTool_Render_SaveAsThroughLinkLeavingTheGrant_WritesNothingOutside()
+    {
+        // Arrange: a junction (Windows) or symbolic link (elsewhere) inside the writable grant,
+        // pointing at an empty folder outside it
+        using var fixture = new TempDirectoryFixture();
+        using var link = DirectoryLink.Create(Path.Combine(fixture.Root, "jn"), fixture.Outside);
+        var tool = CreateTool(DiagramPreview.Image, RenderSamples.Policy(fixture.Root));
+
+        // Act: draw and save beneath the link
+        var refusal = await SaveAsync(tool, "jn/flow.png");
+
+        // Assert: refused as not permitted, and the outside folder is still empty
+        Assert.StartsWith("Denied (PathNotPermitted)", refusal, StringComparison.Ordinal);
+        Assert.Empty(Directory.GetFileSystemEntries(fixture.Outside));
+    }
+
+    /// <summary>
     ///     Proves text preview requires <c>save_as</c>.
     /// </summary>
     /// <returns>A task that completes when the scenario has been verified.</returns>

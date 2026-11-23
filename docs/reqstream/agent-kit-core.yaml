@@ -18,10 +18,11 @@ sections:
           reading as contained, so the decision must be made on the normalized location rather
           than on the requested string. A relative path is made absolute against the working
           directory first, so that the same normalization and the same containment decision apply
-          whether the agent wrote a bare file name or a fully qualified one. Containment is a
-          decision about paths only: a symbolic link, junction or mount is neither followed nor
+          whether the agent wrote a bare file name or a fully qualified one. The lexical decision is
+          a decision about paths only: a symbolic link, junction or mount is neither followed nor
           detected, so a path that leaves a permitted location through one is judged as it is
-          spelled.
+          spelled. A tool that must not be steered through a link uses the link-following decision
+          instead; see AgentKitCore-PathContainment-LinkFollowingDecision.
         children:
           - AgentKitCore-RealPathResolver-Normalization
           - AgentKitCore-RealPathResolver-NonExistentPath
@@ -32,6 +33,27 @@ sections:
           - AgentKitCore-PathPolicy-RelativePathAgainstWorkingDirectory
         tests:
           - AgentKitCore_SystemPathContainment_RelativeEscape_IsDenied
+
+      - id: AgentKitCore-PathContainment-LinkFollowingDecision
+        title: >-
+          The library shall provide a read decision and a write decision that refuse a path when the
+          location it reaches through its symbolic links or directory junctions is not permitted by
+          a grant of the required access.
+        tags: [system, security]
+        justification: |
+          A link spelled inside a permitted location can lead anywhere, so a tool that opens or
+          creates the file itself could be steered outside every grant by a path the lexical
+          decision permits. The library must therefore offer decisions that judge the location a
+          path actually reaches, so a tool can refuse such an escape before it reads or writes.
+          The decisions are pre-flight checks over paths: a process that can write inside a
+          permitted location can still replace a component between the check and the tool's
+          open, and a path-based API cannot close that window.
+        children:
+          - AgentKitCore-RealPathResolver-FollowsLinks
+          - AgentKitCore-PathPolicy-LinkFollowingDecision
+          - AgentKitCore-PathPolicy-LinkedGrantRoot
+        tests:
+          - AgentKitCore_SystemPathContainment_LinkEscape_IsDeniedByLinkFollowingDecision
 
       - id: AgentKitCore-PathAccess-WorkspaceBase
         title: >-

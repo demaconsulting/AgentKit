@@ -51,6 +51,12 @@ Seven properties shape the whole design of this unit:
   is granted and the result lies within it; otherwise the result is absolute so a wrong target is
   visible.
 
+**Two kinds of decision.** The lexical decisions (`TryResolveRead`, `TryResolveWrite`) judge the
+location a path is spelled as, which is what most tools use. The link-following decisions
+(`TryResolveReadFollowingLinks`, `TryResolveWriteFollowingLinks`) take the lexical decision and
+then also judge the location the path reaches through its links, for a tool that opens or creates
+the file itself and must not be steered out of the grants by a link spelled inside one.
+
 **Transition hazard.** An application that starts with a single granted working directory gets the
 relative dialect: listings report bare relative names and the model imitates them. If the
 application later adds a second granted location, paths under that second location switch to the
@@ -142,6 +148,42 @@ could read a file under one name and not write it back under the same name would
 Denials for write requests enumerate all grants with their access levels, including read-only
 locations, so the model can distinguish "wrong place" from "right place, wrong permission."
 
+#### TryResolveReadFollowingLinks(string? path, out string? realPath, out string? denialMessage)
+
+Resolves a path for reading and confirms that some grant permits both the location it is spelled
+as and the location it reaches through its symbolic links and directory junctions. It exists for
+a tool that opens the file itself and must not be steered out of the grants by a link spelled
+inside one; the built-in `image_view` tool uses it for its input.
+
+**Algorithm:**
+
+1. Take the lexical read decision (`TryResolve`). Its denial is returned unchanged.
+2. Resolve the permitted location through `RealPathResolver.ResolveLinks`. A resolution-class
+   failure (a link cycle, a target the platform cannot express) is a denial with the existing
+   reason "could not be resolved to a real location".
+3. Permit the read when some grant permits the linked location (see `PermitsLinkedLocation`).
+4. Otherwise deny with the reason "leads through a link to a location no grant permits for this
+   access". The denial echoes the request, states any working-directory interpretation and lists
+   the permitted locations as every denial does; it never names where the link leads.
+
+**Postconditions:** on success `realPath` is the lexical location, the same value
+`TryResolveRead` reports, so a tool names the file as the caller spelled it; the linked location
+only decides. No path a caller supplies produces an exception.
+
+**A pre-flight check.** The decision describes the file system at the moment it is taken. A
+process that can write inside a granted location can replace a component of the path between
+the check and the caller's open or create. Portable .NET has no handle-relative, no-follow open
+that would close that window, so it remains, as it does for the destructive directory tools'
+link guard in the Tools package. What the decision removes is the standing escape a link already
+in place would give.
+
+#### TryResolveWriteFollowingLinks(string? path, out string? realPath, out string? denialMessage)
+
+The same contract for writing, consulting only `ReadWrite` grants. A file not yet created is
+judged by its folder's linked location followed by its name, so a linked folder leading outside
+the write grants is refused before anything is created. A destination that is itself a link is
+judged by where it leads. The built-in `diagram_render` tool uses it for `save_as`.
+
 #### AnyLocationIsWritable
 
 Reports whether any grant permits writing, anywhere.
@@ -223,7 +265,7 @@ than "the software is defective." The set is enumerated explicitly rather than c
 exception, so that genuine defects still surface during development instead of being quietly
 reported to a model as a denied path.
 
-#### TryResolve(string? path, bool requireWrite, out string? realPath, out string? denialMessage)
+#### TryResolve(path, requireWrite, out realPath, out denialMessage, out wasRelative, out interpretedAbsolute)
 
 Private helper through which both public entry points funnel, so that resolution, failure
 handling and denial-message construction exist in exactly one place. Sharing this implementation
@@ -241,6 +283,31 @@ is what guarantees reads and writes differ only in which grants they consult.
    read-write grants.
 4. On refusal, build a denial that echoes the request, states any working-directory
    interpretation, and enumerates the permitted locations with access levels.
+
+It also reports how the request was interpreted, so the link-following decision can build its own
+denial in the same terms without interpreting the request a second time.
+
+#### TryResolveFollowingLinks(string? path, bool requireWrite, out string? realPath, out string? denialMessage)
+
+Private helper shared by both link-following entry points, for the same reason `TryResolve` is
+shared: reads and writes must differ only in which grants they consult. It runs `TryResolve`,
+resolves the permitted location through `RealPathResolver.ResolveLinks`, and permits the request
+only when `PermitsLinkedLocation` holds for some grant of the required access.
+
+#### PermitsLinkedLocation(PathRule grant, string linked)
+
+Private helper deciding whether one grant permits a location already resolved through its links.
+
+- An unrestricted grant has no root, so it judges the linked location directly.
+- A rooted grant resolves its own root through `ResolveLinks` on every call, because the root may
+  be created, removed or relinked after the policy is built. The grant root and its ancestry are
+  the application author's choice, so a link there is followed rather than refused; this is what
+  keeps a grant under macOS `/var/folders` usable, since `/var` is a link. The linked location
+  must equal the linked root or lie beneath it (the separator is required, under the policy's
+  path comparison). It is then spelled beneath the grant's own root and handed to
+  `PathRule.Allows`, so the grant's denied patterns apply to the names the location really
+  carries: a link with an innocent name cannot rename a denied folder into a permitted one.
+- A root whose links cannot be resolved permits nothing.
 
 #### BuildCandidate(string? path, out bool wasRelative, out string interpretedAbsolute)
 
@@ -367,6 +434,9 @@ place, wrong permission".
 | Existence probe cannot determine existence | Handled locally; treated as missing; alias used |
 | Ambiguous last-segment alias | Handled locally; interpreted beneath the working directory |
 | Interpreted path cannot be normalized | Handled locally; interpretation falls back un-normalized |
+| Links on a permitted path cannot be resolved | Handled locally; link-following denial, resolution reason |
+| Linked location permitted by no grant | Handled locally; link-following denial, link reason |
+| Grant root's links cannot be resolved | Handled locally; that grant permits nothing linked |
 
 The dividing line is deliberate and is stated here so a reviewer can check it: **programming
 errors propagate; anything a model can produce is returned.** A path is the one argument a model
@@ -388,10 +458,14 @@ test containment. Making the path absolute before normalizing rather than after 
 relative path climbing out of a granted location with `..` is refused exactly as an absolute one
 is: the containment test sees the same fully-qualified path either way.
 
-**Containment is a decision about paths, and links are not a boundary.** A symbolic link, a
-junction or a mount inside a granted location is neither followed nor detected, so a path that
-leaves a granted location through one is judged as it is spelled. This is stated for users in the
-README and is not a gap the library claims to close.
+**The lexical decisions are about paths; the link-following decisions also judge links.** In
+`TryResolveRead`, `TryResolveWrite` and `EnumerateFiles` a symbolic link, a junction or a mount
+inside a granted location is neither followed nor detected, so a path that leaves a granted
+location through one is judged as it is spelled. This is stated for users in the README. The
+link-following decisions take the lexical decision first and then also judge where the path
+leads, for the tools that adopt them. Both kinds are pre-flight checks: a component replaced
+between the check and the tool's open is not covered, because portable .NET offers no
+handle-relative, no-follow open.
 
 **An unresolvable path is a denial.** Every way normalization can fail — text no platform can
 interpret as a path, a result longer than the platform permits — arrives here as a
@@ -484,7 +558,8 @@ explicitly; the two-argument constructor delegates to it with `ToolLimits.Defaul
 ### Dependencies
 
 - **RealPathResolver** — used to resolve the working directory at construction and every requested
-  path before a grant is consulted; see *RealPathResolver Unit Design*.
+  path before a grant is consulted, and, in the link-following decisions, to resolve the permitted
+  path and each grant root through their links; see *RealPathResolver Unit Design*.
 - **PathRule** — holds each permission grant; see *PathRule Unit Design*.
 - **ToolLimits** — the resource ceilings carried with the policy; see *ToolLimits Unit Design*.
 

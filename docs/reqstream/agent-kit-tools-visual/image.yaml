@@ -346,6 +346,7 @@ sections:
             children:
               - AgentKitToolsVisual-Image-ViewTool-GuardedConstruction
               - AgentKitToolsVisual-Image-ViewTool-InputCheckedBeforeRead
+              - AgentKitToolsVisual-Image-ViewTool-InputLinkConfined
               - AgentKitToolsVisual-Image-ViewTool-DrawsEachFormat
               - AgentKitToolsVisual-Image-ViewTool-PageSelection
               - AgentKitToolsVisual-Image-ViewTool-WidthApplied

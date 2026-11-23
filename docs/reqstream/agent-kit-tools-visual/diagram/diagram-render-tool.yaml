@@ -71,14 +71,17 @@ sections:
               - id: AgentKitToolsVisual-Diagram-RenderTool-SaveAsCheckedFirst
                 title: >-
                   The render tool shall refuse a save_as that is not a PNG file, that the write
-                  decision does not permit, or whose folder does not exist, before drawing anything,
-                  and write nothing.
+                  decision does not permit as spelled or where it leads through a link, or whose
+                  folder does not exist, before drawing anything, and write nothing.
                 tags: [security]
                 justification: |
                   A destination is decided by the write decision alone, so a read-wide, write-narrow
-                  policy stays meaningful; deciding it first means a refused save costs no render.
+                  policy stays meaningful; judging where a linked folder leads keeps a link inside a
+                  grant from carrying the picture outside it; deciding it first means a refused save
+                  costs no render.
                 tests:
                   - DiagramRenderTool_Render_SaveAsRefusals_WriteNothing
+                  - DiagramRenderTool_Render_SaveAsThroughLinkLeavingTheGrant_WritesNothingOutside
 
               - id: AgentKitToolsVisual-Diagram-RenderTool-InlineReferencesConfined
                 title: >-

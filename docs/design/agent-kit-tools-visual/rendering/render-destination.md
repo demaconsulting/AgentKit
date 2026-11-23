@@ -26,9 +26,13 @@ form a confirmation reports it in.
 1. The name must end in `.png` (case-insensitive), because the bytes are always PNG; otherwise
    `InvalidRequest`. This contradiction is in the request, so it is refused before any policy
    decision.
-2. `PathPolicy.TryResolveWrite` must permit it; otherwise `PathNotPermitted` with the policy's own
-   refusal unchanged, which names the writable locations. The write decision is taken alone, never
-   derived from a read.
+2. `PathPolicy.TryResolveWriteFollowingLinks` must permit it; otherwise `PathNotPermitted` with the
+   policy's own refusal unchanged, which names the writable locations. The write decision is taken
+   alone, never derived from a read. It follows links because the temporary file and the picture
+   are created in the destination's folder and a create follows them: a folder inside a grant that
+   is a link leading outside every write grant is refused, and a destination that is itself a link
+   is judged by its target. This is a pre-flight check; a folder replaced between the decision and
+   the write is not covered, because portable .NET offers no handle-relative, no-follow create.
 3. It must not be a directory; otherwise `InvalidRequest`.
 4. Its parent directory must already exist; otherwise `TargetNotFound`. No directory is ever
    created: on a mistyped path that would scatter directories the agent then believes are real.

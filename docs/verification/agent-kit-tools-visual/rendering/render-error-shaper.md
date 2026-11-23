@@ -24,7 +24,7 @@ Unit tests reside in `Rendering/RenderErrorShaperTests.cs` within the
 
 #### Acceptance Criteria
 
-A unit test run passes when all nine scenarios below pass without error or exception beyond those
+A unit test run passes when all ten scenarios below pass without error or exception beyond those
 explicitly asserted. A code decided by message text, a missing or wrong location, a misplaced caret,
 a help topic named that the help tool does not serve, a host-oriented phrase or hint reaching the
 model, a host path not scrubbed, or a note dropped each constitute a failure.
@@ -92,6 +92,16 @@ command-line hint is dropped; a usable library hint is kept.
 A message naming a file inside the workspace and one outside it by full path, in both separator
 spellings, is shaped with the first relative to the working directory and the second as
 `<outside>/b.png`, and no part of the temporary directory's absolute path remains.
+
+##### AgentKitToolsVisual-Rendering-RenderErrorShaper-HostPathsScrubbed: A Host Path in Another Case Is Scrubbed
+
+**Test**: `RenderErrorShaper_Shape_HostPathInOtherCase_IsScrubbedWhereNamesIgnoreCase`
+
+On Windows and macOS, whose file names ignore case, a message naming a file inside the workspace by
+its full path in upper case is shaped with the path relative to the working directory, and no part
+of the temporary directory's absolute path remains in any case. Elsewhere the two spellings name
+different folders, so the scenario is skipped there, and the requirement links it only to Windows
+and macOS results.
 
 ##### AgentKitToolsVisual-Rendering-RenderErrorShaper-NotesListed: A Timeout Lists Its Notes
 

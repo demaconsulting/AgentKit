@@ -124,6 +124,9 @@ A drawing that fails names the help topic for its language's diagnostics, for ex
 - The destination must end in `.png`, matched case-insensitively.
 - It is judged by the policy's write decision, independently of anything read, and refused with the
   ordinary refusal naming the writable locations when no read-write grant covers it.
+- That decision follows links: a destination whose folder is a symbolic link or junction inside a
+  grant that leads outside every read-write grant is refused, so neither the picture nor its
+  temporary file is written there. Like every path check, it is taken before the write.
 - Its folder must already exist; no folder is created.
 - These checks run before anything is drawn, so a refused destination costs no rendering time.
 - **An existing file of the same name is replaced**, so a model can save on every attempt while it
@@ -141,7 +144,9 @@ A document or diagram can reference other files — an embedded picture, an incl
 Vega-Lite data file. Both drawing tools keep those references inside the application's grants:
 
 - **The input file is checked like any other read**, by the policy, before anything is learned about
-  it, and a refusal is the policy's own.
+  it, and a refusal is the policy's own. `image_view` uses the link-following read decision, so an
+  input reached through a symbolic link or junction inside a grant that leads outside every grant
+  is refused rather than drawn.
 - **Every referenced file must be readable under the policy**, deny patterns included. A reference
   that escapes by `..`, an absolute path, a `file:` URI, a symbolic link or a junction is refused,
   and the refusal states that the file lies outside the locations the agent may read without

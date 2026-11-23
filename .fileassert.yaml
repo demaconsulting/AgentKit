@@ -103,7 +103,7 @@ tests:
         text:
           - contains: "The pack carries no state"
       - pattern: >-
-          src/DemaConsulting.AgentKit.Tools.Visual/generated/api/DemaConsulting.AgentKit.Tools.Visual.Image/ImagePack/ImagePack.md
+          src/DemaConsulting.AgentKit.Tools.Visual/generated/api/DemaConsulting.AgentKit.Tools.Visual/Image/ImagePack/ImagePack.md
         count: 1
         text:
           - contains: "The pack carries no state"

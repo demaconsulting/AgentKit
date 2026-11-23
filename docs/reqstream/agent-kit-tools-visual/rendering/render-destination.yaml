@@ -33,6 +33,21 @@ sections:
                 tests:
                   - RenderDestination_TryResolve_ReadOnlyLocation_IsRefusedByTheWriteDecision
 
+              - id: AgentKitToolsVisual-Rendering-RenderDestination-LinkConfined
+                title: >-
+                  The render destination shall refuse a destination when the location it reaches
+                  through a symbolic link or directory junction is not one the access policy's write
+                  decision permits, before anything is written.
+                tags: [security]
+                justification: |
+                  The picture and its temporary file are created in the destination's folder, and
+                  a create follows links. A linked folder spelled inside a write grant could
+                  otherwise carry the write outside every grant. Judging where the destination
+                  leads closes that standing escape; the check is taken before the write, as every
+                  path check is.
+                tests:
+                  - RenderDestination_TryResolve_ParentLinkLeavingTheGrant_IsRefused
+
               - id: AgentKitToolsVisual-Rendering-RenderDestination-NotADirectory
                 title: >-
                   The render destination shall refuse a destination that names a directory.

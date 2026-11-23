@@ -235,6 +235,36 @@ public class RenderErrorShaperTests
     }
 
     /// <summary>
+    ///     Proves a host path the library reports in another case is still scrubbed where the
+    ///     platform's file names ignore case, as the access policy treats them.
+    /// </summary>
+    /// <remarks>
+    ///     Windows and macOS ignore case in file names, so a renderer may report the workspace in a
+    ///     different case from the one the policy holds. Elsewhere the two spellings name different
+    ///     folders and the scenario does not apply.
+    /// </remarks>
+    [Fact]
+    public void RenderErrorShaper_Shape_HostPathInOtherCase_IsScrubbedWhereNamesIgnoreCase()
+    {
+        Assert.SkipUnless(
+            OperatingSystem.IsWindows() || OperatingSystem.IsMacOS(),
+            "File names ignore case only on Windows and macOS.");
+
+        // Arrange: a failure naming a file inside the workspace with its full path in upper case
+        using var fixture = new TempDirectoryFixture();
+        var policy = RenderSamples.Policy(fixture.Root);
+        var inside = Path.Combine(fixture.Root, "sub", "a.png").ToUpperInvariant();
+        var failure = Failure(ErrorCodes.OperationFailed, "cannot read '" + inside + "'");
+
+        // Act: shape it
+        var text = RenderErrorShaper.Shape(failure, new ShapeContext(policy, null, null, null, null));
+
+        // Assert: the host path is gone in any case, and the file is named relative to the workspace
+        Assert.DoesNotContain(Path.GetTempPath().TrimEnd('\\', '/'), text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(Path.Combine(".", "SUB", "A.PNG"), text, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     ///     Proves a timeout is shaped with its own code and advice, and every note is listed.
     /// </summary>
     [Fact]

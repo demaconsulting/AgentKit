@@ -40,7 +40,8 @@ Creates the combined file-access policy.
    refused, whatever its target.
 3. `FileAccessPolicy.FromDelegate("agentkit-read", …)`, which asks
    `PathPolicy.TryResolveRead(request.RequestedPath)` and allows only when the policy permits the
-   file and resolves it to that same full path; otherwise it denies with the fixed reason and hint.
+   file and resolves it to that same full path, compared ignoring case on Windows and macOS as
+   `PathPolicy` compares paths; otherwise it denies with the fixed reason and hint.
 
 The three are joined with `FileAccessPolicy.Combine`. The library's `AllowAll` is never used.
 

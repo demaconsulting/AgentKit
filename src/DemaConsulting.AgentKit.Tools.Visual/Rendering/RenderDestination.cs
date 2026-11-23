@@ -18,12 +18,21 @@ namespace DemaConsulting.AgentKit.Tools.Visual.Rendering;
 ///     </para>
 ///     <para>
 ///     <b>The checks, in order.</b> The name must end in <c>.png</c>, because the bytes are
-///     always PNG (<see cref="DenialReason.InvalidRequest"/>); the policy's write decision must
-///     permit it, and its own refusal is returned unchanged so that it can name the writable
-///     locations (<see cref="DenialReason.PathNotPermitted"/>); it must not name a directory
+///     always PNG (<see cref="DenialReason.InvalidRequest"/>); the policy's link-following write
+///     decision (<see cref="PathPolicy.TryResolveWriteFollowingLinks"/>) must permit it, and its
+///     own refusal is returned unchanged so that it can name the writable locations
+///     (<see cref="DenialReason.PathNotPermitted"/>); it must not name a directory
 ///     (<see cref="DenialReason.InvalidRequest"/>); and its parent directory must already exist,
 ///     because no directory is ever created (<see cref="DenialReason.TargetNotFound"/>). The write
 ///     decision is taken alone, never derived from a read.
+///     </para>
+///     <para>
+///     <b>Links are judged by where they lead.</b> The temporary file is created in the
+///     destination's folder, so a folder inside a grant that is a link leading outside every
+///     write grant would put it there. The link-following decision refuses such a destination,
+///     and a destination that is itself a link is judged by its target. The check is taken
+///     before the write, so a folder replaced between the check and the write is not covered;
+///     portable .NET offers no handle-relative, no-follow create that would close that window.
 ///     </para>
 ///     <para>
 ///     <b>The replacement is atomic.</b> The bytes are written to a new temporary file in the same
@@ -84,8 +93,10 @@ internal static class RenderDestination
             return false;
         }
 
-        // The write decision alone; its refusal names the writable locations.
-        if (!policy.TryResolveWrite(destination, out var realPath, out var denialMessage))
+        // The write decision alone; its refusal names the writable locations. It follows links,
+        // so a linked folder inside a grant that leads outside every write grant is refused
+        // before the temporary file is created there.
+        if (!policy.TryResolveWriteFollowingLinks(destination, out var realPath, out var denialMessage))
         {
             denial = ToolResult.Denied(DenialReason.PathNotPermitted, denialMessage);
             return false;
