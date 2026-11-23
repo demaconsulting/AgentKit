@@ -23,7 +23,7 @@ within the model's context window on each supported provider.
 ## Features
 
 - 🛡️ **Application-Set Controls**: Path grants, tool limits, and host capabilities; a path outside the grants is refused
-- 🧰 **Ready-Made Tool Families**: Text file, file, Markdown, image, todo, memory, and agent delegation
+- 🧰 **Ready-Made Tool Families**: Text file, file, Markdown, todo, memory, agent delegation, plus image and diagram
 - 🧩 **Custom Tools**: Build your own tools through the same guarded factory and publish them as packs
 - 🔌 **Provider-Neutral**: Plain `AIFunction` tools that keep their limits on any `IChatClient` or on GitHub Copilot
 - 🧠 **Self-Compacting Sessions**: Tiered compaction keeps a long conversation within the window the provider runs
@@ -42,6 +42,7 @@ Install the core libraries and the adapter for your provider using the .NET CLI:
 ```bash
 dotnet add package DemaConsulting.AgentKit.Core
 dotnet add package DemaConsulting.AgentKit.Tools
+dotnet add package DemaConsulting.AgentKit.Tools.Visual        # optional: image and diagram tools
 dotnet add package DemaConsulting.AgentKit.Agents.ChatClient   # any IChatClient provider
 ```
 

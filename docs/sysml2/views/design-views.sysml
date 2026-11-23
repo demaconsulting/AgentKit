@@ -11,20 +11,24 @@ package AgentKitDesignViews {
     private import Views::*;
     private import AgentKitCore::*;
     private import AgentKitTools::*;
+    private import AgentKitToolsVisual::*;
     private import AgentKitAgentsChatClient::*;
     private import AgentKitAgentsCopilot::*;
     private import AgentKitAgentsOllama::*;
     private import AgentKitTools_TextFileSubsystem::*;
     private import AgentKitTools_FileSubsystem::*;
     private import AgentKitTools_MarkdownSubsystem::*;
-    private import AgentKitTools_ImageSubsystem::*;
     private import AgentKitTools_TodoSubsystem::*;
     private import AgentKitTools_MemorySubsystem::*;
     private import AgentKitTools_AgentSubsystem::*;
+    private import AgentKitToolsVisual_ImageSubsystem::*;
+    private import AgentKitToolsVisual_DiagramSubsystem::*;
+    private import AgentKitToolsVisual_RenderingSubsystem::*;
 
     view SoftwareStructureView : InterconnectionView {
         expose AgentKitCore::AgentKitCoreSystem;
         expose AgentKitTools::AgentKitToolsSystem;
+        expose AgentKitToolsVisual::AgentKitToolsVisualSystem;
         expose AgentKitAgentsChatClient::AgentKitAgentsChatClientSystem;
         expose AgentKitAgentsCopilot::AgentKitAgentsCopilotSystem;
         expose AgentKitAgentsOllama::AgentKitAgentsOllamaSystem;
@@ -40,6 +44,12 @@ package AgentKitDesignViews {
     view AgentKitToolsView {
         expose AgentKitToolsSystem;
         expose AgentKitToolsSystem::*;
+        render asInterconnectionDiagram;
+    }
+
+    view AgentKitToolsVisualView {
+        expose AgentKitToolsVisualSystem;
+        expose AgentKitToolsVisualSystem::*;
         render asInterconnectionDiagram;
     }
 
@@ -82,6 +92,19 @@ package AgentKitDesignViews {
     view ImageView {
         expose Image;
         expose Image::*;
+        render asInterconnectionDiagram;
+    }
+
+    view DiagramView {
+        expose Diagram;
+        expose Diagram::*;
+        render asInterconnectionDiagram;
+    }
+
+    view RenderingView {
+        // Qualified: the standard Views library also declares a 'Rendering'.
+        expose AgentKitToolsVisual_RenderingSubsystem::Rendering;
+        expose AgentKitToolsVisual_RenderingSubsystem::Rendering::*;
         render asInterconnectionDiagram;
     }
 

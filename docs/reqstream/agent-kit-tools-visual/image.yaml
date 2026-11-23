@@ -1,0 +1,358 @@
+---
+# Software Subsystem Requirements for the Image tool family
+#
+# These requirements describe the behavior of the Image subsystem as a whole,
+# decomposing the system-level image family requirement into the behavior each
+# of its units provides.
+
+sections:
+  - title: AgentKitToolsVisual Requirements
+    sections:
+      - title: Image Requirements
+        requirements:
+          - id: AgentKitToolsVisual-Image-FamilyComposition
+            title: >-
+              The image family shall publish a read tool, a crop tool, an auto-crop tool and a
+              view tool under the image family prefix, composed as one pack an application
+              attaches.
+            justification: |
+              An application attaches a capability to an agent as one pack rather than as a
+              handful of individually registered tools, so the family must be the unit of
+              attachment. Publishing the tools under one prefix is what keeps this family's names
+              from colliding with those of any other library an application combines, and it is
+              what lets the family grow without an application changing how it attaches it. The
+              tools are published together because they are one capability: the read tool
+              reports the coordinate space the crop tool consumes, so a family publishing only
+              one of them would offer a model either a region request it cannot aim or a size it
+              has nothing to use — and the auto-crop tool answers the region question a model
+              cannot state in that space at all, because it can see that a picture is mostly
+              margin without being able to measure where the margin stops. The view tool is how
+              the model looks at the visual content the read tool refuses because a provider
+              cannot render it, so the read tool's refusal of such a file can name a tool the
+              model actually has.
+            children:
+              - AgentKitToolsVisual-Image-ViewTool-ToolName
+              - AgentKitToolsVisual-Image-Pack-RegistersViewTool
+              - AgentKitToolsVisual-Image-ReadTool-ToolName
+              - AgentKitToolsVisual-Image-CropTool-ToolName
+              - AgentKitToolsVisual-Image-AutoCropTool-ToolName
+              - AgentKitToolsVisual-Image-Pack-FamilyPrefix
+              - AgentKitToolsVisual-Image-Pack-RegistersReadTool
+              - AgentKitToolsVisual-Image-Pack-RegistersCropTool
+              - AgentKitToolsVisual-Image-Pack-RegistersAutoCropTool
+              - AgentKitToolsVisual-Image-Pack-ToolsCarryFamilyPrefix
+            tests:
+              - Image_Family_ComposedThroughBuilder_PublishesEveryTool
+              - Image_Family_HostDeclaringVision_ReceivesTheFamily
+
+          - id: AgentKitToolsVisual-Image-DimensionReporting
+            title: >-
+              The image family shall state, alongside the media type it names for a readable
+              image, the pixel dimensions that image declares whenever it can establish them, and
+              shall state no dimensions it did not read.
+            justification: |
+              A model can see a picture but cannot measure one. Without the size stated alongside
+              the content it has no coordinate space in which to name a region of that image, so
+              the size is what lets a region request be aimed rather than a guess — and a guess is
+              either refused, costing a turn, or silently answered for some other region. Stating
+              no size the family did not read is the other half of the promise: a plausible
+              fabricated number would be worse than none at all, because a model has no way to
+              detect one and would aim a request into it confidently.
+            children:
+              - AgentKitToolsVisual-Image-ReadTool-ReportsDimensions
+            tests:
+              - Image_Family_ReadCaption_StatesTheImagesPixelDimensions
+
+          - id: AgentKitToolsVisual-Image-RegionExtraction
+            title: >-
+              The image family shall return the rectangular region of a readable image that a
+              caller names in pixels, when no destination is named, as image content carrying
+              every pixel of that region unaltered, and shall refuse a region not wholly within
+              the image while naming the image's actual dimensions.
+            justification: |
+              A model that can see an image still cannot examine part of one closely: a detail
+              occupying a hundredth of a large picture is, at the resolution a provider receives,
+              effectively invisible. Returning the named region at full resolution is what turns a
+              guess about that detail into a reading of it, and carrying the pixels unaltered
+              matters most precisely here, because in the region a model was asked to examine
+              closely a compression artifact is indistinguishable from the thing being examined.
+              Refusing a region that does not fit — rather than quietly reducing it to one that
+              does — is what stops the family answering a different question from the one asked
+              while reporting success; the model cannot detect that substitution and would
+              describe, confidently, a part of the picture it never received. Naming the image's
+              real dimensions is what turns the refusal into the fact the model was missing.
+            children:
+              - AgentKitToolsVisual-Image-CropTool-ToolName
+              - AgentKitToolsVisual-Image-CropTool-CropPermittedRegion
+              - AgentKitToolsVisual-Image-CropTool-PixelsPreservedExactly
+              - AgentKitToolsVisual-Image-CropTool-RefusesOutOfBounds
+              - AgentKitToolsVisual-Image-CropTool-RefusesMalformedRegion
+              - AgentKitToolsVisual-Image-CropTool-RefusesUndecodableContent
+              - AgentKitToolsVisual-Image-CropTool-RefusesNonCroppableType
+              - AgentKitToolsVisual-Image-MediaTypes-CroppableTypes
+              - AgentKitToolsVisual-Image-MediaTypes-RefusesNonCroppableType
+            tests:
+              - Image_Family_CroppedRegion_IsReturnedAsImageContent
+              - Image_Family_ReadCaption_StatesTheDimensionsACropCanBeAimedWith
+
+          - id: AgentKitToolsVisual-Image-ContentTrimming
+            title: >-
+              The image family shall trim a readable image to the region its content occupies,
+              expanded by a padding the caller may state and clamped to the image's edges,
+              determining what counts as background from the image's own border, and shall refuse
+              an image that is entirely background without writing anything.
+            justification: |
+              A model can see that a picture is mostly margin; it cannot measure where the margin
+              stops. A region it named would therefore be a guess, and a guess is either refused,
+              costing a turn, or silently answered for the wrong part of the picture. Trimming to
+              the content is the one region request a model can make without being able to
+              measure, and it is what lets a screenshot, a slide export or a rendered chart spend
+              the resolution a provider gives it on the content rather than on empty margin.
+              Determining the background from the image's own border rather than assuming one is
+              what makes the capability usable on a dark-themed screenshot, a colored slide and a
+              transparent export alike — on every one of which an assumed background would return
+              the picture unchanged while reporting success. Clamping the padding at an edge is
+              the truthful answer because content flush to an edge is ordinary rather than a
+              fault. Refusing an image that is entirely background is the other half of the same
+              honesty: there is no content region to return, and returning the whole picture would
+              answer a different question while reporting success — the substitution this family
+              exists to refuse.
+            children:
+              - AgentKitToolsVisual-Image-AutoCropTool-ToolName
+              - AgentKitToolsVisual-Image-AutoCropTool-TrimsToContent
+              - AgentKitToolsVisual-Image-AutoCropTool-SamplesBackgroundFromTheBorder
+              - AgentKitToolsVisual-Image-AutoCropTool-ToleratesNearBackground
+              - AgentKitToolsVisual-Image-AutoCropTool-PadsAndClampsAtEdges
+              - AgentKitToolsVisual-Image-AutoCropTool-RefusesAnEntirelyBackgroundImage
+              - AgentKitToolsVisual-Image-AutoCropTool-PixelsPreservedExactly
+              - AgentKitToolsVisual-Image-AutoCropTool-RefusesMalformedPadding
+              - AgentKitToolsVisual-Image-AutoCropTool-RefusesUndecodableContent
+              - AgentKitToolsVisual-Image-AutoCropTool-RefusesNonCroppableType
+            tests:
+              - Image_Family_TrimmedImage_IsReturnedAsImageContent
+              - Image_Family_EntirelyBackgroundImage_IsRefusedWithoutWriting
+
+          - id: AgentKitToolsVisual-Image-RegionDestination
+            title: >-
+              The image family shall write a region of a readable image that it produces to a
+              destination the caller names, only where a read-write grant permits that destination
+              independently of the grant that admitted the image, refusing to replace an
+              existing file and refusing a destination not named as a PNG.
+            tags: [security]
+            justification: |
+              An agent preparing a document needs the region it identified to exist as a file it
+              can reference; a region it can only look at cannot become a figure. Making the
+              destination a named part of the request rather than a second tool means one
+              capability carries one denial taxonomy: the coordinate convention, the
+              out-of-bounds refusal that names the image's real dimensions, the decode budget and
+              the media-type map are stated once and apply whichever outcome the caller asked
+              for. Resolving the destination through the write decision, independently of the
+              read that admitted the source, is what makes one call exercise both of the grants
+              an application configures — and what keeps a read-wide, write-narrow configuration
+              meaningful rather than decorative. Refusing to replace an existing file is the same
+              guarantee the text file family makes, for the same reason: an artifact silently
+              replaced is a document that now points at a different picture with nothing
+              reporting an error.
+            children:
+              - AgentKitToolsVisual-Image-CropTool-WritesRegionToDestination
+              - AgentKitToolsVisual-Image-CropTool-DestinationRequiresWriteGrant
+              - AgentKitToolsVisual-Image-CropTool-RefusesToReplaceDestination
+              - AgentKitToolsVisual-Image-CropTool-RequiresPngDestination
+              - AgentKitToolsVisual-Image-CropTool-RefusesUnusableDestination
+              - AgentKitToolsVisual-Image-AutoCropTool-WritesRegionToDestination
+              - AgentKitToolsVisual-Image-AutoCropTool-DestinationRequiresWriteGrant
+              - AgentKitToolsVisual-Image-AutoCropTool-RefusesToReplaceDestination
+              - AgentKitToolsVisual-Image-AutoCropTool-RequiresPngDestination
+              - AgentKitToolsVisual-Image-AutoCropTool-RefusesUnusableDestination
+            tests:
+              - Image_Family_CroppedRegion_WrittenToAPermittedDestination_ConfirmsInText
+              - Image_Family_CropDestinationUnderAReadOnlyGrant_IsRefusedNamingTheWritableLocation
+
+          - id: AgentKitToolsVisual-Image-DecodeBounded
+            title: >-
+              The image family shall decide from a file's declared dimensions alone, before
+              allocating any pixel data, whether an image is within the host's decode budget, and
+              shall refuse one that is not while naming the budget.
+            tags: [security]
+            justification: |
+              A ceiling on a file's size does not bound what decoding that file costs. Image
+              formats compress, so a file well inside the binary ceiling can declare far more
+              pixels than its size suggests, and a decoded image costs four bytes per pixel
+              whatever encoding the file itself used — which means a model can provoke a quarter
+              of a gigabyte of transient allocation from a file of a few hundred kilobytes.
+              Deciding from the declared dimensions is what makes the refusal free: it happens
+              before any pixel data exists, so the cost being refused is never incurred in order
+              to refuse it. Naming the budget tells the model about the host rather than about an
+              implementation detail, and lets it ask for something the host would accept.
+            children:
+              - AgentKitToolsVisual-Image-CropTool-RefusesOversizedDecode
+              - AgentKitToolsVisual-Image-AutoCropTool-RefusesOversizedDecode
+            tests:
+              - Image_Family_OversizedDeclaredImage_IsRefusedBeforeDecoding
+
+          - id: AgentKitToolsVisual-Image-CapabilityGated
+            title: >-
+              The image family shall be registered only for a host that declares the vision
+              capability, and a host that does not declare it shall receive none of the family's
+              tools without the pack being asked to create them.
+            tags: [security]
+            justification: |
+              The family returns image content, which is useful only to a host that can present
+              it to a model. A model that cannot see an image but is offered a tool that returns
+              one will report that it can see the image and then fabricate a description of
+              content it never received, a failure with no error to notice. Withholding the
+              family from a non-vision host — and withholding it by never asking the pack for its
+              tools, not by offering them and refusing later — is what makes that failure
+              impossible rather than merely unlikely.
+            children:
+              - AgentKitToolsVisual-Image-Pack-RequiresVisionCapability
+            tests:
+              - Image_Family_HostWithoutVision_ReceivesNoTools
+              - Image_Family_HostWithoutVision_PackIsNotConsulted
+
+          - id: AgentKitToolsVisual-Image-GuardedConstruction
+            title: >-
+              Every tool in the image family shall be constructed through the guarded
+              construction path, shall take its access policy at construction, and shall deliver
+              its content result to the caller in the form it returned it rather than serialized.
+            tags: [security]
+            justification: |
+              A tool built any other way has its result flattened into JSON before a provider
+              sees it — and for a tool returning an image that is the difference between the
+              model seeing the picture and confidently describing one it never received. A tool
+              that received its policy later, or not at all, could be attached to an agent while
+              governed by nothing. Making construction the only moment a policy can be supplied,
+              and construction always the guarded path, is what makes an image tool that is
+              unguarded, or governed by no policy, impossible to express rather than merely
+              discouraged.
+            children:
+              - AgentKitToolsVisual-Image-ReadTool-GuardedConstruction
+              - AgentKitToolsVisual-Image-CropTool-GuardedConstruction
+              - AgentKitToolsVisual-Image-AutoCropTool-GuardedConstruction
+              - AgentKitToolsVisual-Image-Pack-RequiresPolicy
+              - AgentKitToolsVisual-Image-Pack-PolicyGovernsCreatedTools
+            tests:
+              - Image_Family_EveryTool_CarriesAValidatedNameAndDescription
+              - Image_Family_ToolResult_ReachesTheCallerUnserialized
+
+          - id: AgentKitToolsVisual-Image-PolicyGoverned
+            title: >-
+              The image family shall judge each request with the policy's read decision, and each
+              destination it writes with the policy's write decision, interpreting a path a model
+              states relative to the workspace, returning the
+              permitted content — an image as image content and a PDF as binary
+              content — and refusing a request whose location lies outside the permitted location.
+            tags: [security]
+            justification: |
+              An operator grants an agent access to a location, and that grant is meaningless
+              unless every read consults the rule belonging to it. Judging every request against
+              the permitted locations is what
+              stops an agent from stepping outside the location its operator granted. The family
+              shares the access policy the text file family uses, so a name a listing reported is
+              directly usable here; a family that read names differently would make a discovered
+              name unusable. A destination is judged by the write decision alone, independently
+              of the read that admitted the image, because a location an operator opened for
+              reading is not thereby one an agent may produce files in. Returning an
+              image as image content and a PDF as binary content is not a detail: the result
+              constructor for an image refuses a non-image media type, so a PDF must take the
+              binary path or the read would throw.
+            children:
+              - AgentKitToolsVisual-Image-ReadTool-ReadPermittedImage
+              - AgentKitToolsVisual-Image-ReadTool-ReadPermittedPdf
+              - AgentKitToolsVisual-Image-ReadTool-RelativePath
+              - AgentKitToolsVisual-Image-ReadTool-DenyOutsideRoot
+              - AgentKitToolsVisual-Image-CropTool-DenyOutsideRoot
+              - AgentKitToolsVisual-Image-CropTool-DestinationRequiresWriteGrant
+              - AgentKitToolsVisual-Image-AutoCropTool-DenyOutsideRoot
+              - AgentKitToolsVisual-Image-AutoCropTool-DestinationRequiresWriteGrant
+              - AgentKitToolsVisual-Image-MediaTypes-SupportedTypes
+            tests:
+              - Image_Family_PermittedImage_IsReturnedAsImageContent
+              - Image_Family_PathOutsideRoot_IsRefused
+              - Image_Family_RelativePathFromAModel_IsResolvedAgainstTheWorkspace
+
+          - id: AgentKitToolsVisual-Image-DenialsAreResults
+            title: >-
+              The image family shall report every refusal as a returned result that names its
+              reason, discloses the permitted locations, and directs the model to a better tool
+              where one exists.
+            justification: |
+              An exception raised while a model is calling a tool ends the agent's turn and
+              strands it with no way forward, whereas a returned refusal lets it read the reason
+              and choose a permitted alternative. A policy refusal now discloses the permitted
+              locations so a confined model learns where it may look instead of guessing. A refusal
+              that also names a better tool — the view tool for an .svg — turns a dead end into the
+              agent's next step, while one that has no honest alternative says so rather than
+              sending the model to a tool that would also fail.
+            children:
+              - AgentKitToolsVisual-Image-ReadTool-UnsupportedTypeDenied
+              - AgentKitToolsVisual-Image-ReadTool-DirectoryRefused
+              - AgentKitToolsVisual-Image-ReadTool-MissingFileDenied
+              - AgentKitToolsVisual-Image-ReadTool-MalformedRequestDenied
+              - AgentKitToolsVisual-Image-ReadTool-DenialDisclosure
+              - AgentKitToolsVisual-Image-CropTool-DirectoryRefused
+              - AgentKitToolsVisual-Image-CropTool-MissingFileDenied
+              - AgentKitToolsVisual-Image-CropTool-MalformedRequestDenied
+              - AgentKitToolsVisual-Image-CropTool-DenialDisclosure
+              - AgentKitToolsVisual-Image-AutoCropTool-DirectoryRefused
+              - AgentKitToolsVisual-Image-AutoCropTool-MissingFileDenied
+              - AgentKitToolsVisual-Image-AutoCropTool-MalformedRequestDenied
+              - AgentKitToolsVisual-Image-AutoCropTool-DenialDisclosure
+              - AgentKitToolsVisual-Image-MediaTypes-RefusesSvgRedirectsToView
+              - AgentKitToolsVisual-Image-MediaTypes-RefusesSvgCropNoTool
+              - AgentKitToolsVisual-Image-ViewTool-RefusesMalformedRequests
+              - AgentKitToolsVisual-Image-MediaTypes-RefusesSvgzNoTool
+              - AgentKitToolsVisual-Image-MediaTypes-RefusesUnknownType
+            tests:
+              - Image_Family_DeniedRequest_ReturnsAResultWithoutThrowing
+              - Image_Family_DenialText_DisclosesPermittedLocation
+              - Image_Family_UnsupportedType_IsRefusedWithRedirectWhereUseful
+
+          - id: AgentKitToolsVisual-Image-ObservesPolicyLimits
+            title: >-
+              The image family shall observe the binary ceiling the access policy carries,
+              refusing an oversized file and naming the ceiling rather than returning truncated
+              content.
+            justification: |
+              Content this family returns is bounded by a byte ceiling because an image is not
+              charged against the context window by the same route as text. Truncating instead of
+              refusing is worse than either: the model receives corrupt content it has no way to
+              detect and then reasons confidently about a picture it never wholly saw. Naming the
+              ceiling lets it narrow the request instead.
+            children:
+              - AgentKitToolsVisual-Image-ReadTool-BinaryCeiling
+              - AgentKitToolsVisual-Image-CropTool-ObservesBinaryCeiling
+              - AgentKitToolsVisual-Image-AutoCropTool-ObservesBinaryCeiling
+              - AgentKitToolsVisual-Image-ViewTool-ObservesBinaryCeiling
+            tests:
+              - Image_Family_FileBeyondTheBinaryCeiling_IsRefusedNotTruncated
+
+          - id: AgentKitToolsVisual-Image-DocumentViewing
+            title: >-
+              The image family shall draw a document, drawing or diagram file the agent may read —
+              an SVG, a PDF page, a slide, a VSDX page, a Mermaid, PlantUML, Vega-Lite or OpenSCAD
+              source, or a raster image — as an opaque PNG picture returned as image content, with
+              every file it references confined to what the agent may read, under the bounds the
+              pack's options set, and shall report a file it cannot draw as text the model can act
+              on.
+            tags: [security]
+            justification: |
+              A provider renders a few raster types and PDF, but an agent's workspace also holds
+              vector drawings, slide decks and diagram sources. Drawing them is how a model looks at
+              them; leaving the read tool a byte-exact pass-through keeps one tool for each meaning
+              of "read". The drawing is confined and bounded the same way for every tool that draws,
+              by the Rendering subsystem, and a file the model wrote and cannot have drawn is
+              reported with the place to fix rather than refused.
+            children:
+              - AgentKitToolsVisual-Image-ViewTool-GuardedConstruction
+              - AgentKitToolsVisual-Image-ViewTool-InputCheckedBeforeRead
+              - AgentKitToolsVisual-Image-ViewTool-DrawsEachFormat
+              - AgentKitToolsVisual-Image-ViewTool-PageSelection
+              - AgentKitToolsVisual-Image-ViewTool-WidthApplied
+              - AgentKitToolsVisual-Image-ViewTool-ShapedFailure
+              - AgentKitToolsVisual-Image-ViewTool-CaptionNotes
+              - AgentKitToolsVisual-Image-Pack-AcceptsVisualOptions
+              - AgentKitToolsVisual-Image-Pack-WarmUp
+            tests:
+              - Image_Family_VectorDocument_IsDrawnByTheToolTheReadRefusalNames
+              - Image_Family_ViewedDocumentReferencingOutsideThePolicy_IsNotDrawn

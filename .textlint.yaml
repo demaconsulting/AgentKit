@@ -56,6 +56,8 @@ words:
   - inspectable
   - metacharacter
   - metacharacters
+  # Cygwin's mount prefix for Windows drives, a POSIX host-path root the error shaper replaces.
+  - cygdrive
   - ordinally
   - pageable
   # Model-catalog identifiers the providers publish verbatim: Copilot's extra-high reasoning effort,
@@ -145,6 +147,24 @@ words:
   - linuxbrew
   - pipefail
   - JOBOBJECT
+  # The PlantUML delimiters every PlantUML diagram opens and closes with, which the visual tools'
+  # test sources and warm-up sample must contain verbatim.
+  - startuml
+  - enduml
+  # PDF file-structure keywords the visual tools' tests write when they build a document.
+  - endobj
+  - startxref
+  # Open Packaging Conventions, PresentationML and Visio schema names the visual tools' tests write
+  # when they build a PPTX deck and a VSDX drawing, and the Visio product name.
+  - rels
+  - openxmlformats
+  - officedocument
+  - presentationml
+  - xfrm
+  - prst
+  - Hlink
+  - Foregnd
+  - Visio
 
 ignorePaths:
   - '**/.git/**'

@@ -123,15 +123,6 @@ software items, specifically:
   heading structure, published as one capability-gated pack
 - **MarkdownOutlineTool (Unit)** — Publishes the `markdown_outline` tool
 - **MarkdownPack (Unit)** — Publishes the Markdown family as one pack
-- **Image (Subsystem)** — The image tool family: policy-governed reading of images and PDF
-  documents for a vision-capable agent, and extraction of a region of an image — either named in
-  pixels or found by trimming the image to its own content — published as one capability-gated pack
-- **ImageMediaTypes (Unit)** — Maps a file's extension to the media type the image family reads,
-  and composes the refusal for a file whose type it cannot read
-- **ImageReadTool (Unit)** — Publishes the `image_read` tool
-- **ImageCropTool (Unit)** — Publishes the `image_crop` tool
-- **ImageAutoCropTool (Unit)** — Publishes the `image_auto_crop` tool
-- **ImagePack (Unit)** — Publishes the image family as one pack
 - **Todo (Subsystem)** — The todo tool family: one flat, in-memory task list per agent that the
   agent writes down, advances and closes out, published as one pack
 - **TodoStore (Unit)** — Holds one agent's flat task list, allocated per composition so that a
@@ -163,6 +154,38 @@ software items, specifically:
   state
 - **AgentPack (Unit)** — Publishes the agent family as one pack, and composes a child's tools from
   the registered packs rather than from the parent's tool list
+- **AgentKitToolsVisual (System)** — An optional capability package of guarded visual tool
+  families built on the AgentKitCore contract, carrying the imaging library those families need so
+  that AgentKitTools carries none
+- **Image (Subsystem)** — The image tool family: policy-governed reading of images and PDF
+  documents for a vision-capable agent, extraction of a region of an image — either named in
+  pixels or found by trimming the image to its own content — and drawing of documents, drawings and
+  diagram files as pictures, published as one capability-gated pack
+- **ImageMediaTypes (Unit)** — Maps a file's extension to the media type the image family reads,
+  and composes the refusal for a file whose type it cannot read
+- **ImageReadTool (Unit)** — Publishes the `image_read` tool
+- **ImageCropTool (Unit)** — Publishes the `image_crop` tool
+- **ImageAutoCropTool (Unit)** — Publishes the `image_auto_crop` tool
+- **ImageViewTool (Unit)** — Publishes the `image_view` tool
+- **ImagePack (Unit)** — Publishes the image family as one pack, holding its rendering options and
+  render gate
+- **Diagram (Subsystem)** — The diagram tool family: drawing diagram source a model writes, showing
+  a vision-capable model the picture or giving a model that cannot see a description of it, serving
+  the drawing help of each language a topic at a time, and saving the picture under the write grant
+- **DiagramPackOptions (Unit)** — The rendering bounds and the offered languages of a diagram pack
+- **DiagramHelpTool (Unit)** — Publishes the `diagram_help` tool
+- **DiagramRenderTool (Unit)** — Publishes the `diagram_render` tool
+- **DiagramPack (Unit)** — Publishes the diagram family as one pack, in a preview mode that follows
+  the host's vision capability
+- **Rendering (Subsystem)** — The internal pieces every visual tool draws through: confinement of
+  referenced files, bounded opaque rendering, failure shaping and saving under the write grant
+- **VisualAccess (Unit)** — Maps the access policy onto the rendering library's file-access policy
+- **VisualRenderer (Unit)** — Draws within the pack's bounds on opaque white, promoting misleading
+  pictures to failures
+- **RenderErrorShaper (Unit)** — Turns a failed render into text a model can act on
+- **RenderDestination (Unit)** — Saves a rendered picture to a destination the write decision
+  permits, replacing an earlier one in one step
+- **VisualOptions (Unit)** — The rendering bounds a host gives a visual tool pack
 - **AgentKitAgentsChatClient (System)** — Builds a Microsoft Agent Framework agent from any
   `IChatClient`, and carries a Core session over that same `IChatClient`, installing the
   image-promoting decorator unconditionally on both
@@ -234,9 +257,10 @@ The following OTS items are also covered:
 
 - **BuildMark** — build-notes documentation tool
 - **ApiMark** — public API surface tracking tool
-- **CanvasNet** — the runtime raster imaging library providing image header inspection including
+- **CanvasNet** — the runtime imaging library providing image header inspection including
   decode feasibility, PNG and JPEG decoding with PNG decompression bounded by the declared size,
-  rectangular region extraction and PNG encoding
+  rectangular region extraction and PNG encoding, and through its Viewer the confined, bounded
+  drawing of documents and diagrams
 - **FileAssert** — document assertion tool
 - **Microsoft.Agents.AI** — the runtime library providing `ChatClientAgent`, which builds an
   `AIAgent` from an `IChatClient`
@@ -335,7 +359,7 @@ This is the point at which that judgment should be revisited. If one of those gr
 that a reader cannot hold it in view, the boundary around it stops being free and earns its
 artifacts.
 
-The repository contains five systems. `AgentKitCore` is the heart of the product and the one library
+The repository contains six systems. `AgentKitCore` is the heart of the product and the one library
 guaranteed to be imported. It supplies the contract every other package builds on — the policy
 primitives that bound where a tool may act, the single guarded construction path, the result
 constructors and the pack contract — and, alongside them, the provider-agnostic session engine that
@@ -352,20 +376,30 @@ runtime — which exposes no chat client at all, and reports its own occupancy a
 being told them.
 
 `AgentKitTools` is a general-purpose capability package of
-guarded tool families built on the AgentKitCore contract. It ships seven families today, each its
+guarded tool families built on the AgentKitCore contract. It ships six families today, each its
 own subsystem: `TextFile`, which searches, reads, creates, sets, replaces and moves line ranges
 within
 text files under the policy; `File`, which lists, copies, moves and deletes files of any type, and
 creates, moves or renames, and recursively deletes the directories holding them;
-`Markdown`, which outlines a document's headings with their line ranges;
-`Image`, which reads images and PDF documents for a vision-capable agent, returns a region of one
-and trims one to the region its own content occupies; `Todo`, which gives an
+`Markdown`, which outlines a document's headings with their line ranges; `Todo`, which gives an
 agent one flat task list of its own; `Memory`, which gives an agent a searchable record of what it
 has learned; and `Agent`, which delegates a task to another agent the
 application registered. All compose through
 the same guarded construction path and pack contract Core publishes. `AgentKitTools` is a peer of
 the other capability packages an application may attach, depending on `AgentKitCore` but never
-depended upon by another capability package.
+depended upon by another capability package, and it references no imaging library.
+
+`AgentKitToolsVisual` is an optional capability package of guarded visual tool families, built on
+the same contract. It ships two families. The `Image` family reads images and PDF documents for a
+vision-capable agent, returns a region of one, trims one to the region its own content occupies,
+and draws documents, drawings and diagram files a provider cannot render. The `Diagram` family
+draws diagram source an agent writes — showing the picture to a model that can see, or describing
+it to one that cannot — and serves the drawing help for each language. The internal `Rendering`
+subsystem holds what every tool that draws shares, and the `VisualOptions` unit the bounds a host
+sets. It is a package of its own because those families need an imaging library,
+`CanvasNet`, and keeping it here means the library reaches only the applications that attach the
+visual tools. It depends on `AgentKitCore` alone — not on `AgentKitTools` — and no other capability
+package depends on it.
 
 `AgentKitAgentsChatClient` and `AgentKitAgentsCopilot` are the two provider-adapter systems. Each
 turns a provider into a Microsoft Agent Framework agent carrying a supplied tool set, and each is
@@ -384,7 +418,7 @@ from the last request of a turn, and the context provider that contributes Agent
 host-built agent per conversation. Both are flat, and the two share no code and never reference each
 other.
 
-`AgentKitAgentsOllama` is the fifth system and the odd one out: it builds no agent and carries no
+`AgentKitAgentsOllama` is the sixth system and the odd one out: it builds no agent and carries no
 session. It exists for the single thing Ollama needs that the chat-client adapter cannot supply —
 a context window the instance is actually running, which an `IChatClient` publishes nowhere and
 which is only reachable through Ollama's own APIs. It is a package of its own because that work
@@ -394,11 +428,11 @@ describes the models the server holds. It depends on Core only for the provider-
 description its catalog returns, and nothing of its own appears in the session an application goes
 on to build.
 
-The `SoftwareStructureView.svg` above renders all five systems.
+The `SoftwareStructureView.svg` above renders all six systems.
 
 The demonstration samples under `samples/` are not among them. They are runnable examples rather
 than deliverables, belong to no software package, and are excluded from the software-item tree for
-the reasons given under Scope above; the structure view renders only the five shipped systems.
+the reasons given under Scope above; the structure view renders only the six shipped systems.
 
 ## Folder Layout
 
@@ -469,15 +503,7 @@ src/DemaConsulting.AgentKit.Tools/
 │   ├── FilePack.cs              — publishes the file family as one pack
 │   ├── LinkGuard.cs             — shared helper; what is a link, and was this path reached through one
 │   └── SubtreeGuard.cs          — shared helper; the walk over what an operation touches
-├── Image/
-│   ├── ImageAdmission.cs        — shared helper; read within the ceilings, triage, decode
-│   ├── ImageAutoCropTool.cs     — the image_auto_crop tool
-│   ├── ImageCropTool.cs         — the image_crop tool
-│   ├── ImageDestination.cs      — shared helper; the destination taxonomy and the write
-│   ├── ImageMediaTypes.cs       — extension-to-media-type mapping and the unreadable-type refusal
-│   ├── ImagePack.cs             — publishes the image family as one pack
-│   ├── ImageProbe.cs            — shared header reader; declared size, decode feasibility
-│   └── ImageReadTool.cs         — the image_read tool
+
 ├── Markdown/
 │   ├── MarkdownOutlineTool.cs   — the markdown_outline tool
 │   └── MarkdownPack.cs          — publishes the Markdown family as one pack
@@ -515,6 +541,39 @@ src/DemaConsulting.AgentKit.Tools/
 ```
 
 Each family folder mirrors the subsystem it represents in the software structure above.
+
+`AgentKitToolsVisual` has its own source tree under `src/DemaConsulting.AgentKit.Tools.Visual/`,
+organized the same way, one folder per tool family:
+
+```text
+src/DemaConsulting.AgentKit.Tools.Visual/
+├── VisualOptions.cs             — the rendering bounds a host gives a pack
+├── Diagram/
+│   ├── DiagramFormats.cs        — supporting table; the known languages, file names, help tags
+│   ├── DiagramHelpTool.cs       — the diagram_help tool
+│   ├── DiagramPack.cs           — publishes the diagram family as one pack
+│   ├── DiagramPackOptions.cs    — the bounds and languages a diagram pack is given
+│   ├── DiagramPreview.cs        — the two preview modes
+│   └── DiagramRenderTool.cs     — the diagram_render tool
+├── Image/
+│   ├── ImageAdmission.cs        — shared helper; read within the ceilings, triage, decode
+│   ├── ImageAutoCropTool.cs     — the image_auto_crop tool
+│   ├── ImageCropTool.cs         — the image_crop tool
+│   ├── ImageDestination.cs      — shared helper; the destination taxonomy and the write
+│   ├── ImageMediaTypes.cs       — extension-to-media-type mapping and the unreadable-type refusal
+│   ├── ImagePack.cs             — publishes the image family as one pack
+│   ├── ImageProbe.cs            — shared header reader; declared size, decode feasibility
+│   ├── ImageReadTool.cs         — the image_read tool
+│   └── ImageViewTool.cs         — the image_view tool
+└── Rendering/
+    ├── RenderDestination.cs     — saves a picture under the write grant, replacing atomically
+    ├── RenderErrorShaper.cs     — shapes a failed render into text a model can act on
+    ├── RenderFailure.cs         — supporting type; a classified, located failure
+    ├── RenderOutcome.cs         — supporting type; the picture or the failure of one render
+    ├── RenderRequest.cs         — supporting type; what one render draws, and under what
+    ├── VisualAccess.cs          — maps the access policy onto the file-access policy
+    └── VisualRenderer.cs        — draws within the bounds, on opaque white, through the gate
+```
 
 Each provider-adapter system is its own source tree. Both carry a session adapter over their
 provider, and both differ only in what their provider makes available:

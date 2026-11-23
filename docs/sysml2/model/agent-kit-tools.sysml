@@ -3,7 +3,6 @@ package AgentKitTools {
     private import AgentKitTools_TextFileSubsystem::*;
     private import AgentKitTools_FileSubsystem::*;
     private import AgentKitTools_MarkdownSubsystem::*;
-    private import AgentKitTools_ImageSubsystem::*;
     private import AgentKitTools_TodoSubsystem::*;
     private import AgentKitTools_MemorySubsystem::*;
     private import AgentKitTools_AgentSubsystem::*;
@@ -13,7 +12,8 @@ package AgentKitTools {
      * AgentKitTools is a general-purpose capability package of guarded tool families,
      * composed through the AgentKitCore contract. It is a peer of the other capability
      * packages an application may attach, depending on AgentKitCore but never depended
-     * upon by another capability package. It declares the tool families the package ships.
+     * upon by another capability package. It declares the six tool families the package
+     * ships and references no imaging library; the image family ships in AgentKitToolsVisual.
      */
 
     part def AgentKitToolsSystem {
@@ -29,7 +29,6 @@ package AgentKitTools {
         part textFile : TextFile;
         part file : File;
         part markdown : Markdown;
-        part image : Image;
         part todo : Todo;
         part memory : Memory;
         part agent : Agent;

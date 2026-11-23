@@ -1,0 +1,148 @@
+---
+# Software Unit Requirements for VisualAccess
+#
+# These requirements describe the design-level behavior of the VisualAccess unit.
+
+sections:
+  - title: AgentKitToolsVisual Requirements
+    sections:
+      - title: Rendering Requirements
+        sections:
+          - title: VisualAccess Requirements
+            requirements:
+              - id: AgentKitToolsVisual-Rendering-VisualAccess-InsideGrantDrawn
+                title: >-
+                  The mapped file-access policy shall allow a referenced file inside a grant the
+                  agent may read.
+                justification: |
+                  Confinement that refused everything would leave no document with a picture
+                  that could be drawn. A picture beside the document, inside the grant, is the ordinary
+                  case and must be drawn.
+                tests:
+                  - VisualAccess_ToFileAccess_PictureInsideTheGrant_IsDrawn
+
+              - id: AgentKitToolsVisual-Rendering-VisualAccess-EscapeRefused
+                title: >-
+                  The mapped file-access policy shall refuse a referenced file outside every grant,
+                  whether reached by a parent-folder step or named by an absolute path.
+                tags: [security]
+                justification: |
+                  These are the two most direct ways a document names a file outside the
+                  workspace; either would let a model read, through a render, a file the policy
+                  refuses it.
+                tests:
+                  - VisualAccess_ToFileAccess_ParentFolderEscape_IsRefused
+                  - VisualAccess_ToFileAccess_AbsolutePathOutside_IsRefused
+
+              - id: AgentKitToolsVisual-Rendering-VisualAccess-LinkRefused
+                title: >-
+                  The mapped file-access policy shall refuse a referenced file reached through a
+                  directory link or junction inside a grant that points outside it.
+                tags: [security]
+                justification: |
+                  A link inside the workspace makes a path that looks contained name a file that
+                  is not. The policy judges the real path of the opened file and refuses links
+                  below the starting folder, so the written path alone cannot carry a reference
+                  out of the grant.
+                tests:
+                  - VisualAccess_ToFileAccess_LinkEscape_IsRefused
+
+              - id: AgentKitToolsVisual-Rendering-VisualAccess-DenyPatternEnforced
+                title: >-
+                  The mapped file-access policy shall refuse a referenced file inside a grant that
+                  one of the grant's deny patterns excludes.
+                tags: [security]
+                justification: |
+                  A deny pattern is how an application keeps secrets inside an otherwise readable
+                  workspace. A render that honored the grant's root but not its patterns would
+                  draw exactly the file the application excluded.
+                tests:
+                  - VisualAccess_ToFileAccess_DenyPatternInsideTheGrant_IsRefused
+
+              - id: AgentKitToolsVisual-Rendering-VisualAccess-FileUriJudged
+                title: >-
+                  The mapped file-access policy shall judge a reference written as a file URI
+                  exactly as it judges the path the URI names.
+                tags: [security]
+                justification: |
+                  A file URI is another spelling of a path; if it were judged differently, it
+                  would be a way around the grant.
+                tests:
+                  - VisualAccess_ToFileAccess_FileUri_IsJudgedLikeAPath
+
+              - id: AgentKitToolsVisual-Rendering-VisualAccess-EveryReferenceKind
+                title: >-
+                  The mapped file-access policy shall apply to included and data files as well as
+                  to embedded pictures: a PlantUML include, an OpenSCAD include and a Vega-Lite
+                  data file outside the grants are refused.
+                tags: [security]
+                justification: |
+                  An included text file is drawn as text, and a data file's values are drawn as a
+                  chart, so either discloses content as surely as a picture does.
+                tests:
+                  - VisualAccess_ToFileAccess_IncludedFileOutside_IsRefused
+
+              - id: AgentKitToolsVisual-Rendering-VisualAccess-UnrestrictedGrantUsesPolicy
+                title: >-
+                  For a policy with an unrestricted grant, the mapped file-access policy shall omit
+                  the root confinement and still refuse every file the access policy's own read
+                  decision refuses.
+                tags: [security]
+                justification: |
+                  An unrestricted grant has no root to confine to, so confining to roots would
+                  refuse everything the grant permits. The access policy's own decision still
+                  applies its deny patterns, so an unrestricted grant is not an unconfined one.
+                tests:
+                  - VisualAccess_ToFileAccess_UnrestrictedGrant_UsesThePolicyDecision
+
+              - id: AgentKitToolsVisual-Rendering-VisualAccess-NeverAllowAll
+                title: >-
+                  The mapped file-access policy for a rooted policy shall combine the root
+                  confinement, the refusal of links and the access policy's own read decision, and
+                  shall never be the rendering library's allow-everything policy.
+                tags: [security]
+                justification: |
+                  Each part covers a case the others cannot: the roots bound the real path, the
+                  link refusal catches a link below the starting folder whatever its target, and
+                  the read decision applies deny patterns. The library's default reads any local
+                  file, so it must never be what a render runs under.
+                tests:
+                  - VisualAccess_ToFileAccess_RootedPolicy_CombinesAllThreeParts
+
+              - id: AgentKitToolsVisual-Rendering-VisualAccess-NetworkNeverFetched
+                title: >-
+                  A render under the mapped file-access policy shall fetch nothing from the
+                  network.
+                tags: [security]
+                justification: |
+                  A network fetch from a render would let a document reach other hosts, or leak
+                  what the agent drew in a request. The rendering library never loads network
+                  references; this is verified rather than assumed.
+                tests:
+                  - VisualAccess_ToFileAccess_NetworkReference_IsNeverFetched
+
+              - id: AgentKitToolsVisual-Rendering-VisualAccess-RefusalDisclosesNoHostPath
+                title: >-
+                  The refusal the mapped file-access policy gives for a file the access policy
+                  refuses shall state only that the file is outside the locations the agent may
+                  read, naming no host path.
+                tags: [security]
+                justification: |
+                  The access policy's own denial names the permitted locations and the full path
+                  of the file, an absolute host path the model never supplied. The model needs
+                  only the fact; the reference it wrote is already named by the rendering library.
+                tests:
+                  - VisualAccess_ToFileAccess_Refusal_DisclosesNoHostPath
+
+              - id: AgentKitToolsVisual-Rendering-VisualAccess-InlineBaseFolder
+                title: >-
+                  The folder inline source's references resolve against shall be the working
+                  directory when the agent may read it, and no folder otherwise.
+                tags: [security]
+                justification: |
+                  Inline source has no folder of its own. Resolving its references against the
+                  working directory matches how every other path a model states is read; resolving
+                  them against no folder when that directory is not readable makes every relative
+                  reference fail closed.
+                tests:
+                  - VisualAccess_InlineBaseFolder_WorkingDirectoryReadability_DecidesTheFolder

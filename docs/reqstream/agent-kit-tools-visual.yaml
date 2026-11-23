@@ -1,0 +1,284 @@
+---
+# Software System Requirements for AgentKit Tools Visual
+#
+# These requirements describe the externally visible behavior of the library
+# from the perspective of its consumers, without specifying implementation details.
+
+sections:
+  - title: AgentKitToolsVisual Requirements
+    requirements:
+      - id: AgentKitToolsVisual-Composition-BuiltOnCoreContract
+        title: >-
+          The library shall present the visual tool families it provides to an application through
+          the AgentKitCore tool-pack composition contract, composed into one policy-governed tool
+          list, and shall contribute no tools where no family has been attached.
+        tags: [system]
+        justification: |
+          AgentKitToolsVisual is an optional capability package of guarded visual tool families;
+          an application attaches them the same way it attaches any other AgentKit pack — one
+          ToolPackBuilder, one access policy — not through a composition path this package
+          invents. Proving the empty composition is well defined and yields no tools fixes the
+          integration surface before any family is added, and keeps the package a peer of the
+          other capability packages rather than a layer they depend on.
+        tests:
+          - AgentKitToolsVisual_SystemComposition_EmptyBuilder_ContributesNoTools
+
+      - id: AgentKitToolsVisual-PolicyDerivedPublication
+        title: >-
+          The library shall publish each visual tool that can succeed under an access policy that
+          permits no writing anywhere, so that a read-only agent keeps the visual tools it can use,
+          and withhold a visual tool whose only outcome under such a policy would be a refusal.
+        tags: [system, security]
+        justification: |
+          The AgentKit packs withhold a tool whose only outcome under a read-only policy would be
+          a refusal, and publish the rest. Each image tool can succeed without writing — reading
+          an image is a read, and taking a region without a destination returns image content —
+          so the rule publishes every one of them under every policy, and an agent configured to
+          read keeps the ability to look at pictures and examine parts of them closely. The
+          diagram help tool touches no file and the image-preview render tool returns its
+          picture without writing, so both are published under every policy; the text-preview
+          render tool must save its picture, so it is withheld where nothing may be written.
+        children:
+          - AgentKitToolsVisual-Image-Pack-PublishedUnderEveryPolicy
+          - AgentKitToolsVisual-Diagram-Pack-TextPreviewRenderRequiresWriteGrant
+        tests:
+          - AgentKitToolsVisual_SystemComposition_ReadOnlyPolicy_PublishesEveryImageTool
+          - AgentKitToolsVisual_SystemComposition_DiagramPack_ReadOnlyTextPreview_WithholdsRender
+
+      - id: AgentKitToolsVisual-ImageFamily-GuardedImageAccess
+        title: >-
+          The library shall provide an image family that reads images and PDF documents under the
+          access policy the composing application supplies, reporting the pixel dimensions of an
+          image it can establish them for, returning a rectangular region of one named in pixels
+          and refusing a region that is not wholly inside it, trimming an image to the region its
+          own content occupies when the caller names no region at all, writing that region to a
+          destination a read-write grant permits when the caller names one, interpreting the
+          paths a model states as relative to the workspace, offering each of its tools under
+          every policy including one that permits no writing, publishing each tool under one
+          family prefix, delivering the content to the caller rather than a serialized copy of
+          it, drawing a document, drawing or diagram file a provider cannot render itself as a
+          picture, and registering the family only for a host that declares it can present visual
+          content to a model.
+        tags: [system, security]
+        justification: |
+          Handing a model an image is the capability a vision-enabled agent needs and the one that
+          fails most silently when it is done wrong: a tool whose content is serialized to JSON
+          delivers no image, and the model then confidently describes a picture it never received.
+          Providing it as one policy-governed family means an application grants image access in a
+          single, auditable step, with containment applied to each request and the content
+          delivered intact through the guarded construction path. A model states a path the way a
+          person does, and the name it holds is usually one a listing reported relatively, so the
+          family reads names the same way the other path-taking families do. Gating the family
+          behind the vision capability keeps a model that cannot see from being offered a tool
+          whose result it could only fabricate around, and the composition withholds the family by
+          not asking the pack for its tools rather than by offering them and refusing later. A
+          model can see a picture but cannot measure one, so the family states an image's pixel
+          dimensions alongside the content: without them the model has no coordinate space in
+          which to reason about any part of the image it is looking at. It also cannot examine
+          part of a picture closely — a detail occupying a hundredth of a large image is, at the
+          resolution a provider receives, effectively invisible — so the family returns the
+          region the model names at full resolution: inline when the model wants to examine it,
+          or written to a destination the model names when it wants an artifact it can reference.
+          The destination is admitted by the policy's write decision, independently of the read
+          that admitted the image, so one call exercises both grants an application configured
+          and a read-wide, write-narrow policy stays meaningful. Dimension reporting and region
+          extraction are one capability rather than two: a region request the model cannot aim is
+          a region request it will aim wrongly. A region that does not fit is refused rather than
+          quietly reduced, because a reduced region answers a different question while reporting
+          success and the model cannot detect the substitution. Deciding an image's decode cost
+          from what its header declares, before any pixel data exists, is what stops a model
+          provoking a quarter of a gigabyte of allocation from a file of a few hundred kilobytes.
+          The family also trims an image to the region its own content occupies, because the
+          region a model most often wants is the one it cannot name: it can see that a screenshot
+          or a slide export is mostly margin without being able to measure where the margin
+          stops, so any rectangle it stated would be a guess. That trim takes its background from
+          the image's own border rather than assuming one, so a dark, colored or transparent
+          margin works as well as a white one, and it refuses an image that is entirely
+          background rather than returning the whole picture — which would again answer a
+          different question while reporting success. A model is also handed SVG drawings, PDF
+          pages, slides and diagram sources a provider cannot render, so the family draws such a
+          file to a picture the model can look at, leaving the read tool a byte-exact pass-through
+          for the formats a provider renders itself. The family ships in this package rather
+          than in AgentKitTools so that the imaging library it needs reaches only the
+          applications that choose it.
+        children:
+          - AgentKitToolsVisual-Image-FamilyComposition
+          - AgentKitToolsVisual-Image-CapabilityGated
+          - AgentKitToolsVisual-Image-GuardedConstruction
+          - AgentKitToolsVisual-Image-PolicyGoverned
+          - AgentKitToolsVisual-Image-DimensionReporting
+          - AgentKitToolsVisual-Image-RegionExtraction
+          - AgentKitToolsVisual-Image-ContentTrimming
+          - AgentKitToolsVisual-Image-RegionDestination
+          - AgentKitToolsVisual-Image-DecodeBounded
+          - AgentKitToolsVisual-Image-DenialsAreResults
+          - AgentKitToolsVisual-Image-ObservesPolicyLimits
+          - AgentKitToolsVisual-Image-DocumentViewing
+          - AgentKit-OTS-CanvasNet-HeaderProbe
+          - AgentKit-OTS-CanvasNet-Decode
+          - AgentKit-OTS-CanvasNet-BoundedInflate
+          - AgentKit-OTS-CanvasNet-Crop
+          - AgentKit-OTS-CanvasNet-Encode
+          - AgentKit-OTS-CanvasNet-DecodeFeasibility
+        tests:
+          - AgentKitToolsVisual_SystemComposition_ImagePack_ContributesTheImageFamily
+          - AgentKitToolsVisual_SystemComposition_ImagePackWithoutVision_ContributesNoTools
+
+      - id: AgentKitToolsVisual-DiagramFamily-GuardedDiagramDrawing
+        title: >-
+          The library shall provide a diagram family that draws Mermaid, PlantUML, SVG, Vega-Lite
+          and OpenSCAD source a model writes, under the access policy the composing application
+          supplies, showing a vision-capable model the picture and giving a model that cannot see
+          a description of it in words, reporting a source it cannot draw with its location and
+          the help topic to read, serving the drawing help of each language a topic at a time,
+          saving the picture under the write grant when asked, offering only the languages the
+          application chooses, and publishing its tools under one family prefix.
+        tags: [system, security]
+        justification: |
+          An agent writing documentation needs figures, and the figures it can make are the ones
+          it can write as source: flowcharts and sequence diagrams, charts, framed SVG figures,
+          3D parts. Drawing is only useful if the agent can check what it drew and fix it, so the
+          family returns the picture to a model that can see, describes it to one that cannot,
+          and reports a failure precisely enough to fix on the next attempt. The drawing help is
+          the reference for each language and is served a topic at a time so it does not crowd
+          out the work. Drawing runs under the same confinement and bounds as viewing a file —
+          references stay inside the grants and nothing is fetched from the network — and a
+          picture is saved only where the write grant permits. The family is a pack of its own so
+          an application chooses whether to offer drawing at all, and which languages.
+        children:
+          - AgentKitToolsVisual-Diagram-FamilyComposition
+          - AgentKitToolsVisual-Diagram-VisionOrTextPreview
+          - AgentKitToolsVisual-Diagram-ProgressiveHelp
+          - AgentKitToolsVisual-Diagram-DrawFixRedraw
+          - AgentKit-OTS-CanvasNet-HelpCatalog
+          - AgentKit-OTS-CanvasNet-Positions
+        tests:
+          - AgentKitToolsVisual_SystemComposition_DiagramPack_VisionHost_ContributesImagePreview
+          - AgentKitToolsVisual_SystemComposition_DiagramPack_NonVisionHost_ContributesTextPreview
+
+      - id: AgentKitToolsVisual-PathDenials-NoHostAbsolutePath
+        title: >-
+          The library's path-taking tools shall refuse a location the access policy does not permit
+          with a result that names the permitted locations relative to the working directory and
+          discloses no host absolute path the model did not supply.
+        tags: [system, security]
+        justification: |
+          Each path-taking tool passes the access policy's denial to the model unchanged, and the
+          transcript the denial joins leaves the host. The denial must remain useful — a model
+          learns where it may work from it — without disclosing the host's directory layout or the
+          user name an absolute path carries. Proving it across the package's path-taking tools at
+          system level is the evidence that no tool adds an absolute location of its own to the
+          policy's refusal.
+        tests:
+          - AgentKitToolsVisual_PathDenials_DiscloseNoHostAbsolutePath
+
+      - id: AgentKitToolsVisual-ReferencedFilesConfined
+        title: >-
+          The library shall confine every file a rendered document references — an embedded
+          picture, an included file, a data file — to what the access policy permits the agent to
+          read, judging the rendered file itself by the same read decision before it is opened,
+          refusing a reference that escapes the policy's locations by a parent-folder step, an
+          absolute path, a file URI or a link, applying the policy's deny patterns to referenced
+          files, and never fetching anything from the network.
+        tags: [system, security]
+        justification: |
+          A document names other files, and the rendering library opens those itself and reads any
+          local file by default. Without confinement, a model that may read one folder could write
+          an SVG embedding a picture from anywhere on the host, or a diagram including any text
+          file, and have its content drawn back to it — a read of a file the policy refuses, by
+          another route. The library therefore hands the rendering library a file-access policy
+          mapped from the access policy, and judges the input itself, which the rendering library
+          never judges. Network references are refused as well, because a render must not become
+          a way to reach other hosts or to leak a document's content in a request. A picture that
+          was refused fails the render rather than leaving a gap the model cannot see the reason
+          for.
+        children:
+          - AgentKitToolsVisual-Rendering-ReferencesConfined
+          - AgentKitToolsVisual-Image-ViewTool-InputCheckedBeforeRead
+          - AgentKitToolsVisual-Diagram-RenderTool-InlineReferencesConfined
+          - AgentKit-OTS-CanvasNet-FileAccessPolicy
+          - AgentKit-OTS-CanvasNet-NoNetwork
+        tests:
+          - AgentKitToolsVisual_ReferencedFiles_OutsideTheGrants_AreNeverDrawn
+          - AgentKitToolsVisual_ReferencedFiles_InlineDiagramOutsideTheGrants_IsNeverDrawn
+          - AgentKitToolsVisual_Rendering_NetworkReferences_AreNeverFetched
+
+      - id: AgentKitToolsVisual-RenderingBounded
+        title: >-
+          The library shall bound every render by the policy's pixel budget and binary ceiling, by
+          a largest picture side, by a triangle limit for three-dimensional models, by a timeout
+          that includes the time spent waiting to start, and by a number of renders a pack runs at
+          once, each configurable by the host and each refused when configured outside its
+          documented range.
+        tags: [system, security]
+        justification: |
+          The content a model renders is written by the model, so its cost is chosen by the
+          model: a few lines of a diagram or a 3D model can ask for gigabytes of pixels or
+          geometry, or minutes of work. Bounding each dimension of that cost, and stating the
+          bound to the model when it is reached, keeps a render from exhausting the host's memory
+          or holding an agent's turn indefinitely. The timeout is backed by abandoning a render
+          that has not stopped shortly after it, and the concurrency bound keeps abandoned renders
+          from accumulating; both are defense in depth around the rendering library's own
+          cancellation. A host configures these bounds once, and an option outside its range is
+          refused where it was set rather than silently adjusted.
+        children:
+          - AgentKitToolsVisual-Rendering-BoundedRender
+          - AgentKitToolsVisual-VisualOptions-Defaults
+          - AgentKitToolsVisual-VisualOptions-RejectsOutOfRange
+          - AgentKitToolsVisual-VisualOptions-MinNotAboveMax
+          - AgentKitToolsVisual-Diagram-RenderTool-ObservesCeilings
+          - AgentKitToolsVisual-Diagram-RenderTool-Timeout
+          - AgentKit-OTS-CanvasNet-PixelBudget
+          - AgentKit-OTS-CanvasNet-Cancellation
+        tests:
+          - VisualRenderer_RenderAsync_RenderBeyondTheTimeout_FailsAsRenderTimeout
+          - VisualRenderer_RenderAsync_PictureOverThePixelBudget_FailsAsBudgetExceeded
+
+      - id: AgentKitToolsVisual-RenderErrorsActionable
+        title: >-
+          The library shall report a render that fails, or that produces a picture which would
+          mislead a model, as text the model can act on — a stable code, the line and column the
+          failure points at, the offending source line with a caret, advice addressed to the model,
+          and every note the render reported — disclosing no host path the model did not supply,
+          and shall draw every picture on an opaque white background.
+        tags: [system]
+        justification: |
+          A model fixes what it drew by reading why the render failed. The rendering library's
+          own failures carry no stable code and bury the location in a message framed for a
+          developer (https://github.com/demaconsulting/CanvasNet/issues/166), and its hints are
+          written for a host or a command line, so the library shapes every failure itself. A
+          picture that is empty, or one whose embedded image was refused, is reported as a failure
+          too, because a model shown it would describe what it expected rather than what is
+          there. Pictures are drawn on opaque white because the rendering library's default is a
+          transparent background, on which a vision model reads dark text as dark on black
+          (https://github.com/demaconsulting/CanvasNet/issues/168).
+        children:
+          - AgentKitToolsVisual-Rendering-ActionableFailures
+          - AgentKitToolsVisual-Diagram-RenderTool-ShapedFailure
+          - AgentKit-OTS-CanvasNet-Diagnostics
+          - AgentKit-OTS-CanvasNet-ViewerRender
+        tests:
+          - Rendering_Pipeline_BrokenSource_BecomesActionableText
+          - ImageViewTool_View_BrokenFile_IsReportedWithTheOffendingLine
+
+      - id: AgentKitToolsVisual-RenderedPicturesSavedUnderWriteGrant
+        title: >-
+          The library shall save a rendered picture only to a destination the access policy's
+          write decision permits, naming a PNG file inside a folder that already exists, and shall
+          replace an earlier rendering at that destination in one step, so that a reader never
+          sees a partly written picture.
+        tags: [system, security]
+        justification: |
+          A model that draws a diagram for a document saves it where the document can reference
+          it, then looks at it, fixes the source and saves again under the same name. Admitting
+          the destination by the write decision alone keeps a read-wide, write-narrow policy
+          meaningful, refusing to create folders keeps a mistyped path from scattering directories
+          the agent then believes are real, and replacing the earlier rendering in one step keeps
+          the draw, look, fix loop from being stopped by its own previous result or leaving a
+          broken picture behind.
+        children:
+          - AgentKitToolsVisual-Rendering-SavedUnderWriteGrant
+          - AgentKitToolsVisual-Diagram-RenderTool-SaveAs
+          - AgentKitToolsVisual-Diagram-RenderTool-SaveAsCheckedFirst
+        tests:
+          - Rendering_Pipeline_DrawnPicture_IsSavedToAPermittedDestination

@@ -128,8 +128,11 @@ unreadable-file refusal rather than a thrown exception.
 
 `PathPolicy` and `ToolLimits` for the decision and the ceilings, `ToolResult` for every result it
 returns, and `GuardedToolFactory` for construction. It streams lines through `TextLines` and detects
-binary content through `TextFileBinaryGuard`. It names `ImageMediaTypes` plus `ImageReadTool.ToolName`
-for the binary image redirect — the one redirect it still offers, because it states what the file is.
+binary content through `TextFileBinaryGuard`. For the binary image redirect — the one redirect it
+still offers, because it states what the file is — it holds the name `image_read` and the extensions
+that tool reads (`.png`, `.jpg`, `.jpeg`, `.gif`, `.webp`, `.pdf`, compared without regard to case)
+as private literals, because the image family ships in the separate AgentKitToolsVisual package and
+this package references no imaging library.
 From the Base Class Library: `File`, `FileInfo`, `Directory`, `FileStream`, `StreamReader`,
 `StringBuilder`, and `Encoding` from `System.Text`. `AIFunction`, from
 `Microsoft.Extensions.AI.Abstractions`, is the form the constructed tool takes.

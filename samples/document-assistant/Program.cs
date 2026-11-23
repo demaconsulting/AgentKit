@@ -73,7 +73,8 @@ try
         + $"{(options.ReasoningEffort is { } effort ? $", effort {effort}" : "")}"
         + $"{(options.ContextTier is { } tier ? $", tier {tier}" : "")}"
         + $"{(options.ContextWindow is { } window ? $", window {window:N0}" : "")}\n" +
-        $"Vision:    {(options.VisionEnabled ? "enabled" : "disabled")}");
+        $"Vision:    {(options.VisionEnabled ? "enabled" : "disabled")}\n" +
+        $"Diagrams:  {(options.DiagramsEnabled ? "enabled" : "disabled")}");
 
     // Build the agent (the one provider-specific step) and always release its runtime resources.
     var setup = await AgentComposition.CreateAgentAsync(

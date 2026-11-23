@@ -2,7 +2,6 @@ using System.Text.Json;
 using DemaConsulting.AgentKit.Core;
 using DemaConsulting.AgentKit.Tools.Agent;
 using DemaConsulting.AgentKit.Tools.File;
-using DemaConsulting.AgentKit.Tools.Image;
 using DemaConsulting.AgentKit.Tools.Markdown;
 using DemaConsulting.AgentKit.Tools.Memory;
 using DemaConsulting.AgentKit.Tools.TextFile;
@@ -112,47 +111,6 @@ public class AgentKitToolsTests
             tools.Select(tool => tool.Name));
     }
 
-    /// <summary>
-    ///     Proves that attaching the Image pack to a vision host contributes the image family to
-    ///     a composition, under the one family prefix the pack claims.
-    /// </summary>
-    [Fact]
-    public void AgentKitTools_SystemComposition_ImagePack_ContributesTheImageFamily()
-    {
-        // Arrange: a vision host governing a composition with the image family attached
-        var policy = new PathPolicy(Path.GetTempPath(), [PathRule.Unrestricted(AccessLevel.ReadWrite)]);
-        var builder = new ToolPackBuilder(policy)
-            .WithHostCapabilities(HostCapabilities.Vision)
-            .Add(new ImagePack());
-
-        // Act: build the tool list
-        var tools = builder.Build();
-
-        // Assert: every one of the family's tools is published, under the family prefix
-        Assert.Equal(
-            ["image_read", "image_crop", "image_auto_crop"],
-            tools.Select(tool => tool.Name));
-    }
-
-    /// <summary>
-    ///     Proves that a host that does not declare vision receives none of the image family's
-    ///     tools, so a model that cannot see is never offered content it could only fabricate
-    ///     around.
-    /// </summary>
-    [Fact]
-    public void AgentKitTools_SystemComposition_ImagePackWithoutVision_ContributesNoTools()
-    {
-        // Arrange: a host that declares no capability, governing a composition with the image
-        // family attached
-        var policy = new PathPolicy(Path.GetTempPath(), [PathRule.Unrestricted(AccessLevel.ReadWrite)]);
-        var builder = new ToolPackBuilder(policy).Add(new ImagePack());
-
-        // Act: build the tool list
-        var tools = builder.Build();
-
-        // Assert: the vision requirement is unmet, so the family contributes nothing
-        Assert.Empty(tools);
-    }
 
     /// <summary>
     ///     Proves that attaching the Memory pack contributes the memory family to a composition,
@@ -238,7 +196,7 @@ public class AgentKitToolsTests
     }
 
     /// <summary>
-    ///     Proves that all seven families composed over one policy that permits no writing anywhere
+    ///     Proves that all six families composed over one policy that permits no writing anywhere
     ///     withhold exactly the tools that can act only by writing, so an agent is never
     ///     offered a tool whose only possible outcome would be a refusal because nothing is
     ///     writable.
@@ -263,7 +221,6 @@ public class AgentKitToolsTests
             .Add(new TextFilePack())
             .Add(new FilePack())
             .Add(new MarkdownPack())
-            .Add(new ImagePack())
             .Add(new MemoryPack(new Memory.StubEmbeddingGenerator()))
             .Add(new TodoPack())
             .Add(new AgentPack([], (_, _) => Task.FromResult<string?>("done"), []));
@@ -271,9 +228,9 @@ public class AgentKitToolsTests
         // Act: build the tool list
         var tools = builder.Build();
 
-        // Assert: 3 text-file + 1 file + 1 markdown + 3 image + 5 memory + 3 todo + 1 agent = 17,
-        // in pack-add order. The eleven write-performing tools are absent.
-        Assert.Equal(17, tools.Count);
+        // Assert: 3 text-file + 1 file + 1 markdown + 5 memory + 3 todo + 1 agent = 14, in
+        // pack-add order. The eleven write-performing tools are absent.
+        Assert.Equal(14, tools.Count);
         Assert.Equal(
             [
                 "text_file_search",
@@ -281,9 +238,6 @@ public class AgentKitToolsTests
                 "text_file_copy_lines",
                 "file_list",
                 "markdown_outline",
-                "image_read",
-                "image_crop",
-                "image_auto_crop",
                 "memory_file",
                 "memory_recall",
                 "memory_update",
@@ -298,7 +252,7 @@ public class AgentKitToolsTests
     }
 
     /// <summary>
-    ///     Proves that the same seven-family composition over a policy granting a read-only
+    ///     Proves that the same six-family composition over a policy granting a read-only
     ///     workspace and a writable session location publishes every tool, because the write
     ///     question is asked of the policy as a whole rather than of the location relative names
     ///     anchor to.
@@ -318,7 +272,6 @@ public class AgentKitToolsTests
             .Add(new TextFilePack())
             .Add(new FilePack())
             .Add(new MarkdownPack())
-            .Add(new ImagePack())
             .Add(new MemoryPack(new Memory.StubEmbeddingGenerator()))
             .Add(new TodoPack())
             .Add(new AgentPack([], (_, _) => Task.FromResult<string?>("done"), []));
@@ -326,9 +279,9 @@ public class AgentKitToolsTests
         // Act: build the tool list
         var tools = builder.Build();
 
-        // Assert: 8 text-file + 7 file + 1 markdown + 3 image + 5 memory + 3 todo + 1 agent = 28,
-        // in pack-add order
-        Assert.Equal(28, tools.Count);
+        // Assert: 8 text-file + 7 file + 1 markdown + 5 memory + 3 todo + 1 agent = 25, in
+        // pack-add order
+        Assert.Equal(25, tools.Count);
         Assert.Equal(
             [
                 "text_file_search",
@@ -347,9 +300,6 @@ public class AgentKitToolsTests
                 "file_move_directory",
                 "file_delete_directory",
                 "markdown_outline",
-                "image_read",
-                "image_crop",
-                "image_auto_crop",
                 "memory_file",
                 "memory_recall",
                 "memory_update",
@@ -617,10 +567,8 @@ public class AgentKitToolsTests
         TextFile.TempDirectoryFixture.WriteFile(fixture.Outside, "x.png", "not really an image");
         var policy = new PathPolicy(fixture.Root, [PathRule.ReadOnly(fixture.Root)]);
         var tools = new ToolPackBuilder(policy)
-            .WithHostCapabilities(HostCapabilities.Vision)
             .Add(new TextFilePack())
             .Add(new FilePack())
-            .Add(new ImagePack())
             .Build();
 
         // Act: each tool is asked for a location outside the grant, the way a model escapes
@@ -628,8 +576,7 @@ public class AgentKitToolsTests
         {
             await Invoke(tools, TextFileReadTool.ToolName, new() { ["path"] = "../outside/x.png" }),
             await Invoke(tools, TextFileSearchTool.ToolName, new() { ["pattern"] = "x", ["path"] = "../outside" }),
-            await Invoke(tools, FileListTool.ToolName, new() { ["directory"] = "../outside" }),
-            await Invoke(tools, ImageReadTool.ToolName, new() { ["path"] = "../outside/x.png" })
+            await Invoke(tools, FileListTool.ToolName, new() { ["directory"] = "../outside" })
         };
 
         // Assert: each is a path denial naming the grant relatively, with no host absolute path
@@ -642,6 +589,31 @@ public class AgentKitToolsTests
             Assert.DoesNotContain(workingDirectory, denial, StringComparison.OrdinalIgnoreCase);
             Assert.DoesNotContain(temporaryBase, denial, StringComparison.OrdinalIgnoreCase);
         });
+    }
+
+    /// <summary>
+    ///     Proves that the Tools assembly references no imaging library, so an application that
+    ///     composes only the general-purpose families takes on no imaging dependency.
+    /// </summary>
+    /// <remarks>
+    ///     The check reads the built assembly's own reference table, which is what the runtime
+    ///     loads from, rather than scanning source text. The image family ships in the separate
+    ///     Tools.Visual package, which carries the imaging library instead.
+    /// </remarks>
+    [Fact]
+    public void AgentKitTools_Dependencies_ToolsAssembly_ReferencesNoImagingLibrary()
+    {
+        // Arrange: the assembly that ships the Tools families
+        var assembly = typeof(TextFilePack).Assembly;
+
+        // Act: read the names of the assemblies it references
+        var referenced = assembly.GetReferencedAssemblies().Select(name => name.Name ?? string.Empty).ToList();
+
+        // Assert: the Core contract is referenced, and no imaging library is
+        Assert.Contains("DemaConsulting.AgentKit.Core", referenced);
+        Assert.DoesNotContain(
+            referenced,
+            name => name.StartsWith("DemaConsulting.CanvasNet", StringComparison.Ordinal));
     }
 
     /// <summary>

@@ -288,8 +288,8 @@ public static class CopilotAgentFactory
     ///     with <see cref="CopilotRuntime.StartAsync"/> and disposes it when finished; this factory
     ///     derives the session allow-list from the same tool list it publishes, which is what
     ///     suppresses the runtime's built-in shell, fetch and file tools. In a real application <c>textFiles</c> and
-    ///     <c>images</c> are <c>new TextFilePack()</c> and <c>new ImagePack()</c> from
-    ///     the <c>DemaConsulting.AgentKit.Tools</c> package.
+    ///     <c>images</c> are <c>new TextFilePack()</c> from the <c>DemaConsulting.AgentKit.Tools</c>
+    ///     package and <c>new ImagePack()</c> from the <c>DemaConsulting.AgentKit.Tools.Visual</c> package.
     ///     </para>
     ///     <code>
     ///     public AIAgent CreateAgent(

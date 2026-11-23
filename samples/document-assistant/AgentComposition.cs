@@ -3,9 +3,10 @@ using DemaConsulting.AgentKit.Agents.Copilot;
 using DemaConsulting.AgentKit.Agents.Ollama;
 using DemaConsulting.AgentKit.Core;
 using DemaConsulting.AgentKit.Tools.File;
-using DemaConsulting.AgentKit.Tools.Image;
 using DemaConsulting.AgentKit.Tools.Markdown;
 using DemaConsulting.AgentKit.Tools.TextFile;
+using DemaConsulting.AgentKit.Tools.Visual.Diagram;
+using DemaConsulting.AgentKit.Tools.Visual.Image;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
 using OllamaSharp;
@@ -46,7 +47,9 @@ public sealed record AgentSetup(AIAgent Agent, IAsyncDisposable Cleanup);
 ///     asymmetric case — read the user's documents, write only into the session folder — is
 ///     expressed directly rather than worked around. The image pack is gated behind the
 ///     <see cref="HostCapabilities.Vision"/> declaration, so with vision off <c>image_read</c> is
-///     never even created; and each adapter suppresses or repairs its provider's own quirk (Copilot's
+///     never even created; the diagram pack follows the host instead of being gated by it, showing
+///     the model each drawing where the host can see and describing it in words where it cannot;
+///     and each adapter suppresses or repairs its provider's own quirk (Copilot's
 ///     built-in shell/fetch tools, an <see cref="IChatClient"/> dropping tool-returned images). None
 ///     of that is reimplemented here — it lives inside the shipped packages.
 ///     </para>
@@ -106,19 +109,34 @@ public static class AgentComposition
     ///     <c>--read-only-workspace</c>, and stating the extension up front means the agent learns
     ///     the rule from the instructions rather than only by being refused.
     ///     </para>
+    ///     <para>
+    ///     <b>The diagram paragraph is appended by the application, not by the pack.</b> When the
+    ///     run offers the diagram tools, <paramref name="diagramInstructions"/> carries the composed
+    ///     pack's own <see cref="DiagramPack.Instructions"/> — which follow its preview mode — and
+    ///     this method appends it verbatim, followed by one sentence of the sample's own: the
+    ///     document-diagramming workflow, which keeps the source as a <c>.mmd</c> file and saves the
+    ///     picture as a <c>.png</c> in the session folder, for the same reason figures go there. The
+    ///     pack never adds its paragraph anywhere itself, so a run without diagrams carries no
+    ///     mention of them.
+    ///     </para>
     /// </remarks>
     /// <param name="workspaceRoot">The absolute workspace path named in the instructions.</param>
     /// <param name="sessionRoot">The absolute session path named in the instructions.</param>
     /// <param name="workspaceReadOnly">Whether the workspace is granted read-only rather than read-write.</param>
+    /// <param name="diagramInstructions">
+    ///     The composed diagram pack's <see cref="DiagramPack.Instructions"/>, or
+    ///     <see langword="null"/> when the run offers no diagram tools.
+    /// </param>
     /// <returns>The system instructions for this run.</returns>
     public static string BuildInstructions(
         string workspaceRoot,
         string sessionRoot,
-        bool workspaceReadOnly)
+        bool workspaceReadOnly,
+        string? diagramInstructions = null)
     {
         var workspaceAccess = workspaceReadOnly ? "read-only" : "read-write";
 
-        return
+        var instructions =
             "You are a document assistant with access to a small, fixed set of locations and " +
             "nothing else. There are exactly two of them. The workspace is '" + workspaceRoot +
             "' (" + workspaceAccess + "); it is what relative names are interpreted against. The " +
@@ -126,7 +144,8 @@ public static class AgentComposition
             "so only its full absolute path reaches it. You can search and read text files, create " +
             "and edit them, list, copy, move and delete files of any type, create, rename and " +
             "delete whole directories, outline a Markdown " +
-            "file's sections, and (when a vision tool is offered) look at images and cut a region " +
+            "file's sections, and (when a vision tool is offered) look at images, draw a document " +
+            "or diagram file as a picture with image_view, and cut a region " +
             "out of one — but only within " +
             "those two locations, and only where you have write access. A path outside them will " +
             "be refused, and that is by design. You have no shell, terminal, code-execution, or " +
@@ -153,6 +172,21 @@ public static class AgentComposition
             "how it was interpreted, and lists every permitted location with its access level, " +
             "which is enough to reissue the request correctly. Do not retry the identical call, " +
             "and do not invent a path.";
+
+        if (diagramInstructions is null)
+        {
+            return instructions;
+        }
+
+        // The pack's paragraph, verbatim, then the sample's own workflow for diagramming a document.
+        return instructions + " " + diagramInstructions + " " +
+            "To diagram a document, read it first (markdown_outline shows a Markdown file's " +
+            "sections), then write the diagram as Mermaid source into the session folder as " +
+            "<name>.mmd, using its full absolute path, so the source can be edited later. Draw that " +
+            "source with diagram_render, giving save_as the session folder's full absolute path " +
+            "ending in <name>.png; check the result and fix the source, keeping the .mmd file in " +
+            "step, until it is right. Then link the saved picture from the Markdown you write, for " +
+            "example ![Diagram](<name>.png).";
     }
 
     /// <summary>
@@ -181,6 +215,14 @@ public static class AgentComposition
     ///     into an <see cref="IList{T}"/> because the builder returns a read-only list while the
     ///     agent factories take a mutable one.
     ///     </para>
+    ///     <para>
+    ///     The diagram pack is passed in rather than created here, because the same instance's
+    ///     <see cref="DiagramPack.Instructions"/> go into the agent's instructions: one pack, so the
+    ///     paragraph always describes the preview mode the tools were composed in. It needs no
+    ///     capability declaration of its own — <see cref="CreateDiagramPack"/> chooses the preview
+    ///     from the same host capabilities, so an image-preview pack only ever meets a builder that
+    ///     declared <see cref="HostCapabilities.Vision"/>, and a text-preview pack requires nothing.
+    ///     </para>
     /// </remarks>
     /// <param name="workspaceRoot">
     ///     The absolute workspace path: the working directory relative paths anchor to, and a
@@ -197,12 +239,17 @@ public static class AgentComposition
     ///     The host capabilities to declare. Derived from the selected model where the model was
     ///     chosen from a catalog; <see cref="HostCapabilities.Vision"/> offers the image tools.
     /// </param>
+    /// <param name="diagrams">
+    ///     The diagram pack to add, as <see cref="CreateDiagramPack"/> returns it, or
+    ///     <see langword="null"/> to offer no diagram tools.
+    /// </param>
     /// <returns>The tool list to hand to a provider factory.</returns>
     public static IList<AIFunction> BuildTools(
         string workspaceRoot,
         string sessionRoot,
         bool workspaceReadOnly,
-        HostCapabilities hostCapabilities)
+        HostCapabilities hostCapabilities,
+        DiagramPack? diagrams = null)
     {
         // One policy governs the whole tool set. The workspace is the working directory relative
         // paths anchor to; the grants below are what actually permit anything. Granting the anchor
@@ -229,8 +276,30 @@ public static class AgentComposition
                 .Add(new ImagePack());
         }
 
+        // The diagram pack, when the run offers one: image preview for a host that can see, text
+        // preview - each drawing saved and described in words - for one that cannot.
+        if (diagrams is not null)
+        {
+            builder = builder.Add(diagrams);
+        }
+
         return [.. builder.Build()];
     }
+
+    /// <summary>
+    ///     Creates the diagram pack a run offers, with the preview mode its host can use.
+    /// </summary>
+    /// <remarks>
+    ///     <see cref="DiagramPack.For"/> chooses image preview when the host declares
+    ///     <see cref="HostCapabilities.Vision"/> and text preview otherwise, so <c>--no-vision</c>
+    ///     keeps the diagram tools and only changes how a drawing is shown to the model.
+    ///     <c>--no-diagrams</c> is the only thing that removes them.
+    /// </remarks>
+    /// <param name="hostCapabilities">The host capabilities the run declares.</param>
+    /// <param name="diagramsEnabled">Whether the run offers the diagram tools at all.</param>
+    /// <returns>The pack, or <see langword="null"/> when the run offers no diagram tools.</returns>
+    public static DiagramPack? CreateDiagramPack(HostCapabilities hostCapabilities, bool diagramsEnabled) =>
+        diagramsEnabled ? DiagramPack.For(hostCapabilities) : null;
 
     /// <summary>
     ///     The capabilities a model must report to run this sample.
@@ -348,29 +417,55 @@ public static class AgentComposition
     {
         ArgumentNullException.ThrowIfNull(options);
 
-        // The instructions name this run's two locations, so they are built from the same three
-        // facts the policy is built from.
-        var instructions = BuildInstructions(workspaceRoot, sessionRoot, options.WorkspaceReadOnly);
-
         // The one and only place the sample branches on provider. Everything the caller does with
         // the returned AgentSetup is identical for both. Each branch selects its model through the
-        // provider's catalog, which is where the host capabilities - and so the tools - come from.
+        // provider's catalog, which is where the host capabilities - and so the tools and the
+        // instructions - come from.
         return options.Provider switch
         {
             AgentProvider.Copilot => await CreateCopilotAgentAsync(
                 options,
                 workspaceRoot,
                 sessionRoot,
-                instructions,
                 cancellationToken),
             AgentProvider.Ollama => await CreateOllamaAgentAsync(
                 options,
                 workspaceRoot,
                 sessionRoot,
-                instructions,
                 cancellationToken),
             _ => throw new CommandLineException($"Unsupported provider '{options.Provider}'."),
         };
+    }
+
+    /// <summary>
+    ///     Composes the tools and the instructions for a run from the host capabilities its model
+    ///     selection produced — identically for both providers.
+    /// </summary>
+    /// <remarks>
+    ///     The tools and the instructions are composed together because the diagram pack contributes
+    ///     to both: its tools go into the list, and its <see cref="DiagramPack.Instructions"/> are
+    ///     appended to the instructions by the application. The instructions name this run's two
+    ///     locations, so they are built from the same facts the policy is built from.
+    /// </remarks>
+    /// <param name="options">The validated options.</param>
+    /// <param name="workspaceRoot">The absolute workspace path.</param>
+    /// <param name="sessionRoot">The absolute session path.</param>
+    /// <param name="hostCapabilities">The host capabilities the run declares.</param>
+    /// <returns>The tool list and the system instructions.</returns>
+    private static (IList<AIFunction> Tools, string Instructions) Compose(
+        CommandLineOptions options,
+        string workspaceRoot,
+        string sessionRoot,
+        HostCapabilities hostCapabilities)
+    {
+        var diagrams = CreateDiagramPack(hostCapabilities, options.DiagramsEnabled);
+        var tools = BuildTools(workspaceRoot, sessionRoot, options.WorkspaceReadOnly, hostCapabilities, diagrams);
+        var instructions = BuildInstructions(
+            workspaceRoot,
+            sessionRoot,
+            options.WorkspaceReadOnly,
+            diagrams?.Instructions);
+        return (tools, instructions);
     }
 
     /// <summary>
@@ -455,14 +550,12 @@ public static class AgentComposition
     /// <param name="options">The validated options carrying the model choice.</param>
     /// <param name="workspaceRoot">The workspace set as each session's working directory.</param>
     /// <param name="sessionRoot">The session folder, granted read-write.</param>
-    /// <param name="instructions">The system instructions built for this run.</param>
     /// <param name="cancellationToken">Cancels a slow start.</param>
     /// <returns>The Copilot agent and the runtime as its cleanup handle.</returns>
     private static async Task<AgentSetup> CreateCopilotAgentAsync(
         CommandLineOptions options,
         string workspaceRoot,
         string sessionRoot,
-        string instructions,
         CancellationToken cancellationToken)
     {
         // AgentKit starts the runtime itself - the Copilot CLI installed on the machine, found and
@@ -492,10 +585,10 @@ public static class AgentComposition
             }
 
             var host = selection?.HostCapabilities ?? HostCapabilities.Vision;
-            var tools = BuildTools(
+            var (tools, instructions) = Compose(
+                options,
                 workspaceRoot,
                 sessionRoot,
-                options.WorkspaceReadOnly,
                 options.VisionEnabled ? host : HostCapabilities.None);
 
             var agent = CopilotAgentFactory.Create(
@@ -527,14 +620,12 @@ public static class AgentComposition
     /// <param name="options">The options carrying the Ollama host and model.</param>
     /// <param name="workspaceRoot">The workspace: the anchor, and a granted location.</param>
     /// <param name="sessionRoot">The session folder, granted read-write.</param>
-    /// <param name="instructions">The system instructions built for this run.</param>
     /// <param name="cancellationToken">Cancels the catalog read.</param>
     /// <returns>The Ollama agent and a cleanup handle disposing the HTTP and API clients.</returns>
     private static async Task<AgentSetup> CreateOllamaAgentAsync(
         CommandLineOptions options,
         string workspaceRoot,
         string sessionRoot,
-        string instructions,
         CancellationToken cancellationToken)
     {
         var http = new HttpClient
@@ -572,10 +663,10 @@ public static class AgentComposition
             throw;
         }
 
-        var tools = BuildTools(
+        var (tools, instructions) = Compose(
+            options,
             workspaceRoot,
             sessionRoot,
-            options.WorkspaceReadOnly,
             options.VisionEnabled ? selection.HostCapabilities : HostCapabilities.None);
 
         // A stated window is asked of the server on every request, and the agent factory confirms the

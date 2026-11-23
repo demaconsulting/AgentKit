@@ -3,7 +3,6 @@ using System.Globalization;
 using System.Security;
 using System.Text;
 using DemaConsulting.AgentKit.Core;
-using DemaConsulting.AgentKit.Tools.Image;
 using Microsoft.Extensions.AI;
 
 namespace DemaConsulting.AgentKit.Tools.TextFile;
@@ -60,9 +59,11 @@ namespace DemaConsulting.AgentKit.Tools.TextFile;
 ///     binary — because the honest text-versus-binary signal is in the bytes, not the name. The
 ///     byte-order-mark check comes first so a legitimately encoded UTF-16 or UTF-32 file, which
 ///     contains NUL bytes yet decodes correctly, is not misclassified. The <em>redirect</em> a
-///     refusal offers is chosen from the extension by reusing
-///     <see cref="ImageMediaTypes.TryResolveMediaType"/>, so the file is offered to <c>image_read</c>
-///     when that resolver recognizes its type.
+///     refusal offers is chosen from the extension: a file whose extension is one the image
+///     family reads (<c>.png</c>, <c>.jpg</c>, <c>.jpeg</c>, <c>.gif</c>, <c>.webp</c> or
+///     <c>.pdf</c>) is offered to <c>image_read</c>. The set and the tool name are held here as
+///     literals rather than taken from the image family, because that family ships in a separate
+///     package this one does not depend on.
 ///     </para>
 ///     <para>
 ///     Every refusal is returned rather than thrown. A refusal the access policy produces states what
@@ -130,6 +131,27 @@ public static class TextFileReadTool
     /// </remarks>
     private const string BinaryImageContent =
         "The requested file is binary content, not text. Its type is one an image tool can read.";
+
+    /// <summary>
+    ///     The name of the image reader a binary-content refusal names.
+    /// </summary>
+    /// <remarks>
+    ///     A literal rather than a reference to the image family, which ships in the separate
+    ///     <c>DemaConsulting.AgentKit.Tools.Visual</c> package, so this package carries no imaging
+    ///     dependency. The name is part of that family's published contract and does not change.
+    /// </remarks>
+    private const string ImageReadToolName = "image_read";
+
+    /// <summary>
+    ///     The file extensions the image reader accepts, compared without regard to case.
+    /// </summary>
+    /// <remarks>
+    ///     Mirrors the extensions <c>image_read</c> resolves to a media type. A binary file with one
+    ///     of these extensions is offered to that tool; any other binary file is refused with no
+    ///     tool named.
+    /// </remarks>
+    private static readonly HashSet<string> ImageExtensions =
+        new([".png", ".jpg", ".jpeg", ".gif", ".webp", ".pdf"], StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
     ///     The refusal used when a binary file's type has no better tool to name.
@@ -286,11 +308,11 @@ public static class TextFileReadTool
             if (await TextFileBinaryGuard.IsBinaryAsync(realPath, length, cancellationToken)
                 .ConfigureAwait(false))
             {
-                return ImageMediaTypes.TryResolveMediaType(realPath, out _)
+                return ImageExtensions.Contains(Path.GetExtension(realPath))
                     ? ToolResult.Denied(
                         DenialReason.UnsupportedMediaType,
                         BinaryImageContent,
-                        ImageReadTool.ToolName)
+                        ImageReadToolName)
                     : ToolResult.Denied(
                         DenialReason.UnsupportedMediaType,
                         BinaryContent);

@@ -34,6 +34,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\DemaConsulting.AgentKit.Core\DemaConsulting.AgentKit.Core.csproj" />
     <ProjectReference Include="..\..\src\DemaConsulting.AgentKit.Tools\DemaConsulting.AgentKit.Tools.csproj" />
+    <ProjectReference Include="..\..\src\DemaConsulting.AgentKit.Tools.Visual\DemaConsulting.AgentKit.Tools.Visual.csproj" />
     <ProjectReference Include="..\..\src\DemaConsulting.AgentKit.Agents.ChatClient\DemaConsulting.AgentKit.Agents.ChatClient.csproj" />
     <ProjectReference Include="..\..\src\DemaConsulting.AgentKit.Agents.Copilot\DemaConsulting.AgentKit.Agents.Copilot.csproj" />
     <ProjectReference Include="..\..\src\DemaConsulting.AgentKit.Agents.Ollama\DemaConsulting.AgentKit.Agents.Ollama.csproj" />

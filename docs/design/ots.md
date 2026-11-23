@@ -4,30 +4,25 @@ This document describes the overall Off-The-Shelf (OTS) integration strategy for
 
 ## Overview
 
-AgentKit Core carries exactly one runtime NuGet dependency,
-`Microsoft.Extensions.AI.Abstractions`. `AgentKitTools` carries one of its own, `CanvasNet`, the
-managed raster imaging library the image family reads dimensions and extracts regions
-with; it is a runtime dependency rather than a build-time one, so it is referenced without
-`PrivateAssets` and reaches a consuming application transitively. The three provider-specific
-packages each carry runtime dependencies of their own, deliberately kept out of Core:
-`AgentKitAgentsChatClient` carries `Microsoft.Agents.AI` (the Microsoft Agent Framework runtime),
-`AgentKitAgentsCopilot` carries `Microsoft.Copilot.SDK` (the GitHub Copilot SDK, whose native runtime
-the hosting application provisions by referencing the SDK directly) and
-`Microsoft.Agents.AI.Abstractions` (the Agent Framework's agent and session base types, for the agent
-AgentKit carries over Copilot sessions), and `AgentKitAgentsOllama` carries
-`OllamaSharp` (the Ollama client library) — which is precisely what keeps that provider-specific
-dependency out of the chat-client adapter serving every `IChatClient` provider alike. Each is a
-third-party published library
-providing functionality not developed within the program, so each is an OTS item and appears in the
-table below; its integration is detailed in its dedicated design document, and the relevant system
-design records the dependency. Every other OTS item listed below is a build-time or
-quality-pipeline tool rather than a runtime library dependency: each provides one stage of the
-documentation, requirements-traceability, testing, and quality-reporting pipeline invoked by
-`build.ps1`, `lint.ps1`, and the `.github/workflows/build.yaml` CI workflow, and none of those
-tools are linked into, or shipped with, the compiled NuGet package. ApiMark is the one of those
-tools that runs as part of the package build itself rather than as a separate pipeline step; it is
-still build-time only — referenced with `PrivateAssets="All"` so it never becomes a transitive
-dependency, and never linked into or shipped as runtime code. Only its Markdown *output* is placed
+AgentKit Core carries exactly one runtime NuGet dependency, `Microsoft.Extensions.AI.Abstractions`. `AgentKitTools`
+carries none of its own. `AgentKitToolsVisual` carries one, `CanvasNet` (taken through its Viewer package), the managed
+imaging library the image family reads dimensions, extracts regions and draws documents with; it is a runtime dependency
+rather than a build-time one, so it is referenced without `PrivateAssets` and reaches a consuming application
+transitively. The three provider-specific packages each carry runtime dependencies of their own, deliberately kept out
+of Core: `AgentKitAgentsChatClient` carries `Microsoft.Agents.AI` (the Microsoft Agent Framework runtime),
+`AgentKitAgentsCopilot` carries `Microsoft.Copilot.SDK` (the GitHub Copilot SDK, whose native runtime the hosting
+application provisions by referencing the SDK directly) and `Microsoft.Agents.AI.Abstractions` (the Agent Framework's
+agent and session base types, for the agent AgentKit carries over Copilot sessions), and `AgentKitAgentsOllama` carries
+`OllamaSharp` (the Ollama client library) — which is precisely what keeps that provider-specific dependency out of the
+chat-client adapter serving every `IChatClient` provider alike. Each is a third-party published library providing
+functionality not developed within the program, so each is an OTS item and appears in the table below; its integration
+is detailed in its dedicated design document, and the relevant system design records the dependency. Every other OTS
+item listed below is a build-time or quality-pipeline tool rather than a runtime library dependency: each provides one
+stage of the documentation, requirements-traceability, testing, and quality-reporting pipeline invoked by `build.ps1`,
+`lint.ps1`, and the `.github/workflows/build.yaml` CI workflow, and none of those tools are linked into, or shipped
+with, the compiled NuGet package. ApiMark is the one of those tools that runs as part of the package build itself rather
+than as a separate pipeline step; it is still build-time only — referenced with `PrivateAssets="All"` so it never
+becomes a transitive dependency, and never linked into or shipped as runtime code. Only its Markdown *output* is placed
 inside the package.
 
 ## OTS Items
@@ -36,7 +31,7 @@ inside the package.
 | --- | --- |
 | ApiMark | Generates Markdown API reference documentation from XML doc comments |
 | BuildMark | Generates build-notes documentation from GitHub Actions metadata |
-| CanvasNet | Raster imaging: header inspection, decoding, cropping, encoding |
+| CanvasNet | Imaging: header inspection, decoding, cropping, encoding; drawing documents |
 | FileAssert | Validates generated documents (HTML/PDF) against acceptance criteria |
 | Microsoft.Agents.AI | Runtime library providing `ChatClientAgent`, which builds an `AIAgent` from an `IChatClient` |
 | Microsoft.Agents.AI.Abstractions | Agent Framework base types: `AIAgent`, `AgentSession`, `AgentResponseUpdate` |

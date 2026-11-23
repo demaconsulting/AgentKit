@@ -60,10 +60,11 @@ from collision.
 
 The subsystem consumes `PathPolicy`, `ToolLimits`, `ToolResult`, `GuardedToolFactory`, `IToolPack`
 and `HostCapabilities` from AgentKitCore, and `AIFunction` from
-`Microsoft.Extensions.AI.Abstractions` reached through Core. It consumes `image_read` and
-`ImageMediaTypes` from the Image subsystem for the one redirect a binary file's type earns — the only
-redirect the subsystem still offers, because it states what the file is. It exposes no content model
-another package depends on.
+`Microsoft.Extensions.AI.Abstractions` reached through Core. For the one redirect a binary file's
+type earns it names `image_read` — the only redirect the subsystem still offers, because it states
+what the file is — holding that name and the image family's extension set as literals, because the
+image family ships in the separate AgentKitToolsVisual package this one does not depend on. It
+exposes no content model another package depends on.
 
 ### Design
 

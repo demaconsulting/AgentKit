@@ -70,16 +70,6 @@
     <ProjectReference Include="..\DemaConsulting.AgentKit.Core\DemaConsulting.AgentKit.Core.csproj" />
   </ItemGroup>
 
-  <!-- Runtime Dependencies -->
-  <ItemGroup>
-    <!-- Runtime dependency, deliberately without PrivateAssets: the image family decodes,
-         crops and encodes raster content with it, so a consuming application needs it at
-         run time. Ships no native binaries and no unsafe code; its decoders are managed. A
-         prerelease pin, chosen because 0.1.0 inflates PNG data without bound - a stable
-         AgentKitTools release waits on a stable 0.2.0. See 'CanvasNet OTS Integration
-         Design'. -->
-    <PackageReference Include="DemaConsulting.CanvasNet" Version="0.2.0-beta.13" />
-  </ItemGroup>
 
   <!-- Build Tool Dependencies -->
   <ItemGroup>

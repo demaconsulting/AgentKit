@@ -1,3 +1,5 @@
+using DemaConsulting.AgentKit.Tools.Visual.Diagram;
+
 namespace DemaConsulting.AgentKit.Samples.DocumentAssistant.Tests;
 
 /// <summary>
@@ -171,5 +173,49 @@ public class AgentCompositionTests
             () => Assert.Contains("image_crop", guidance, StringComparison.Ordinal),
             () => Assert.Contains("session folder", guidance, StringComparison.Ordinal),
             () => Assert.Contains(".png", guidance, StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    ///     Proves the diagram pack's own paragraph is appended verbatim, followed by the sample's
+    ///     document-diagramming workflow.
+    /// </summary>
+    /// <param name="preview">The preview mode of the pack whose paragraph is appended.</param>
+    [Theory]
+    [InlineData(DiagramPreview.Image)]
+    [InlineData(DiagramPreview.Text)]
+    public void AgentComposition_BuildInstructions_WithDiagrams_AppendsThePackParagraphAndTheWorkflow(DiagramPreview preview)
+    {
+        // Arrange: the paragraph the pack offers for its preview mode
+        var paragraph = new DiagramPack(preview).Instructions;
+
+        // Act: build the instructions with it
+        var instructions = AgentComposition.BuildInstructions(WorkspacePath, SessionPath, false, paragraph);
+
+        // Assert: the pack's paragraph is present as written, and the workflow after it keeps the
+        // source and saves the picture in the session folder, as a .mmd and a .png
+        var start = instructions.IndexOf(paragraph, StringComparison.Ordinal);
+        Assert.True(start >= 0, "The pack's paragraph is not in the instructions verbatim.");
+        var workflow = instructions[(start + paragraph.Length)..];
+        Assert.Multiple(
+            () => Assert.Contains("markdown_outline", workflow, StringComparison.Ordinal),
+            () => Assert.Contains(".mmd", workflow, StringComparison.Ordinal),
+            () => Assert.Contains("diagram_render", workflow, StringComparison.Ordinal),
+            () => Assert.Contains("save_as", workflow, StringComparison.Ordinal),
+            () => Assert.Contains("session folder", workflow, StringComparison.Ordinal),
+            () => Assert.Contains(".png", workflow, StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    ///     Proves a run without the diagram tools says nothing about them, because the pack never
+    ///     adds its paragraph itself.
+    /// </summary>
+    [Fact]
+    public void AgentComposition_BuildInstructions_WithoutDiagrams_MentionsNoDiagramTool()
+    {
+        // Arrange / Act
+        var instructions = AgentComposition.BuildInstructions(WorkspacePath, SessionPath, false);
+
+        // Assert
+        Assert.DoesNotContain("diagram_", instructions, StringComparison.Ordinal);
     }
 }

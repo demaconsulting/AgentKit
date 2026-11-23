@@ -4,14 +4,20 @@ This document provides the verification evidence for the `CanvasNet` OTS softwar
 
 ### Required Functionality
 
-`CanvasNet` supplies the raster imaging capability the image family is built on: reading the pixel
+`CanvasNet` supplies the raster imaging capability the region tools are built on, and through its
+Viewer the drawing of documents and diagrams the view tool and the Rendering subsystem are built
+on: reading the pixel
 dimensions an image file declares in its header without decoding any pixel data — including for a
 file whose declared dimensions exceed what it will decode — reporting, from the header alone,
 whether a full decode is expected to succeed, decoding PNG and JPEG files into an
 addressable pixel buffer including a PNG whose pixels are stored as palette indices, rejecting PNG
 pixel data that would inflate beyond the declared size without inflating it, copying a
 rectangular sub-region of such a buffer, and
-encoding a buffer back to a form that reproduces every pixel exactly when decoded again.
+encoding a buffer back to a form that reproduces every pixel exactly when decoded again. The Viewer
+must draw each supported format at a requested size, background and page; consult a caller-supplied
+file-access policy for every referenced file; never fetch a network reference; honor a pixel budget,
+a triangle limit and a cancellation token; and report source errors with their locations and
+unsupported features as notes.
 
 ### Verification Approach
 
@@ -114,6 +120,36 @@ consuming tool needed no knowledge of the PNG format to say so.
 
 **Requirement coverage**: `AgentKit-OTS-CanvasNet-DecodeFeasibility`.
 
+#### Viewer scenarios
+
+The Viewer requirements are evidenced by the Rendering subsystem's and the view tool's own tests,
+which draw through the real library:
+
+- **Drawing** — `ImageViewTool_View_SupportedFile_ReturnsAPngPicture` draws an SVG, Mermaid,
+  PlantUML, Vega-Lite and OpenSCAD source, a PDF, a PPTX slide, a VSDX page and a PNG (the PPTX and
+  VSDX packages are built in test code: a one-slide deck with its layout, master and theme, and a
+  one-page drawing in the Visio 2012 namespace, each holding one filled shape and no text, so the
+  result does not depend on installed fonts); `VisualRenderer_RenderAsync_Svg_IsDrawnOnOpaqueWhite`
+  asserts the requested background; `VisualRenderer_RenderAsync_WidthBeyondTheLargestSide_IsReduced`
+  the requested width; `VisualRenderer_RenderAsync_DocumentPage_IsDrawnWithThePageCount` the
+  requested page and the page count.
+- **File access** — the `VisualAccess_ToFileAccess_*` scenarios observe that a picture, an include
+  and a data file refused by the policy are not drawn.
+- **No network** — `VisualAccess_ToFileAccess_NetworkReference_IsNeverFetched` and
+  `AgentKitToolsVisual_Rendering_NetworkReferences_AreNeverFetched` observe that a local listener
+  receives no request.
+- **Budgets and cancellation** — the pixel-budget, triangle-limit and timeout scenarios of
+  `VisualRendererTests` observe each refusal.
+- **Diagnostics** — `RenderErrorShaper_Shape_SyntaxError_StatesCodeLineColumnAndCaret` observes the
+  location of a broken source in each format, and
+  `VisualRenderer_RenderAsync_UnsupportedFeature_IsReportedAsANote` a note with its code and line.
+- **Help catalog** — `DiagramHelpTool_Help_Topic_ReturnsTheCardWithItsExampleSources` reads a card
+  with its example source and by an alias; `DiagramHelpTool_Help_HostOrientedCards_AreHidden` and
+  `DiagramHelpTool_Help_UnofferedLanguage_IsNotServed` observe that a card hidden by the tag filter
+  is neither found nor listed.
+- **Positions** — `DiagramRenderTool_Render_TextPreview_SavesAndDescribesThePicture` observes the
+  node labels of a Mermaid flowchart and its dominant colors in a text-preview description.
+
 ### Requirements Coverage
 
 - **`AgentKit-OTS-CanvasNet-HeaderProbe`**:
@@ -131,3 +167,30 @@ consuming tool needed no knowledge of the PNG format to say so.
   ImageCropTool_Crop_ReturnedRegion_CarriesTheSourcePixelsExactly
 - **`AgentKit-OTS-CanvasNet-DecodeFeasibility`**:
   ImageCropTool_Crop_Adam7InterlacedPng_IsRefusedNamingTheDimensions
+- **`AgentKit-OTS-CanvasNet-ViewerRender`**:
+  ImageViewTool_View_SupportedFile_ReturnsAPngPicture,
+  VisualRenderer_RenderAsync_Svg_IsDrawnOnOpaqueWhite,
+  VisualRenderer_RenderAsync_WidthBeyondTheLargestSide_IsReduced,
+  VisualRenderer_RenderAsync_DocumentPage_IsDrawnWithThePageCount
+- **`AgentKit-OTS-CanvasNet-FileAccessPolicy`**:
+  VisualAccess_ToFileAccess_ParentFolderEscape_IsRefused,
+  VisualAccess_ToFileAccess_LinkEscape_IsRefused,
+  VisualAccess_ToFileAccess_DenyPatternInsideTheGrant_IsRefused,
+  VisualAccess_ToFileAccess_IncludedFileOutside_IsRefused
+- **`AgentKit-OTS-CanvasNet-NoNetwork`**:
+  VisualAccess_ToFileAccess_NetworkReference_IsNeverFetched,
+  AgentKitToolsVisual_Rendering_NetworkReferences_AreNeverFetched
+- **`AgentKit-OTS-CanvasNet-PixelBudget`**:
+  VisualRenderer_RenderAsync_PictureOverThePixelBudget_FailsAsBudgetExceeded,
+  VisualRenderer_RenderAsync_ModelOverTheTriangleLimit_IsRefused
+- **`AgentKit-OTS-CanvasNet-Cancellation`**:
+  VisualRenderer_RenderAsync_RenderBeyondTheTimeout_FailsAsRenderTimeout
+- **`AgentKit-OTS-CanvasNet-Diagnostics`**:
+  RenderErrorShaper_Shape_SyntaxError_StatesCodeLineColumnAndCaret,
+  VisualRenderer_RenderAsync_UnsupportedFeature_IsReportedAsANote
+- **`AgentKit-OTS-CanvasNet-HelpCatalog`**:
+  DiagramHelpTool_Help_Topic_ReturnsTheCardWithItsExampleSources,
+  DiagramHelpTool_Help_HostOrientedCards_AreHidden,
+  DiagramHelpTool_Help_UnofferedLanguage_IsNotServed
+- **`AgentKit-OTS-CanvasNet-Positions`**:
+  DiagramRenderTool_Render_TextPreview_SavesAndDescribesThePicture

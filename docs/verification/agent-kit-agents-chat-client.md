@@ -202,7 +202,10 @@ was actually sent on the wire. It re-measures, on every run, the behaviors the A
 depends on — that tools contributed per run reach the model and that a retained output pages after
 the session is serialized and restored, that a guarded foreign tool's result is bounded, that a
 promoted image reaches the model with a small tool message, and that the reducer consolidates a
-history the agent owns without losing the fact the conversation turns on.
+history the agent owns without losing the fact the conversation turns on. Two scenarios carry the
+visual tools across the same seam: a model reads the diagram help, draws, reads a shaped failure,
+fixes the source and sees the picture, and a model views an SVG figure and a PDF page while a
+figure reaching outside the sandbox is refused.
 
 **It is supplementary evidence and is not linked to ReqStream.** The suite needs a reachable Ollama
 server, which the pipeline that builds the trace matrix does not have, so a requirement traced to a
@@ -226,9 +229,11 @@ with the hermetic tests above and in the unit chapters.
   an `ollama-live-*.log` of the run is written to, recording every request's messages — role,
   length, image count and whether base64 image data was sent as text — and every answer.
 - **Fixture**: a sandbox folder holds a `notes.txt` carrying the codeword `HERON-42`, a 400-line
-  `big.log` whose `ERROR` lines exceed a 1,500-character result limit, and a generated 316 KB PNG
-  showing the number 7319; a file outside the sandbox carries a secret no confined tool may return.
-  The tests run sequentially in one collection.
+  `big.log` whose `ERROR` lines exceed a 1,500-character result limit, a generated 316 KB PNG
+  showing the number 7319, `composite.svg` — a titled SVG figure embedding that PNG — a generated
+  one-page `report.pdf` that is blue on the left and yellow on the right, and `escape.svg`, a figure
+  embedding `../outside/secret.png`; outside the sandbox, a secret and a PNG showing 5150, neither of
+  which a confined tool may return. The tests run sequentially in one collection.
 - **Model catalog**: the same project holds `OllamaModelCatalogLiveTests`, four tests prefixed
   `AgentKitAgentsOllamaLive_` that exercise AgentKitAgentsOllama's catalog and selection on the same
   fixture, server and variables. Their scenarios and recorded run are in *OllamaModelCatalog Unit
@@ -257,6 +262,8 @@ Unit Verification Design*.
 | L3 | `ImagePromotion_SmallToolMessageAndCorrectAnswer` | Small tool message, image on the user message, right number |
 | L3c | `ImagePromotion_Control_WithoutPromotionToolMessageCarriesBase64` | Without promotion the image is base64 text |
 | L4 | `ChatReducer_ReducesAndKeepsTheFact` | The reducer consolidates and the first turn's fact survives |
+| L5 | `DiagramRender_HelpDrawSeeAndFix` | Help served, injected error shaped with its topic, fixed picture seen |
+| L6 | `ImageView_FigureAndPdfDrawnOutsideReferenceRefused` | Figure and PDF read; outside picture refused |
 
 - **L1** runs a tool-less `ChatClientAgent` whose tools come from `ToolPackContextProvider` over the
   text-file and file packs. It asserts the codeword is read; that `text_file_search` over `big.log`
@@ -272,6 +279,16 @@ Unit Verification Design*.
   returns; **L3c** is its control without promotion.
 - **L4** runs four turns through `InMemoryChatHistoryProvider` with an `AgentKitChatReducer` over a
   500-character threshold and one verbatim turn, counting the consolidations its summarizer makes.
+- **L5** composes `DiagramPack.For(Vision)` over a read-write sandbox into an agent built with
+  `UseImagePromotion`, places the pack's `Instructions` in the agent's instructions, and asks in one
+  turn for `diagram_help` on `mermaid/flowchart` and `diagram_render` of a flowchart whose second
+  link is written `->`. It asserts the help card was sent, a `mermaid-error` report naming the
+  `mermaid/diagnostics` topic was sent, a user message carried a promoted image, and the answer names
+  `Publish`, the node the fix made drawable.
+- **L6** composes `image_view` over the read-only sandbox in an agent built with `UseImagePromotion`
+  and takes three turns on one session: the number in `composite.svg`, the colors and sides of
+  `report.pdf`, and what the tool returned for `escape.svg` — a `file-access-denied` report sent with
+  no part of the run's root path, and an answer without the outside picture's number.
 
 ### Live Acceptance Criteria
 
@@ -280,7 +297,9 @@ is not evidence of anything. A failure of L1 means tools contributed per run, re
 restore, or relative denials do not hold against a real model; of L2, that a foreign tool's output
 reaches the model unbounded; of L3, that a promoted image does not reach the model or the tool
 message carries its bytes; of L3c, that OllamaSharp no longer sends the image as text, so promotion
-should be reassessed; of L4, that the reducer does not reduce or loses the conversation's fact.
+should be reassessed; of L4, that the reducer does not reduce or loses the conversation's fact; of
+L5, that the draw, read the failure, fix and look loop does not work against a real model; of L6,
+that a drawn figure or page does not reach the model, or that a picture outside the sandbox does.
 
 ### Recorded Run
 
@@ -300,3 +319,14 @@ The suite was run manually on 2026-11-21, on Windows 11 (build 26100), against O
   saw one.
 - **L4**: the reducer consolidated after the third and the fourth turn, the stored history held
   five messages, and both models answered with the vault code `4417-BRAVO`.
+L5 and L6 were added on 2026-11-22 and run against the same server, window and settings; both passed
+with `gemma4:26b` and again with `gemma4:e4b`. The figures are from the `gemma4:26b` run:
+
+- **L5**: the `mermaid/flowchart` card was sent (about 2,900 characters); the first render was
+  reported as `mermaid-error/mermaid-syntax-error` at line 3, column 10, naming
+  `mermaid/diagnostics`; the corrected render was captioned `Rendered mermaid as PNG, 768x123
+  pixels.` and promoted to the following user message; the answer listed Draft, Review and Publish.
+- **L6**: the figure was captioned `Rendered svg as PNG, 800x480 pixels.` and answered 7319; the PDF
+  page was captioned `Rendered pdf as PNG, 768x385 pixels.` and answered blue on the left, yellow on
+  the right; `escape.svg` was reported as `file-access-denied/image-access-denied` naming the
+  reference as written, `../outside/secret.png`, and the outside number never appeared.

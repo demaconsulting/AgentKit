@@ -19,12 +19,13 @@ sections:
               pages) than from a single large reference. DemaConsulting.ApiMark.MSBuild produces
               exactly that during the build of each shipped package, so a failure to generate
               must fail the build rather than silently ship a package without its reference.
-              FileAssert asserts the real generated index page for each of the four shipped
-              packages, which is the only evidence the MSBuild integration actually ran.
+              FileAssert asserts the real generated index page for the shipped packages, which
+              is the only evidence the MSBuild integration actually ran.
             tags: [ots]
             tests:
               - ApiMark_CoreApiIndex
               - ApiMark_ToolsApiIndex
+              - ApiMark_ToolsVisualApiIndex
               - ApiMark_CopilotApiIndex
               - ApiMark_ChatClientApiIndex
 

@@ -1,0 +1,161 @@
+---
+# Software Unit Requirements for DiagramRenderTool
+#
+# These requirements describe the design-level behavior of the DiagramRenderTool unit.
+
+sections:
+  - title: AgentKitToolsVisual Requirements
+    sections:
+      - title: Diagram Requirements
+        sections:
+          - title: DiagramRenderTool Requirements
+            requirements:
+              - id: AgentKitToolsVisual-Diagram-RenderTool-ToolName
+                title: >-
+                  The render tool shall be published under the name diagram_render, exposed as a
+                  constant on the tool.
+                justification: |
+                  The name is what a model calls and what the pack's instructions name; a constant
+                  keeps them from drifting apart.
+                tests:
+                  - DiagramRenderTool_ToolName_Constant_IsTheFamilyQualifiedName
+
+              - id: AgentKitToolsVisual-Diagram-RenderTool-GuardedConstruction
+                title: >-
+                  The render tool shall be constructed only through the guarded construction path,
+                  with a description and a save_as parameter description that state the result of its
+                  preview mode, refusing missing or empty arguments and an undefined preview mode as
+                  programming errors.
+                justification: |
+                  The guarded path delivers the picture rather than a serialized copy of it. A
+                  parameter description is fixed at compile time, so each preview mode has its own
+                  declaration and never calls save_as optional in one place and required in another.
+                tests:
+                  - DiagramRenderTool_Create_EachPreview_DescribesItsOwnResult
+
+              - id: AgentKitToolsVisual-Diagram-RenderTool-DrawsEachLanguage
+                title: >-
+                  In image preview the render tool shall draw Mermaid, PlantUML, SVG, Vega-Lite and
+                  OpenSCAD source given inline to an opaque PNG on a white background, returned as
+                  image content with a caption naming the language and the size.
+                justification: |
+                  These are the languages a model writes diagrams in. Returning the picture lets the
+                  model check what it drew; the caption tells it what it is looking at.
+                tests:
+                  - DiagramRenderTool_Render_EachLanguage_ReturnsAnOpaquePngPicture
+
+              - id: AgentKitToolsVisual-Diagram-RenderTool-TextPreviewDescribes
+                title: >-
+                  In text preview the render tool shall require save_as, save the picture, and
+                  return a structured description naming the saved file, the language, the size, the
+                  notes, the features with their labels and the dominant colors.
+                justification: |
+                  A model that cannot see checks its drawing by what the drawing contains; the saved
+                  file is what the document it is writing will reference.
+                tests:
+                  - DiagramRenderTool_Render_TextPreview_SavesAndDescribesThePicture
+                  - DiagramRenderTool_Render_TextPreviewWithoutSaveAs_IsRefused
+
+              - id: AgentKitToolsVisual-Diagram-RenderTool-SaveAs
+                title: >-
+                  The render tool shall save the picture to the PNG file save_as names when the
+                  write decision permits it, replacing an earlier file there, and name the saved file
+                  in its result.
+                justification: |
+                  A document references the picture by its file; the draw, look, fix loop saves to
+                  the same name each time.
+                tests:
+                  - DiagramRenderTool_Render_SaveAs_SavesThePictureAndNamesIt
+                  - DiagramRenderTool_Render_SaveAsExistingFile_ReplacesIt
+
+              - id: AgentKitToolsVisual-Diagram-RenderTool-SaveAsCheckedFirst
+                title: >-
+                  The render tool shall refuse a save_as that is not a PNG file, that the write
+                  decision does not permit, or whose folder does not exist, before drawing anything,
+                  and write nothing.
+                tags: [security]
+                justification: |
+                  A destination is decided by the write decision alone, so a read-wide, write-narrow
+                  policy stays meaningful; deciding it first means a refused save costs no render.
+                tests:
+                  - DiagramRenderTool_Render_SaveAsRefusals_WriteNothing
+
+              - id: AgentKitToolsVisual-Diagram-RenderTool-InlineReferencesConfined
+                title: >-
+                  The render tool shall resolve relative references in inline source against the
+                  working directory only when the agent may read it, and shall fail a render whose
+                  referenced file lies outside what the agent may read.
+                tags: [security]
+                justification: |
+                  Inline source has no folder of its own; resolving its references like any other
+                  path a model states, under the same confinement, keeps a diagram from becoming a
+                  route to a file the policy refuses.
+                tests:
+                  - DiagramRenderTool_Render_InlineReferenceInsideTheGrant_IsDrawn
+                  - DiagramRenderTool_Render_InlineReferenceOutsideTheGrant_FailsTheRender
+
+              - id: AgentKitToolsVisual-Diagram-RenderTool-RefusesMalformedRequests
+                title: >-
+                  The render tool shall refuse a language that is not offered, listing the offered
+                  ones, a missing source and a width below 1, each with its own reason.
+                justification: |
+                  Each mistake calls for a different correction, so each is stated as itself.
+                tests:
+                  - DiagramRenderTool_Render_MalformedRequests_AreRefused
+
+              - id: AgentKitToolsVisual-Diagram-RenderTool-ObservesCeilings
+                title: >-
+                  The render tool shall refuse a source larger than the policy's read ceiling before
+                  drawing it, and a picture larger than the binary ceiling instead of returning or
+                  saving it, each naming the ceiling.
+                tags: [security]
+                justification: |
+                  Inline source is text the agent supplies, bounded like text it reads; the picture
+                  is content returned or written, bounded like any binary result. The tool enforces
+                  the binary ceiling itself because the guarded construction path does not.
+                tests:
+                  - DiagramRenderTool_Render_BeyondTheCeilings_IsRefused
+
+              - id: AgentKitToolsVisual-Diagram-RenderTool-ShapedFailure
+                title: >-
+                  The render tool shall report a source it cannot draw, and a picture that came out
+                  empty, as text naming the code, the line and column, the offending source line with
+                  a caret, and the help topic of the language's diagnostics.
+                justification: |
+                  The model wrote the source and can fix it when told where it is wrong and where to
+                  read how; an empty picture shown as a success would be described as whatever the
+                  model expected.
+                tests:
+                  - DiagramRenderTool_Render_BrokenSource_IsShapedWithItsLocationAndHelpTopic
+                  - DiagramRenderTool_Render_EmptyPicture_IsReportedAsAFailure
+
+              - id: AgentKitToolsVisual-Diagram-RenderTool-CaptionNotes
+                title: >-
+                  The render tool shall list every note the render reported in the picture's caption.
+                justification: |
+                  A note says what the picture leaves out; without it the model would take the
+                  picture as complete.
+                tests:
+                  - DiagramRenderTool_Render_RenderWithNotes_CaptionListsThem
+
+              - id: AgentKitToolsVisual-Diagram-RenderTool-WidthApplied
+                title: >-
+                  The render tool shall draw at a width the model names, keeping the aspect ratio,
+                  reduced to the largest render side.
+                justification: |
+                  A model checking small labels asks for a larger picture; the largest side still
+                  bounds what it gets.
+                tests:
+                  - DiagramRenderTool_Render_RequestedWidth_IsAppliedUpToTheLargestSide
+
+              - id: AgentKitToolsVisual-Diagram-RenderTool-Timeout
+                title: >-
+                  The render tool shall report a render that does not finish within the pack's render
+                  timeout as a timeout, with advice to simplify the source.
+                tags: [security]
+                justification: |
+                  A few lines of model-authored source can ask for minutes of work; the timeout keeps
+                  a drawing from holding the agent's turn, and the advice tells the model what to
+                  change.
+                tests:
+                  - DiagramRenderTool_Render_BeyondTheTimeout_IsReportedAsATimeout

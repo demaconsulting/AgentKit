@@ -23,6 +23,20 @@ sections:
         tests:
           - AgentKitTools_SystemComposition_EmptyBuilder_ContributesNoTools
 
+      - id: AgentKitTools-Dependencies-NoImagingLibrary
+        title: >-
+          The library shall depend on the AgentKitCore contract and shall reference no imaging
+          library, so that an application composing its families takes on no imaging dependency.
+        tags: [system]
+        justification: |
+          The image family decodes and encodes pictures with an imaging library, and an
+          application that composes only text, file, markdown, memory, todo or agent tools has no
+          use for one. Shipping the image family in the separate AgentKitToolsVisual package keeps
+          this package's dependency graph to what its own families need, so the imaging library
+          reaches an application only when that application chooses the visual tools. Reading the
+          built assembly's references is the observable form of that property.
+        tests:
+          - AgentKitTools_Dependencies_ToolsAssembly_ReferencesNoImagingLibrary
       - id: AgentKitTools-PolicyDerivedPublication
         title: >-
           The library shall withhold from an agent those tools whose writes the access policy the
@@ -58,7 +72,6 @@ sections:
           - AgentKitCore-PathPolicy-WriteGrantVisible
           - AgentKitTools-TextFile-WriteToolsRequireAWriteGrant
           - AgentKitTools-File-WriteToolsRequireAWriteGrant
-          - AgentKitTools-Image-Pack-PublishedUnderEveryPolicy
           - AgentKitTools-Markdown-Pack-PublishedUnderEveryPolicy
           - AgentKitTools-Memory-Pack-PublishedUnderEveryPolicy
           - AgentKitTools-Todo-Pack-PublishedUnderEveryPolicy
@@ -169,81 +182,6 @@ sections:
           - AgentKitTools-Markdown-Outline
         tests:
           - AgentKitTools_SystemComposition_MarkdownPack_ContributesTheMarkdownFamily
-
-      - id: AgentKitTools-ImageFamily-GuardedImageAccess
-        title: >-
-          The library shall provide an image family that reads images and PDF documents under the
-          access policy the composing application supplies, reporting the pixel dimensions of an
-          image it can establish them for, returning a rectangular region of one named in pixels
-          and refusing a region that is not wholly inside it, trimming an image to the region its
-          own content occupies when the caller names no region at all, writing that region to a
-          destination a read-write grant permits when the caller names one, interpreting the
-          paths a model states
-          as relative to the workspace, offering every one of its tools under every policy
-          including one that permits no writing, publishing every tool under one family
-          prefix, delivering the content to the caller rather than a serialized copy of it, and
-          registering the family only for a host that declares it can present visual content to a
-          model.
-        tags: [system, security]
-        justification: |
-          Handing a model an image is the capability a vision-enabled agent needs and the one that
-          fails most silently when it is done wrong: a tool whose content is serialized to JSON
-          delivers no image, and the model then confidently describes a picture it never received.
-          Providing it as one policy-governed family means an application grants image access in a
-          single, auditable step, with containment applied to every request and the content
-          delivered intact through the guarded construction path. A model states a path the way a
-          person does, and the name it holds is usually one a text file listing reported
-          relatively, so the family reads names the same way its sibling family does. Gating the
-          family behind the
-          vision capability keeps a model that cannot see from ever being offered a tool whose
-          result it could only fabricate around, and the composition withholds the family by never
-          asking the pack for its tools rather than by offering them and refusing later. A model
-          can see a picture but cannot measure one, so the family states an image's pixel
-          dimensions alongside the content: without them the model has no coordinate space in
-          which to reason about any part of the image it is looking at. It also cannot examine
-          part of a picture closely — a detail occupying a hundredth of a large image is, at the
-          resolution a provider receives, effectively invisible — so the family returns the
-          region the model names at full resolution: inline when the model wants to examine it,
-          or written to a destination the model names when it wants an artifact it can reference.
-          The destination is admitted by the policy's write decision, independently of the read
-          that admitted the image, so one call exercises both grants an application configured
-          and a read-wide, write-narrow policy stays meaningful. Dimension reporting and region
-          extraction are one
-          capability rather than two: a region request the model cannot aim is a region request
-          it will aim wrongly. A region that does not fit is refused rather than quietly reduced,
-          because a reduced region answers a different question while reporting success and the
-          model cannot detect the substitution. Deciding an image's decode cost from what its
-          header declares, before any pixel data exists, is what stops a model provoking a
-          quarter of a gigabyte of allocation from a file of a few hundred kilobytes. The family
-          also trims an image to the region its own content occupies, because the region a model
-          most often wants is the one it cannot name: it can see that a screenshot or a slide
-          export is mostly margin without being able to measure where the margin stops, so any
-          rectangle it stated would be a guess. That trim takes its background from the image's
-          own border rather than assuming one, so a dark, colored or transparent margin works as
-          well as a white one, and it refuses an image that is entirely background rather than
-          returning the whole picture — which would again answer a different question while
-          reporting success.
-        children:
-          - AgentKitTools-Image-FamilyComposition
-          - AgentKitTools-Image-CapabilityGated
-          - AgentKitTools-Image-GuardedConstruction
-          - AgentKitTools-Image-PolicyGoverned
-          - AgentKitTools-Image-DimensionReporting
-          - AgentKitTools-Image-RegionExtraction
-          - AgentKitTools-Image-ContentTrimming
-          - AgentKitTools-Image-RegionDestination
-          - AgentKitTools-Image-DecodeBounded
-          - AgentKitTools-Image-DenialsAreResults
-          - AgentKitTools-Image-ObservesPolicyLimits
-          - AgentKit-OTS-CanvasNet-HeaderProbe
-          - AgentKit-OTS-CanvasNet-Decode
-          - AgentKit-OTS-CanvasNet-BoundedInflate
-          - AgentKit-OTS-CanvasNet-Crop
-          - AgentKit-OTS-CanvasNet-Encode
-          - AgentKit-OTS-CanvasNet-DecodeFeasibility
-        tests:
-          - AgentKitTools_SystemComposition_ImagePack_ContributesTheImageFamily
-          - AgentKitTools_SystemComposition_ImagePackWithoutVision_ContributesNoTools
 
       - id: AgentKitTools-TodoFamily-AgentTaskList
         title: >-

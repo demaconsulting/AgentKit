@@ -1,0 +1,128 @@
+---
+# Software Unit Requirements for ImageMediaTypes
+#
+# These requirements describe the design-level behavior of the ImageMediaTypes unit.
+
+sections:
+  - title: AgentKitToolsVisual Requirements
+    sections:
+      - title: Image Requirements
+        sections:
+          - title: ImageMediaTypes Requirements
+            requirements:
+              - id: AgentKitToolsVisual-Image-MediaTypes-SupportedTypes
+                title: >-
+                  The media-type map shall resolve the extensions png, jpg, jpeg, gif, webp and
+                  pdf to their media types, matching the extension without regard to case.
+                justification: |
+                  The media type is what a provider is told the content is, and it is decided
+                  from the extension because a caller that named a file is asking for it to be
+                  delivered as the type that extension denotes. Matching case-insensitively means
+                  a capitalized extension names the same content as a lower-case one rather than
+                  being refused for a difference that means nothing.
+                tests:
+                  - ImageMediaTypes_TryResolveMediaType_SupportedExtension_ReturnsMediaType
+                  - ImageMediaTypes_TryResolveMediaType_ExtensionCaseInsensitive_ReturnsMediaType
+
+              - id: AgentKitToolsVisual-Image-MediaTypes-CroppableTypes
+                title: >-
+                  The media-type map shall report which of the types the family reads can have a
+                  region extracted from them, matching the extension without regard to case.
+                justification: |
+                  Extracting a region means decoding, so the set of types a region can be taken
+                  from is narrower than the set the family can hand to a provider. Holding both
+                  answers in one place is what stops the family giving two different answers to
+                  "what is this file", and confining the croppable set to the types the family
+                  both reads and decodes is what stops a region request becoming an accidental
+                  format conversion for content the read tool itself refuses. Matching
+                  case-insensitively means a capitalized extension names the same content as a
+                  lower-case one, exactly as it does for a readable type.
+                tests:
+                  - ImageMediaTypes_TryResolveCroppableMediaType_CroppableExtension_ReturnsMediaType
+                  - ImageMediaTypes_TryResolveCroppableMediaType_ExtensionCaseInsensitive_ReturnsMediaType
+                  - ImageMediaTypes_TryResolveCroppableMediaType_NonCroppableExtension_ReturnsFalse
+                  - ImageMediaTypes_TryResolveCroppableMediaType_NullPath_ThrowsArgumentNullException
+
+              - id: AgentKitToolsVisual-Image-MediaTypes-RefusesNonCroppableType
+                title: >-
+                  The media-type map shall refuse a readable type from which no region can be
+                  extracted, stating what the type is and which types a region can be extracted
+                  from, and shall refuse a type the family cannot read at all exactly as it
+                  already does.
+                justification: |
+                  A model told only that its request failed will retry with different
+                  coordinates; a model told that the frame a region would come from cannot be
+                  established, or that the format is one this library does not decode, or that it
+                  is a paginated document needing a page and a resolution chosen, can choose
+                  something else instead. Naming the types a region
+                  can be taken from tells it what it may ask for and not only what it may not.
+                  None of these refusals names a sibling tool: a file of one of these types
+                  genuinely is an image, so naming the reader would not classify it — it would
+                  offer a route to the content the refusal withheld, handing the model a whole
+                  image after it asked to examine one part closely, which is the confident
+                  description of unseen content this family exists to prevent. A type the family
+                  cannot read at all is answered by the existing refusal, unchanged, so the
+                  family speaks with one voice.
+                tests:
+                  - ImageMediaTypes_DenyNonCroppableType_Gif_StatesTheFrameIsUnknowableAndNamesTheCroppableTypes
+                  - ImageMediaTypes_DenyNonCroppableType_Webp_StatesItIsNotDecodedAndNamesTheCroppableTypes
+                  - ImageMediaTypes_DenyNonCroppableType_Pdf_StatesRasterizationIsRequired
+                  - ImageMediaTypes_DenyNonCroppableType_Svgz_RefusesWithoutRedirect
+                  - ImageMediaTypes_DenyNonCroppableType_UnknownType_RefusesWithoutRedirect
+
+              - id: AgentKitToolsVisual-Image-MediaTypes-RefusesSvgRedirectsToView
+                title: >-
+                  The media-type map shall refuse an svg file read as an unsupported type, stating
+                  that it is vector content rather than a raster image and naming the view tool as
+                  the tool that draws that kind of content.
+                tags: [security]
+                justification: |
+                  A denial states a fact and never prescribes a remedy. An .svg is vector content,
+                  not a raster image a provider renders, and the view tool published by this same
+                  pack is what draws vector content, so naming it states what the file is rather
+                  than offering a way around the refusal — the same basis on which the text file
+                  read tool's own binary-content refusal names image_read. Naming the view tool
+                  rather than a text reader also keeps this package free of any dependency on the
+                  text family, whose tools an application composing only images need not have.
+                tests:
+                  - ImageMediaTypes_DenyUnsupportedType_Svg_RedirectsToImageView
+
+              - id: AgentKitToolsVisual-Image-MediaTypes-RefusesSvgCropNoTool
+                title: >-
+                  The media-type map shall refuse a region request for an svg file with its own
+                  refusal, stating that it is vector content and which types a region can be taken
+                  from, naming no tool.
+                justification: |
+                  A region of vector content cannot be cut without first choosing a size to draw
+                  it at, which no region tool does. The view tool draws an .svg, but only whole,
+                  which is not the region the model asked to examine; naming it would offer a
+                  different answer to the question asked, which is the failure every region
+                  refusal in this family avoids.
+                tests:
+                  - ImageMediaTypes_DenyNonCroppableType_Svg_ReturnsDenialNamingNoTool
+
+              - id: AgentKitToolsVisual-Image-MediaTypes-RefusesSvgzNoTool
+                title: >-
+                  The media-type map shall refuse an svgz file as an unsupported type without a
+                  redirect, since no tool in the family can read it.
+                justification: |
+                  An .svgz is gzip-compressed vector content, which no tool in this family reads
+                  and which the text file read tool would fail on too. Naming a redirect that
+                  would also fail is worse than naming none: it costs the model a wasted turn.
+                  The refusal therefore says plainly that the content cannot be read here rather
+                  than sending the model somewhere that cannot help it.
+                tests:
+                  - ImageMediaTypes_DenyUnsupportedType_Svgz_RefusesWithoutRedirect
+
+              - id: AgentKitToolsVisual-Image-MediaTypes-RefusesUnknownType
+                title: >-
+                  The media-type map shall report any other extension as unsupported and, when
+                  asked to refuse it, shall do so without inventing a redirect.
+                justification: |
+                  An extension the family does not read has no honest better tool to name, and a
+                  redirect the library cannot stand behind would send the model to a tool that
+                  cannot help. Reporting the type as unsupported so the read tool can refuse it,
+                  and refusing without a redirect, keeps the refusal truthful.
+                tests:
+                  - ImageMediaTypes_TryResolveMediaType_UnsupportedExtension_ReturnsFalse
+                  - ImageMediaTypes_DenyUnsupportedType_UnknownType_RefusesWithoutRedirect

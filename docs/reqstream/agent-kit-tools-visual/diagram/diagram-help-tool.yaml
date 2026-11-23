@@ -1,0 +1,83 @@
+---
+# Software Unit Requirements for DiagramHelpTool
+#
+# These requirements describe the design-level behavior of the DiagramHelpTool unit.
+
+sections:
+  - title: AgentKitToolsVisual Requirements
+    sections:
+      - title: Diagram Requirements
+        sections:
+          - title: DiagramHelpTool Requirements
+            requirements:
+              - id: AgentKitToolsVisual-Diagram-HelpTool-ToolName
+                title: >-
+                  The help tool shall be published under the name diagram_help, exposed as a constant
+                  on the tool.
+                justification: |
+                  The name is what a model calls and what a shaped render failure names; a constant
+                  keeps the two from drifting apart.
+                tests:
+                  - DiagramHelpTool_ToolName_Constant_IsTheFamilyQualifiedName
+
+              - id: AgentKitToolsVisual-Diagram-HelpTool-GuardedConstruction
+                title: >-
+                  The help tool shall be constructed only through the guarded construction path, with
+                  a description naming the offered languages, refusing a missing catalog or language
+                  list as a programming error.
+                justification: |
+                  The description is how a model learns which languages it may draw before it reads
+                  any help.
+                tests:
+                  - DiagramHelpTool_Create_ConstructedTool_CarriesTheToolNameAndADescription
+
+              - id: AgentKitToolsVisual-Diagram-HelpTool-Index
+                title: >-
+                  The help tool shall answer a request without a topic with one line per top-level
+                  topic and its summary, and a pointer to asking for a topic.
+                justification: |
+                  The index is the model's first step and must be small: a few hundred tokens rather
+                  than the whole catalog.
+                tests:
+                  - DiagramHelpTool_Help_NoTopic_ReturnsTheIndexOfTopLevelTopics
+
+              - id: AgentKitToolsVisual-Diagram-HelpTool-TopicCard
+                title: >-
+                  The help tool shall answer a topic id or alias, matched case-insensitively, with
+                  that topic's card followed by the full text of each of its example sources.
+                justification: |
+                  The library's card names its examples without carrying them, and an example is the
+                  quickest route to a source that draws.
+                tests:
+                  - DiagramHelpTool_Help_Topic_ReturnsTheCardWithItsExampleSources
+
+              - id: AgentKitToolsVisual-Diagram-HelpTool-HostCardsHidden
+                title: >-
+                  The help tool shall hide the cards written for the application — hosting options,
+                  file-access configuration and resource limits — and the cards of formats the family
+                  does not draw from source, from the index, from every card's list of topics and from
+                  lookup.
+                justification: |
+                  A model reading how a host configures file access or strict mode learns nothing it
+                  can act on and may try to do what it describes.
+                tests:
+                  - DiagramHelpTool_Help_HostOrientedCards_AreHidden
+
+              - id: AgentKitToolsVisual-Diagram-HelpTool-UnknownTopicSuggests
+                title: >-
+                  The help tool shall refuse a topic it does not serve as not found, suggesting up to
+                  eight served topics that contain it, or pointing to the index when none does.
+                justification: |
+                  A model guessing a topic id is usually close; naming the topics it probably meant
+                  saves it a turn.
+                tests:
+                  - DiagramHelpTool_Help_UnknownTopic_IsRefusedWithSuggestions
+
+              - id: AgentKitToolsVisual-Diagram-HelpTool-OfferedLanguagesOnly
+                title: >-
+                  The help tool shall serve the help of the offered languages only.
+                justification: |
+                  Help for a language the render tool refuses would lead the model to write source it
+                  cannot draw.
+                tests:
+                  - DiagramHelpTool_Help_UnofferedLanguage_IsNotServed

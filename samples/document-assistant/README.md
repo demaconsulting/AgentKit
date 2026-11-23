@@ -4,7 +4,8 @@ A console chat application that grants an AI agent exactly two locations — a *
 documents to read, and a separate **session** folder to write its artifacts into — and hands it the
 shipped AgentKit tool packs: searching, reading, creating, and editing text files; listing, copying,
 moving, and deleting files of any type; outlining a Markdown file's headings; and, when vision is
-enabled, looking at images and cutting a region out of one into a file it can reference. It is the
+enabled, looking at images and cutting a region out of one into a file it can reference; and drawing
+diagrams — a flowchart of a document it has read, checked and saved as a picture. It is the
 first end-to-end demonstration of the AgentKit tools against live
 models, and it runs unchanged against the GitHub Copilot runtime and against any Ollama model.
 
@@ -96,9 +97,14 @@ result as they happen, so you can watch each behavior below rather than take it 
   grant and writes the region it cut under the session folder's write grant. Under
   `--read-only-workspace` a destination in the workspace is refused while the same call into the
   session folder succeeds — one tool call, two independent decisions.
-- **Capability-gated tools.** The image tools are offered only when the host declares the `Vision`
-  capability. Run with `--no-vision` and none of `image_read`, `image_crop` or `image_auto_crop` are
-  refused at call time — they are never presented to the model at all.
+- **Capability-gated tools.** The image tools, from the `DemaConsulting.AgentKit.Tools.Visual` package, are offered only
+  when the host declares the `Vision` capability. Run with `--no-vision` and none of `image_read`, `image_crop`,
+  `image_auto_crop` or `image_view` are refused at call time — they are never presented to the model at all.
+- **Diagrams that follow the host.** The diagram tools, from the same package, are offered either way:
+  with vision the model is shown each drawing, and with `--no-vision` each drawing is saved and the
+  model is told what it contains instead. The pack's own instructions paragraph is appended to the
+  sample's instructions by the sample — the pack never adds it itself. `--no-diagrams` removes the
+  diagram tools.
 - **Provider quirks absorbed by the adapters.** The Copilot runtime ships its own shell, fetch, and
   file-editing tools; the adapter suppresses them so the agent is offered only the tools you gave it.
   An `IChatClient` provider silently drops a tool-returned image at the wire; that adapter repairs it
@@ -132,8 +138,9 @@ instructions acknowledge it.
 
 ## Running the sample
 
-From the repository root. The workspace folder shipped with the sample already contains two text files
-and an image. The session folder is created for you.
+From the repository root. The workspace folder shipped with the sample already contains three text
+files — one of them `release-process.md`, the document the diagram demonstration draws — and an
+image. The session folder is created for you.
 
 Against GitHub Copilot (no host flag needed, and `--model` is optional; see [Requirements](#requirements)
 for the Copilot CLI and signing in):
@@ -217,7 +224,8 @@ to standard error and exits with code 1; Ctrl-C still ends the run cleanly with 
 | `--provider copilot\|ollama` | Runtime to run the agent on. Default: `copilot`. |
 | `--host <url>` | Ollama server URL. Default: `http://localhost:11434`. Ollama only. |
 | `--model <name>` | Model to back the agent. Default: the Copilot runtime's own choice, or `qwen3.5:9b` for Ollama. |
-| `--no-vision` | Omit the image tools and the `Vision` capability entirely, and stop requiring a vision model. |
+| `--no-vision` | Omit the image tools and `Vision`; stop requiring a vision model. Diagrams switch to text. |
+| `--no-diagrams` | Omit the diagram tools (`diagram_help`, `diagram_render`) and their instructions paragraph. |
 | `--list-models` | List the models that can run the sample, grouped by category, and exit. No `--workspace` needed. |
 | `--reasoning-effort <id>` | Reasoning effort, from the model's list. Validated before the session starts. |
 | `--context-tier <id>` | Context tier, from the model's list. Copilot only. |
@@ -270,7 +278,53 @@ The default session folder is `document-assistant-session` beneath the system te
   reports only the file tools and answers *no* — confirming the Copilot runtime's built-in
   tools are suppressed.
 - **Capability gating.** Add `--no-vision` and ask the agent to list its tools: `image_read`,
-  `image_crop` and `image_auto_crop` are gone.
+  `image_crop`, `image_auto_crop` and `image_view` are gone, while `diagram_help` and
+  `diagram_render` remain in text preview. Add `--no-diagrams` and those two are gone too.
+- **Diagramming a document.** "Diagram the release process described in release-process.md and save
+  it in the session folder." See [Diagramming a document](#diagramming-a-document) below.
+
+## Diagramming a document
+
+An agent that writes documentation often needs a figure it can only describe in words. The diagram
+tools let it draw one from source it writes, look at the result, fix it and save it:
+
+```pwsh
+dotnet run --project samples/document-assistant -- `
+  --workspace samples/document-assistant/workspace `
+  --provider ollama --host http://your-ollama-host:11434 --model gemma4:26b `
+  --prompt "Diagram the release process in release-process.md and save it in the session folder."
+```
+
+The instructions the sample builds carry two parts. The first is `DiagramPack.Instructions`, the
+paragraph the pack offers for its preview mode, which the sample appends itself — the pack never
+adds it anywhere. The second is the sample's own description of the workflow, and the printed tool
+calls show how closely the model follows it:
+
+1. The agent reads `release-process.md` (`markdown_outline` shows its sections).
+2. It may read a `diagram_help` topic for the diagram type, for example the Mermaid flowchart card.
+3. It writes the Mermaid source into the session folder as `release-process.mmd`, so the source
+   can be edited later.
+4. It calls `diagram_render` with the source and `save_as` set to the session folder's absolute path
+   ending in `release-process.png`, looks at the picture that comes back, and fixes the source if
+   the drawing is wrong. A source that cannot be drawn comes back with the line, the column and a
+   help topic to read, rather than a picture.
+5. It links the saved picture from the Markdown it writes.
+
+Expected outputs in the session folder: `release-process.mmd` and `release-process.png`. Saving
+again under the same name replaces the earlier picture, so the agent can save on every attempt.
+Both files go to the session folder because it is the only location writable in both workspace
+modes.
+
+How closely a model follows the workflow varies, which is why the prompt names the session folder.
+Given only "Diagram the release process described in release-process.md.", `gemma4:26b` with
+reasoning off read the document and two `diagram_help` topics and drew a correct flowchart on its
+first `diagram_render` call, but returned the picture without saving it.
+
+With `--no-vision` the same scenario runs in text preview: `diagram_render` requires `save_as`, and
+instead of the picture the model receives its size, the labels and features it contains and its
+dominant colors — enough to check that every step of the release process appears. Whether the
+flowchart is a good one is a property of the model; the tools guarantee only where it may be
+written and that what was saved is what was drawn. Open `release-process.png` to judge it.
 
 ## Verifying vision honestly
 

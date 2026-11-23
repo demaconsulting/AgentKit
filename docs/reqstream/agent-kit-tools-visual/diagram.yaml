@@ -1,0 +1,108 @@
+---
+# Software Subsystem Requirements for the Diagram tool family
+#
+# These requirements describe the behavior of the Diagram subsystem as a whole,
+# decomposing the system-level diagram family requirement into the behavior each
+# of its units provides.
+
+sections:
+  - title: AgentKitToolsVisual Requirements
+    sections:
+      - title: Diagram Requirements
+        requirements:
+          - id: AgentKitToolsVisual-Diagram-FamilyComposition
+            title: >-
+              The diagram family shall publish a help tool and a render tool under the diagram family
+              prefix, composed as one pack an application attaches with the rendering bounds and the
+              diagram languages it chooses.
+            justification: |
+              An application attaches a capability to an agent as one pack rather than as
+              individually registered tools, and one prefix keeps the family's names from colliding
+              with those of any other library. The two tools are one capability: the render tool's
+              failures name a help topic, so a family publishing the render tool without the help
+              tool would point the model at help it cannot read. The languages and the bounds are
+              chosen once, on the pack, so that every tool of the family observes the same choice.
+            children:
+              - AgentKitToolsVisual-Diagram-Pack-FamilyPrefix
+              - AgentKitToolsVisual-Diagram-Pack-RegistersHelpAndRenderTools
+              - AgentKitToolsVisual-Diagram-Pack-ToolsCarryFamilyPrefix
+              - AgentKitToolsVisual-Diagram-Pack-RequiresPolicy
+              - AgentKitToolsVisual-Diagram-Pack-PolicyGovernsCreatedTools
+              - AgentKitToolsVisual-Diagram-Pack-AcceptsOptions
+              - AgentKitToolsVisual-Diagram-Pack-InstructionsOffered
+              - AgentKitToolsVisual-Diagram-Pack-WarmUp
+              - AgentKitToolsVisual-Diagram-PackOptions-Defaults
+              - AgentKitToolsVisual-Diagram-PackOptions-CanonicalNames
+              - AgentKitToolsVisual-Diagram-PackOptions-RejectsInvalidFormats
+              - AgentKitToolsVisual-Diagram-PackOptions-FormatsCopied
+              - AgentKitToolsVisual-Diagram-PackOptions-VisualApplied
+              - AgentKitToolsVisual-Diagram-HelpTool-ToolName
+              - AgentKitToolsVisual-Diagram-HelpTool-GuardedConstruction
+              - AgentKitToolsVisual-Diagram-RenderTool-ToolName
+              - AgentKitToolsVisual-Diagram-RenderTool-GuardedConstruction
+            tests:
+              - Diagram_Family_ComposedThroughBuilder_PublishesBothTools
+
+          - id: AgentKitToolsVisual-Diagram-VisionOrTextPreview
+            title: >-
+              The diagram family shall show a vision-capable model the picture it drew and give a
+              model that cannot see a description of the picture in words, choosing between the two
+              from the host's capabilities.
+            justification: |
+              A model that can see checks a drawing by looking at it. A model that cannot see can
+              still write a diagram for a document, and needs to know what was drawn — the size, the
+              labels, the colors — to check it; offering it nothing would leave a capable model
+              without the family, and returning a picture it cannot see would invite it to describe
+              one it never received. Choosing the mode from the host's declared capabilities keeps
+              the two from being mixed up.
+            children:
+              - AgentKitToolsVisual-Diagram-Pack-PreviewFollowsHost
+              - AgentKitToolsVisual-Diagram-Pack-TextPreviewRenderRequiresWriteGrant
+              - AgentKitToolsVisual-Diagram-RenderTool-DrawsEachLanguage
+              - AgentKitToolsVisual-Diagram-RenderTool-TextPreviewDescribes
+              - AgentKitToolsVisual-Diagram-RenderTool-CaptionNotes
+              - AgentKitToolsVisual-Diagram-RenderTool-WidthApplied
+            tests:
+              - Diagram_Family_HostWithoutVision_ReceivesTheTextPreview
+
+          - id: AgentKitToolsVisual-Diagram-ProgressiveHelp
+            title: >-
+              The diagram family shall serve the drawing help of the offered languages one topic at a
+              time — an index of the top-level topics, then a topic's card naming the topics below it
+              — hiding the help written for the application rather than the model.
+            justification: |
+              The rendering library's help for every language at once is tens of thousands of tokens,
+              which would crowd the model's context with reference it does not need. Serving it a
+              topic at a time lets the model read only the card for the diagram it is drawing, and
+              hiding the cards about hosting options, file-access configuration and resource limits
+              keeps it from reading advice it cannot act on.
+            children:
+              - AgentKitToolsVisual-Diagram-HelpTool-Index
+              - AgentKitToolsVisual-Diagram-HelpTool-TopicCard
+              - AgentKitToolsVisual-Diagram-HelpTool-HostCardsHidden
+              - AgentKitToolsVisual-Diagram-HelpTool-UnknownTopicSuggests
+              - AgentKitToolsVisual-Diagram-HelpTool-OfferedLanguagesOnly
+            tests:
+              - Diagram_ProgressiveHelp_IndexThenTopic_NarrowsToTheDiagramType
+
+          - id: AgentKitToolsVisual-Diagram-DrawFixRedraw
+            title: >-
+              The diagram family shall let a model draw, read why a drawing failed, fix the source
+              and draw again: a failed render shall name its location and a help topic the help tool
+              serves, and saving again under the same name shall replace the earlier picture.
+            justification: |
+              A model rarely writes a diagram that draws as meant on the first attempt. The loop
+              works only if a failure says where the source is wrong and where to read how to fix it,
+              and if saving the corrected picture is not refused because the first attempt already
+              saved one. Request mistakes, ceilings and confinement are refused before anything is
+              drawn or saved, so a refused request leaves no partial result behind.
+            children:
+              - AgentKitToolsVisual-Diagram-RenderTool-ShapedFailure
+              - AgentKitToolsVisual-Diagram-RenderTool-RefusesMalformedRequests
+              - AgentKitToolsVisual-Diagram-RenderTool-ObservesCeilings
+              - AgentKitToolsVisual-Diagram-RenderTool-InlineReferencesConfined
+              - AgentKitToolsVisual-Diagram-RenderTool-SaveAs
+              - AgentKitToolsVisual-Diagram-RenderTool-SaveAsCheckedFirst
+              - AgentKitToolsVisual-Diagram-RenderTool-Timeout
+            tests:
+              - Diagram_DrawFixRedraw_BrokenSource_NamesAServedTopicAndTheFixDraws

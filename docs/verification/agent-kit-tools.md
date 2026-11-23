@@ -18,9 +18,9 @@ a host capability, contributes them only when the host provides it. The first su
 TextFile family, has its own subsystem and unit verification; see *TextFile Subsystem Verification
 Design*. The File family and the Markdown family each likewise have their own subsystem and unit
 verification; see *File Subsystem Verification Design* and *Markdown Subsystem Verification Design*.
-The Image family, gated on the Vision capability, likewise has its own; see *Image
-Subsystem Verification Design*. The Todo family and the Agent family — the latter gated on the
-Delegation capability — likewise have their own; see *Todo Subsystem Verification Design* and
+The Image family is verified with the AgentKitToolsVisual package that ships it; see
+*AgentKitToolsVisual System Verification Design*. The Todo family and the Agent family — the latter
+gated on the Delegation capability — likewise have their own; see *Todo Subsystem Verification Design* and
 *Agent Subsystem Verification Design*. The Memory family likewise has its own; see *Memory
 Subsystem Verification Design*. The families introduced in subsequent increments are
 verified the same way.
@@ -100,27 +100,6 @@ under the one family prefix the pack claims. Constructs a real access policy, ad
 `MarkdownPack` to a `ToolPackBuilder` governed by it, and asserts the composed list is exactly
 `markdown_outline`.
 
-### Composition: The Image Family Is Contributed to a Vision Host
-
-**Test**: `AgentKitTools_SystemComposition_ImagePack_ContributesTheImageFamily`
-
-Verifies that attaching the Image pack to a host that declares the Vision capability contributes
-that family's tools, under the one family prefix the pack claims. Constructs a real access policy,
-declares Vision on a `ToolPackBuilder`, adds `ImagePack`, and asserts the composed list is exactly
-`image_read`, `image_crop` and `image_auto_crop`. Confirms at the system level that a
-capability-gated family, on a
-host that meets its requirement, is attached as one pack.
-
-### Composition: The Image Family Is Withheld From a Non-Vision Host
-
-**Test**: `AgentKitTools_SystemComposition_ImagePackWithoutVision_ContributesNoTools`
-
-Verifies that attaching the Image pack to a host that declares no capability contributes no tools.
-Constructs a real access policy, adds `ImagePack` to a `ToolPackBuilder` that declares nothing, and
-asserts the composed list is empty. Confirms at the system level that a family whose required
-capability the host has not declared is withheld, so a model that cannot see is never offered a tool
-that returns content it could only fabricate around.
-
 ### Composition: The Todo Family Is Contributed to a Composition
 
 **Test**: `AgentKitTools_SystemComposition_TodoPack_ContributesTheTodoFamily`
@@ -183,13 +162,12 @@ test that checked only the child would pass against one where both wrote into th
 Verifies the system-level statement of policy-derived publication: the pack declares what tools
 exist, the policy decides which writes are possible, and the tools that can only write are
 withheld. Composes
-all seven families over one policy whose only grant is read-only, declaring both Vision and
+all six families over one policy whose only grant is read-only, declaring both Vision and
 Delegation so that nothing is withheld by the capability gate and the policy is the only filter in
-play. Asserts the composed list is exactly seventeen tools, in pack-add order: `text_file_search`,
-`text_file_read`, `text_file_copy_lines`, `file_list`, `markdown_outline`, `image_read`,
-`image_crop`, `image_auto_crop`, `memory_file`, `memory_recall`, `memory_update`, `memory_revise`,
-`memory_forget`,
-`todo_list`, `todo_set`, `todo_remove` and `agent_run`.
+play. Asserts the composed list is exactly fourteen tools, in pack-add order: `text_file_search`,
+`text_file_read`, `text_file_copy_lines`, `file_list`, `markdown_outline`, `memory_file`,
+`memory_recall`, `memory_update`, `memory_revise`, `memory_forget`, `todo_list`, `todo_set`,
+`todo_remove` and `agent_run`.
 
 The eleven write-performing tools — five in the TextFile family, six in the File family — are
 absent. The exact ordered list is asserted rather than set membership, because both which tools
@@ -203,8 +181,8 @@ support, since the survivors would then refuse every path.
 **Test**: `AgentKitTools_SystemComposition_ReadOnlyWorkspaceWithWritableSession_PublishesEveryTool`
 
 Verifies that the write question is asked of the whole policy rather than of the location relative
-names anchor to. Composes the same seven families over a policy granting the workspace read-only
-and a separate session location read-write, and asserts the composed list is exactly twenty-eight
+names anchor to. Composes the same six families over a policy granting the workspace read-only
+and a separate session location read-write, and asserts the composed list is exactly twenty-five
 tools in pack-add order — every tool of every family.
 
 This is the scenario the plausible wrong rule breaks. Had the question been "is the working
@@ -254,11 +232,21 @@ handed its admitted tool followed by the two readers.
 
 **Test**: `AgentKitTools_PathDenials_DiscloseNoHostAbsolutePath`
 
-Composes the text file, file and image families over a read-only working directory and asks
-`text_file_read`, `text_file_search`, `file_list` and `image_read` each for a location beside it,
-reached with `../outside`. Asserts every result is a `PathNotPermitted` denial that names the
-working directory as `. (read-only)` and contains neither the working directory's absolute location
-nor the temporary base directory.
+Composes the text file and file families over a read-only working directory and asks
+`text_file_read`, `text_file_search` and `file_list` each for a location beside it, reached with
+`../outside`. Asserts every result is a `PathNotPermitted` denial that names the working directory
+as `. (read-only)` and contains neither the working directory's absolute location nor the temporary
+base directory.
+
+### Dependencies: The Tools Assembly References No Imaging Library
+
+**Test**: `AgentKitTools_Dependencies_ToolsAssembly_ReferencesNoImagingLibrary`
+
+Reads the reference table of the built Tools assembly — the table the runtime loads from — and
+asserts it names the AgentKitCore assembly and no assembly whose name begins with
+`DemaConsulting.CanvasNet`. Confirms that an application composing only this package's families
+takes on no imaging dependency; the image family and its imaging library ship in the
+AgentKitToolsVisual package.
 
 ## Acceptance Criteria
 
@@ -266,5 +254,5 @@ A system-level test run passes when the scenarios above pass without error or ex
 asserted. Any unexpected exception, a non-empty tool list from an empty composition, a family that does not contribute
 its tools when attached, a family contributed to a host that did not declare the capability it requires, a delegated
 agent's writes appearing in its parent's task list, an oversized listing, search, outline or delegated answer neither
-refused nor retained, a path denial disclosing a host absolute path, or a failure to compose through the AgentKitCore
-pack contract constitutes a failure.
+refused nor retained, a path denial disclosing a host absolute path, an imaging library among the Tools assembly's
+references, or a failure to compose through the AgentKitCore pack contract constitutes a failure.

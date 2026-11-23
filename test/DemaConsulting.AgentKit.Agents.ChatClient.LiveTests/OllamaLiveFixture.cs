@@ -16,8 +16,10 @@ namespace DemaConsulting.AgentKit.Agents.ChatClient.LiveTests;
 ///     </para>
 ///     <para>
 ///     The sandbox holds a note carrying a codeword, a 400-line log whose search results exceed the
-///     run's result ceiling, a large speckled PNG of a number, and — outside every permitted location
-///     — a secret no confined tool may return.
+///     run's result ceiling, a large speckled PNG of a number, an SVG figure embedding that PNG, a
+///     one-page PDF that is blue on the left and yellow on the right, and an SVG embedding a picture
+///     from outside the sandbox. Outside every permitted location are a secret and a PNG of another
+///     number, neither of which a confined tool may return.
 ///     </para>
 /// </remarks>
 public sealed class OllamaLiveFixture : IAsyncLifetime
@@ -56,6 +58,11 @@ public sealed class OllamaLiveFixture : IAsyncLifetime
     ///     The number the test image shows.
     /// </summary>
     internal const string ImageNumber = "7319";
+
+    /// <summary>
+    ///     The number the picture outside the sandbox shows, which no confined tool may draw.
+    /// </summary>
+    internal const string OutsideImageNumber = "5150";
 
     /// <summary>
     ///     Guards the log, which concurrent handlers may write.
@@ -170,6 +177,12 @@ public sealed class OllamaLiveFixture : IAsyncLifetime
         ImageBytes = png.Length;
         await File.WriteAllBytesAsync(Path.Combine(Sandbox, "dashboard.png"), png);
 
+        // The visual documents: a figure embedding the image, a PDF, and a figure reaching outside
+        await File.WriteAllTextAsync(Path.Combine(Sandbox, "composite.svg"), SvgFigure("dashboard.png"));
+        await File.WriteAllBytesAsync(Path.Combine(Sandbox, "report.pdf"), TestPdf.SplitBlueYellow());
+        await File.WriteAllBytesAsync(Path.Combine(Outside, "secret.png"), TestPng.Number(OutsideImageNumber, scale: 12));
+        await File.WriteAllTextAsync(Path.Combine(Sandbox, "escape.svg"), SvgFigure("../outside/secret.png"));
+
         // The log, beside the test results when the run names a folder for it
         var logDirectory = NullIfBlank(Environment.GetEnvironmentVariable(LogDirectoryVariable)) ?? Root;
         Directory.CreateDirectory(logDirectory);
@@ -191,6 +204,18 @@ public sealed class OllamaLiveFixture : IAsyncLifetime
             Directory.Delete(Root, recursive: true);
         }
     }
+
+    /// <summary>
+    ///     Builds an SVG figure: a title band above one embedded picture.
+    /// </summary>
+    /// <param name="href">The reference the picture is embedded by.</param>
+    /// <returns>The SVG source.</returns>
+    private static string SvgFigure(string href) =>
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"800\" height=\"480\">"
+        + "<rect width=\"800\" height=\"480\" fill=\"#ffffff\"/>"
+        + "<rect width=\"800\" height=\"60\" fill=\"#1f3b63\"/>"
+        + "<text x=\"24\" y=\"40\" font-size=\"28\" fill=\"#ffffff\">Dashboard figure</text>"
+        + "<image href=\"" + href + "\" x=\"40\" y=\"80\" width=\"720\" height=\"380\"/></svg>";
 
     /// <summary>
     ///     Normalizes a blank value to <see langword="null"/>.

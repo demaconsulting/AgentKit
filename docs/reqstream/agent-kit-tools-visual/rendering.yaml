@@ -1,0 +1,111 @@
+---
+# Software Subsystem Requirements for Rendering
+#
+# These requirements describe the externally visible behavior of the Rendering subsystem: the
+# shared pieces every visual tool draws through.
+
+sections:
+  - title: AgentKitToolsVisual Requirements
+    sections:
+      - title: Rendering Requirements
+        requirements:
+          - id: AgentKitToolsVisual-Rendering-ReferencesConfined
+            title: >-
+              The Rendering subsystem shall draw a document only under a file-access policy mapped
+              from the access policy, so that a referenced file outside what the agent may read is
+              never drawn, and shall resolve the relative references of inline source against the
+              working directory only when the agent may read it.
+            tags: [security]
+            justification: |
+              Every visual tool that draws must confine the files a document references the same
+              way, so the mapping is made in one place and handed to every render. Inline source
+              has no folder of its own; resolving its references against the working directory
+              matches how every other path a model states is read, and resolving them against no
+              folder when the working directory is not readable makes every relative reference
+              fail closed.
+            children:
+              - AgentKitToolsVisual-Rendering-VisualAccess-InsideGrantDrawn
+              - AgentKitToolsVisual-Rendering-VisualAccess-EscapeRefused
+              - AgentKitToolsVisual-Rendering-VisualAccess-LinkRefused
+              - AgentKitToolsVisual-Rendering-VisualAccess-DenyPatternEnforced
+              - AgentKitToolsVisual-Rendering-VisualAccess-FileUriJudged
+              - AgentKitToolsVisual-Rendering-VisualAccess-EveryReferenceKind
+              - AgentKitToolsVisual-Rendering-VisualAccess-UnrestrictedGrantUsesPolicy
+              - AgentKitToolsVisual-Rendering-VisualAccess-NeverAllowAll
+              - AgentKitToolsVisual-Rendering-VisualAccess-NetworkNeverFetched
+              - AgentKitToolsVisual-Rendering-VisualAccess-RefusalDisclosesNoHostPath
+              - AgentKitToolsVisual-Rendering-VisualAccess-InlineBaseFolder
+            tests:
+              - Rendering_Pipeline_ConfinedReference_IsDrawnOnOpaqueWhite
+              - Rendering_Pipeline_ReferenceOutsideTheGrant_FailsWithoutHostPaths
+
+          - id: AgentKitToolsVisual-Rendering-BoundedRender
+            title: >-
+              The Rendering subsystem shall draw every picture on an opaque white background within
+              the pack's size, pixel, triangle, time and concurrency bounds.
+            tags: [security]
+            justification: |
+              The bounds are what keep model-authored content from exhausting the host, and they
+              must hold for every tool that draws, so they are applied by the one renderer every
+              tool draws through. The opaque background is applied there for the same reason: a
+              transparent picture misleads a vision model whichever tool returned it.
+            children:
+              - AgentKitToolsVisual-Rendering-VisualRenderer-OpaqueBackground
+              - AgentKitToolsVisual-Rendering-VisualRenderer-PixelBudget
+              - AgentKitToolsVisual-Rendering-VisualRenderer-SideBounded
+              - AgentKitToolsVisual-Rendering-VisualRenderer-SmallVectorEnlarged
+              - AgentKitToolsVisual-Rendering-VisualRenderer-RasterNeverEnlarged
+              - AgentKitToolsVisual-Rendering-VisualRenderer-TriangleLimit
+              - AgentKitToolsVisual-Rendering-VisualRenderer-Timeout
+              - AgentKitToolsVisual-Rendering-VisualRenderer-AbandonAndGate
+              - AgentKitToolsVisual-Rendering-VisualRenderer-CallerCancellation
+              - AgentKitToolsVisual-Rendering-VisualRenderer-PageSelection
+              - AgentKitToolsVisual-Rendering-VisualRenderer-Description
+              - AgentKitToolsVisual-Rendering-VisualRenderer-WarmUp
+            tests:
+              - Rendering_Pipeline_ConfinedReference_IsDrawnOnOpaqueWhite
+
+          - id: AgentKitToolsVisual-Rendering-ActionableFailures
+            title: >-
+              The Rendering subsystem shall turn every failed or misleading render into text
+              stating a stable code, the location, the offending source line with a caret, advice
+              addressed to the model and every note, with no host path the model did not supply.
+            justification: |
+              A model can only fix a drawing it is told precisely what is wrong with. Doing the
+              classification, location and wording in one place means every tool that draws
+              reports a failure in the same form, and a model that learned to read one report can
+              read them all.
+            children:
+              - AgentKitToolsVisual-Rendering-VisualRenderer-LenientNotes
+              - AgentKitToolsVisual-Rendering-VisualRenderer-RefusedPicturePromoted
+              - AgentKitToolsVisual-Rendering-VisualRenderer-EmptyPicturePromoted
+              - AgentKitToolsVisual-Rendering-RenderErrorShaper-ClassifiesByType
+              - AgentKitToolsVisual-Rendering-RenderErrorShaper-LocationAndCaret
+              - AgentKitToolsVisual-Rendering-RenderErrorShaper-HelpTopicOnlyWhenServed
+              - AgentKitToolsVisual-Rendering-RenderErrorShaper-HostTextRewritten
+              - AgentKitToolsVisual-Rendering-RenderErrorShaper-HostPathsScrubbed
+              - AgentKitToolsVisual-Rendering-RenderErrorShaper-NotesListed
+            tests:
+              - Rendering_Pipeline_BrokenSource_BecomesActionableText
+              - Rendering_Pipeline_ReferenceOutsideTheGrant_FailsWithoutHostPaths
+
+          - id: AgentKitToolsVisual-Rendering-SavedUnderWriteGrant
+            title: >-
+              The Rendering subsystem shall save a drawn picture only to a PNG destination the
+              write decision permits inside an existing folder, replacing an earlier picture there
+              in one step.
+            tags: [security]
+            justification: |
+              A visual tool that saves its picture must apply the same destination rules as every
+              other writing tool, and must let the draw, look, fix loop save to the same name
+              again. Holding the rules in one helper keeps every saving tool consistent.
+            children:
+              - AgentKitToolsVisual-Rendering-RenderDestination-MustBePng
+              - AgentKitToolsVisual-Rendering-RenderDestination-WriteDecision
+              - AgentKitToolsVisual-Rendering-RenderDestination-NotADirectory
+              - AgentKitToolsVisual-Rendering-RenderDestination-ParentMustExist
+              - AgentKitToolsVisual-Rendering-RenderDestination-ReplacesAtomically
+              - AgentKitToolsVisual-Rendering-RenderDestination-NoTemporaryLeftOnFailure
+              - AgentKitToolsVisual-Rendering-RenderDestination-SurroundingWhitespace
+            tests:
+              - Rendering_Pipeline_DrawnPicture_IsSavedToAPermittedDestination

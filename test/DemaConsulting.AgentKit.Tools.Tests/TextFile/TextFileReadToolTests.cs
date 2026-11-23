@@ -1,7 +1,6 @@
 using System.Text;
 using System.Text.Json;
 using DemaConsulting.AgentKit.Core;
-using DemaConsulting.AgentKit.Tools.Image;
 using DemaConsulting.AgentKit.Tools.TextFile;
 using Microsoft.Extensions.AI;
 
@@ -420,7 +419,7 @@ public class TextFileReadToolTests
 
         var text = Assert.IsType<string>(result);
         Assert.Contains("Denied (UnsupportedMediaType)", text, StringComparison.Ordinal);
-        Assert.Contains(ImageReadTool.ToolName, text, StringComparison.Ordinal);
+        Assert.Contains("image_read", text, StringComparison.Ordinal);
         Assert.DoesNotContain("pixel-marker", text, StringComparison.Ordinal);
     }
 
