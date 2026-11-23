@@ -323,13 +323,12 @@ and an `ObjectDisposedException`, none with a cause or anything to redact, come 
 instance. The fourth relays an `OperationCanceledException` whose cause quotes a secret and an
 `ObjectDisposedException` whose message and cause quote secrets: each is rebuilt as the same type —
 not the same instance — the cancellation keeping its token, the disposal's message redacted, and both
-chains clean. `CopilotSignIn_RedactRelayed_TaskCancellationCarryingASecret_StaysATaskCancellation` relays a
-`TaskCanceledException` whose cause quotes a secret: it is rebuilt as a new `TaskCanceledException` of exactly that
-type, keeping its token and message, with a redacted copy naming `TaskCanceledException` as its cause and a clean
-chain. The fifth asserts that a failure already built around a redacted copy, and a failure
-relayed once, are each returned unchanged, so relaying twice changes nothing.
+chains clean. The fifth relays a `TaskCanceledException` whose cause quotes a secret: it is rebuilt as a new
+`TaskCanceledException` of exactly that type, keeping its token and message, with a redacted copy naming
+`TaskCanceledException` as its cause and a clean chain. The sixth asserts that a failure already built around a
+redacted copy, and a failure relayed once, are each returned unchanged, so relaying twice changes nothing.
 
-The sixth runs operations through `RelayAsync`: one that throws an `IOException` quoting a secret
+The seventh runs operations through `RelayAsync`: one that throws an `IOException` quoting a secret
 synchronously, before any task exists, and one whose task carries a `JsonException` quoting it, are
 relayed as a new `IOException` and a new `InvalidOperationException` reading `<redacted>` in its place
 with clean chains; a clean `OperationCanceledException` arrives as the same instance; and a
