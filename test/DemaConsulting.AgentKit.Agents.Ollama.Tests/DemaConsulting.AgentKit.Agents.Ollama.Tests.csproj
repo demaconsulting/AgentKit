@@ -33,16 +33,16 @@
          - PrivateAssets="all" keeps this test-coverage tool out of any consuming project's dependencies.
          - IncludeAssets lists all asset types (including 'build' and 'buildtransitive') to ensure the
            extension's MSBuild targets are activated so coverage is collected during test runs. -->
-    <PackageReference Include="coverlet.MTP" Version="10.1.0">
+    <PackageReference Include="coverlet.MTP" Version="10.1.1">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>compile; runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
     <!-- Roslyn: used by the XML-documentation example verifier to compile every documented
          example code block against the real API. Test-only; no runtime dependency is added to
          any shipped package. -->
-    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="5.9.0" />
-    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.11.0" />
-    <PackageReference Include="Microsoft.Testing.Extensions.TrxReport" Version="2.5.2" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="5.12.0" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.12.0" />
+    <PackageReference Include="Microsoft.Testing.Extensions.TrxReport" Version="2.5.3" />
     <PackageReference Include="xunit.v3" Version="4.0.3" />
     <PackageReference Include="xunit.runner.visualstudio" Version="4.0.1">
       <PrivateAssets>all</PrivateAssets>
@@ -53,7 +53,7 @@
          hand-faked IOllamaApiClient would assert this project's beliefs about OllamaSharp back at
          it rather than test them, which has already cost one shipped defect here. Test-only; no
          runtime dependency is added to any shipped package. -->
-    <PackageReference Include="WireMock.Net" Version="2.31.0" />
+    <PackageReference Include="WireMock.Net" Version="2.32.0" />
   </ItemGroup>
 
   <!-- Code Analysis Dependencies -->
@@ -63,11 +63,11 @@
            in any project that references this test project.
          - IncludeAssets lists all asset types (including 'analyzers' and 'buildtransitive') to ensure
            Roslyn analyzers and MSBuild targets are fully activated during the build. -->
-    <PackageReference Include="Microsoft.CodeAnalysis.NetAnalyzers" Version="10.0.403">
+    <PackageReference Include="Microsoft.CodeAnalysis.NetAnalyzers" Version="11.0.100">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
-    <PackageReference Include="SonarAnalyzer.CSharp" Version="10.35.0.4138">
+    <PackageReference Include="SonarAnalyzer.CSharp" Version="10.37.0.15768">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
