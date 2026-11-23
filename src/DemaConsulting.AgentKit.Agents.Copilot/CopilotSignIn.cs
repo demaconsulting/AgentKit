@@ -60,7 +60,11 @@ namespace DemaConsulting.AgentKit.Agents.Copilot;
 ///     <para>
 ///     <b>Secrets.</b> A token is kept in memory and passed to the runtime only. Findings, log
 ///     entries, exception messages and <see cref="CopilotSignInPlan.ToString"/> name hosts, logins,
-///     files and variable names, never a token.
+///     files and variable names, never a token. Runtime, SDK and exception text that AgentKit quotes
+///     has every exact token it was given or obtained removed — the host's token, the host's
+///     provider's tokens at start and for each session, the Copilot CLI's token, and the values of the
+///     environment's token variables — whatever their shape, and then any text shaped like a GitHub
+///     token. An exception AgentKit keeps as an inner exception is the original, unmodified.
 ///     </para>
 /// </remarks>
 internal static partial class CopilotSignIn
@@ -100,6 +104,13 @@ internal static partial class CopilotSignIn
     ///     The environment variables a GitHub token can come from, in the runtime's order.
     /// </summary>
     internal static readonly string[] TokenVariables = ["COPILOT_GITHUB_TOKEN", "GH_TOKEN", "GITHUB_TOKEN"];
+
+    /// <summary>
+    ///     The environment variables whose values are secrets, redacted from any text AgentKit quotes:
+    ///     the token variables and the GitHub Enterprise token variables.
+    /// </summary>
+    private static readonly string[] SecretVariables =
+        ["COPILOT_GITHUB_TOKEN", "GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN"];
 
     /// <summary>
     ///     The variables withheld from the helper runtime, beyond those the confined runtime's
@@ -294,6 +305,15 @@ internal static partial class CopilotSignIn
             ?? (TryNormalizeHost(environmentHost, out var fromEnvironment) ? fromEnvironment : null);
         var overrideHostName = options.GitHubHost is null ? null : HostName(options.GitHubHost);
 
+        // Every token this resolution is given or obtains, so text it quotes can never carry one
+        var secrets = new CopilotSignInSecrets();
+        foreach (var name in SecretVariables)
+        {
+            secrets.Add(ReadVariable(hostEnvironment, name));
+        }
+
+        secrets.Add(options.GitHubToken);
+
         // Step 1: a token or token provider the host supplies
         if (options.GitHubToken is not null)
         {
@@ -303,6 +323,7 @@ internal static partial class CopilotSignIn
                 overrideHostName,
                 requestedHost,
                 provider: null,
+                secrets,
                 $"gitHubToken supplied; AgentKit passed it to the runtime (host {requestedHost ?? DefaultHost}).");
         }
 
@@ -310,12 +331,14 @@ internal static partial class CopilotSignIn
         {
             var host = requestedHost ?? DefaultHost;
             var token = await AskProviderAsync(provider, host, cancellationToken).ConfigureAwait(false);
+            secrets.Add(token);
             return HostSupplied(
                 CopilotSignInSource.GitHubTokenProvider,
                 token,
                 overrideHostName,
                 requestedHost,
                 provider,
+                secrets,
                 $"gitHubTokenProvider supplied; it returned a token for {host}, which AgentKit passed to the runtime.");
         }
 
@@ -341,16 +364,18 @@ internal static partial class CopilotSignIn
                     ? "turned off by the host (useCopilotCliSignIn: false)."
                     : $"{precedence}{DescribeFound(cliLookup)}.",
                 FallbackFinding = "not tried: an earlier source applied.",
+                Secrets = secrets,
             };
         }
 
         // Step 3: the user's Copilot CLI sign-in
         var (cliToken, cliFinding) = cliLookup is null
             ? (null, "turned off by the host (useCopilotCliSignIn: false).")
-            : await TryCopilotCliAsync(cliLookup, requestedHost, hostEnvironment, launch, context, options.Logger, cancellationToken)
+            : await TryCopilotCliAsync(cliLookup, requestedHost, hostEnvironment, launch, context, secrets, options.Logger, cancellationToken)
                 .ConfigureAwait(false);
         if (cliToken is not null)
         {
+            secrets.Add(cliToken);
             return new CopilotSignInPlan
             {
                 Source = CopilotSignInSource.CopilotCli,
@@ -362,6 +387,7 @@ internal static partial class CopilotSignIn
                 EnvironmentFinding = "none set.",
                 CopilotCliFinding = cliFinding,
                 FallbackFinding = "not tried: an earlier source applied.",
+                Secrets = secrets,
             };
         }
 
@@ -384,6 +410,7 @@ internal static partial class CopilotSignIn
             FallbackFinding = gh is null
                 ? $"left to the runtime; the GitHub CLI ('{context.Search.ExecutableName("gh")}') was not found on PATH."
                 : $"left to the runtime; the GitHub CLI was found at '{gh}' (signed in to {requestedHost ?? DefaultHost} or not).",
+            Secrets = secrets,
         };
     }
 
@@ -395,6 +422,7 @@ internal static partial class CopilotSignIn
     /// <param name="overrideHostName">The host name to give the runtime, or <see langword="null"/> to leave its environment's.</param>
     /// <param name="requestedHost">The host the host chose, or <see langword="null"/>.</param>
     /// <param name="provider">The host's token provider, for sessions; <see langword="null"/> for a token.</param>
+    /// <param name="secrets">The tokens the resolution knows, redacted from any text it quotes.</param>
     /// <param name="finding">What the step found.</param>
     /// <returns>The plan.</returns>
     private static CopilotSignInPlan HostSupplied(
@@ -403,6 +431,7 @@ internal static partial class CopilotSignIn
         string? overrideHostName,
         string? requestedHost,
         Func<CopilotGitHubTokenRequest, CancellationToken, Task<CopilotGitHubToken>>? provider,
+        CopilotSignInSecrets secrets,
         string finding) =>
         new()
         {
@@ -415,6 +444,7 @@ internal static partial class CopilotSignIn
             EnvironmentFinding = "not consulted: a token from the host takes precedence.",
             CopilotCliFinding = "not tried: a token from the host takes precedence.",
             FallbackFinding = "not tried: a token from the host takes precedence.",
+            Secrets = secrets,
         };
 
     /// <summary>
@@ -456,12 +486,16 @@ internal static partial class CopilotSignIn
     /// <remarks>
     ///     The SDK rejects a session whose provider fails, rather than falling back to another
     ///     sign-in, so a failure is never hidden. A token of unknown lifetime is reported as
-    ///     <see cref="DefaultTokenLifetime"/>.
+    ///     <see cref="DefaultTokenLifetime"/>. A lifetime is reported in whole seconds, rounded up, so
+    ///     a lifetime of more than one hour is never reported as one hour. Each token is recorded in
+    ///     <paramref name="secrets"/>, so text quoted later never carries it.
     /// </remarks>
     /// <param name="provider">The host's provider.</param>
+    /// <param name="secrets">The sign-in's secrets, which each token the provider returns joins.</param>
     /// <returns>The SDK's session token provider.</returns>
     internal static Func<GitHubTokenProviderArgs, Task<GitHubTokenProviderResult>> CreateSessionTokenProvider(
-        Func<CopilotGitHubTokenRequest, CancellationToken, Task<CopilotGitHubToken>> provider) =>
+        Func<CopilotGitHubTokenRequest, CancellationToken, Task<CopilotGitHubToken>> provider,
+        CopilotSignInSecrets secrets) =>
         async args =>
         {
             var host = TryNormalizeHost(args.Host, out var normalized) ? normalized! : args.Host;
@@ -470,13 +504,27 @@ internal static partial class CopilotSignIn
                 CancellationToken.None).ConfigureAwait(false)
                 ?? throw new InvalidOperationException(
                     $"The GitHub token provider (CopilotRuntimeOptions' gitHubTokenProvider) returned no token for {host}.");
+            secrets.Add(token.Token);
 
             return GitHubTokenProviderResult.FromToken(new GitHubToken
             {
                 AccessToken = token.Token,
-                ExpiresIn = (long)(token.ExpiresIn ?? DefaultTokenLifetime).TotalSeconds,
+                ExpiresIn = WholeSecondsRoundedUp(token.ExpiresIn ?? DefaultTokenLifetime),
             });
         };
+
+    /// <summary>
+    ///     Converts a lifetime to whole seconds, rounding a fraction of a second up.
+    /// </summary>
+    /// <remarks>
+    ///     Rounding up keeps a lifetime of more than one hour above 3600 seconds, the runtime's
+    ///     minimum; truncating would report one hour and one tick as exactly one hour. Integer
+    ///     arithmetic on ticks, so the result is exact and cannot overflow.
+    /// </remarks>
+    /// <param name="lifetime">The lifetime.</param>
+    /// <returns>The lifetime in seconds, rounded up.</returns>
+    internal static long WholeSecondsRoundedUp(TimeSpan lifetime) =>
+        (lifetime.Ticks / TimeSpan.TicksPerSecond) + (lifetime.Ticks % TimeSpan.TicksPerSecond > 0 ? 1 : 0);
 
     /// <summary>
     ///     Finds the user's Copilot CLI home: <c>COPILOT_HOME</c> from the host's environment, else
@@ -501,7 +549,11 @@ internal static partial class CopilotSignIn
     /// </summary>
     /// <param name="hostEnvironment">The host's environment.</param>
     /// <param name="userProfile">The user's profile folder, or <see langword="null"/> when unknown.</param>
-    /// <param name="dataDirectory">AgentKit's data directory, which is never read as the user's home.</param>
+    /// <param name="dataDirectory">
+    ///     AgentKit's data directory. A home whose full path equals it is not read; the paths are
+    ///     compared as text and links are not resolved, a known limitation the link-confinement
+    ///     follow-up tracks.
+    /// </param>
     /// <returns>The account and where it came from, or why there is none.</returns>
     internal static CopilotCliAccountLookup LookUpCopilotCliAccount(
         IDictionary hostEnvironment,
@@ -514,7 +566,8 @@ internal static partial class CopilotSignIn
             return new CopilotCliAccountLookup(null, null, "the user's Copilot CLI home could not be located (no COPILOT_HOME and no user profile).");
         }
 
-        // AgentKit's own data directory is never the user's Copilot home
+        // A home whose path is AgentKit's own data directory is not read. The paths are compared as
+        // text: a link to the data directory is not resolved (tracked in the link-confinement follow-up).
         var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
         if (string.Equals(Path.TrimEndingDirectorySeparator(home), Path.TrimEndingDirectorySeparator(dataDirectory), comparison))
         {
@@ -689,6 +742,7 @@ internal static partial class CopilotSignIn
     /// <param name="hostEnvironment">The host's environment.</param>
     /// <param name="cliPath">The CLI to run, or <see langword="null"/> for the bundled runtime.</param>
     /// <param name="context">The machine and the helper factory.</param>
+    /// <param name="secrets">The tokens the resolution knows, redacted from the helper's text.</param>
     /// <param name="logger">The host's logger, or <see langword="null"/>.</param>
     /// <param name="cancellationToken">Cancels the read.</param>
     /// <returns>The token, or <see langword="null"/> with why there is none.</returns>
@@ -698,6 +752,7 @@ internal static partial class CopilotSignIn
         IDictionary hostEnvironment,
         string? cliPath,
         CopilotSignInContext context,
+        CopilotSignInSecrets secrets,
         ILogger? logger,
         CancellationToken cancellationToken)
     {
@@ -720,7 +775,7 @@ internal static partial class CopilotSignIn
                 .ConfigureAwait(false);
 
             var environment = BuildHelperEnvironment(hostEnvironment, gitHubCliConfiguration, context.Search, cliPath);
-            return await RunHelperAsync(account, BuildHelperOptions(cliPath, environment, home), context, cancellationToken)
+            return await RunHelperAsync(account, BuildHelperOptions(cliPath, environment, home), context, secrets, cancellationToken)
                 .ConfigureAwait(false);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
@@ -771,12 +826,15 @@ internal static partial class CopilotSignIn
     /// </summary>
     /// <param name="plan">The sign-in plan the runtime started with.</param>
     /// <param name="authentication">The runtime's authentication status.</param>
-    /// <returns>The explanation. It carries no token.</returns>
+    /// <returns>
+    ///     The explanation. It carries no token: every token the plan knows, and any text shaped like
+    ///     a GitHub token, is redacted from the runtime's status message and from the whole text.
+    /// </returns>
     internal static string ExplainUnauthenticated(CopilotSignInPlan plan, GetAuthStatusResponse authentication)
     {
         var status = string.IsNullOrWhiteSpace(authentication.StatusMessage)
             ? string.Empty
-            : $" (the runtime reports: {Redact(authentication.StatusMessage.Trim())})";
+            : $" (the runtime reports: {plan.Redact(authentication.StatusMessage.Trim())})";
         var message = new StringBuilder()
             .Append("The Copilot runtime started but is not signed in to GitHub").Append(status)
             .Append(", so AgentKit stopped it. AgentKit tried these sign-in sources, in order:")
@@ -801,12 +859,12 @@ internal static partial class CopilotSignIn
                 break;
         }
 
-        return message
+        return plan.Redact(message
             .Append("To sign in: run 'copilot login' (add '--host https://<name>.ghe.com' for GitHub Enterprise Cloud), ")
             .Append("run 'gh auth login' with gh on PATH, or pass gitHubToken or gitHubTokenProvider, with gitHubHost for a ")
             .Append("GitHub Enterprise Cloud account. GitHub refuses a GitHub Enterprise Cloud token used without its host ")
             .Append("with 401 Bad credentials.")
-            .ToString();
+            .ToString());
     }
 
     /// <summary>
@@ -875,6 +933,7 @@ internal static partial class CopilotSignIn
     /// <param name="hostEnvironment">The host's environment.</param>
     /// <param name="launch">What the confined runtime will run.</param>
     /// <param name="context">The machine and the helper factory.</param>
+    /// <param name="secrets">The tokens the resolution knows, redacted from the helper's text.</param>
     /// <param name="logger">The host's logger, or <see langword="null"/>.</param>
     /// <param name="cancellationToken">Cancels the step.</param>
     /// <returns>The token, or <see langword="null"/>; and the step's finding.</returns>
@@ -884,6 +943,7 @@ internal static partial class CopilotSignIn
         IDictionary hostEnvironment,
         CopilotRuntimeLaunch launch,
         CopilotSignInContext context,
+        CopilotSignInSecrets secrets,
         ILogger? logger,
         CancellationToken cancellationToken)
     {
@@ -898,7 +958,7 @@ internal static partial class CopilotSignIn
             return (null, $"{found}, but {requestedHost} was requested (gitHubHost or COPILOT_GH_HOST), so it was not used.");
         }
 
-        var (token, problem) = await ReadCopilotCliTokenAsync(account, hostEnvironment, launch.CliPath, context, logger, cancellationToken)
+        var (token, problem) = await ReadCopilotCliTokenAsync(account, hostEnvironment, launch.CliPath, context, secrets, logger, cancellationToken)
             .ConfigureAwait(false);
         return token is null
             ? (null, $"{found}, but {problem}")
@@ -911,6 +971,7 @@ internal static partial class CopilotSignIn
     /// <param name="account">The account.</param>
     /// <param name="options">The helper's client options.</param>
     /// <param name="context">The helper factory and timeout.</param>
+    /// <param name="secrets">The tokens the resolution knows, redacted from the helper's text.</param>
     /// <param name="cancellationToken">Cancels the read.</param>
     /// <returns>The token, or <see langword="null"/> with why there is none.</returns>
     /// <exception cref="OperationCanceledException">The caller canceled.</exception>
@@ -918,6 +979,7 @@ internal static partial class CopilotSignIn
         CopilotCliAccount account,
         CopilotClientOptions options,
         CopilotSignInContext context,
+        CopilotSignInSecrets secrets,
         CancellationToken cancellationToken)
     {
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -933,7 +995,7 @@ internal static partial class CopilotSignIn
             var status = await helper.GetAuthStatusAsync(timeout.Token).ConfigureAwait(false);
             if (!status.IsAuthenticated)
             {
-                var reported = string.IsNullOrWhiteSpace(status.StatusMessage) ? "not signed in" : Redact(status.StatusMessage.Trim());
+                var reported = string.IsNullOrWhiteSpace(status.StatusMessage) ? "not signed in" : secrets.Redact(status.StatusMessage.Trim());
                 return (null, $"the Copilot CLI could not read that account's token from the system credential store (it reports: {reported}).");
             }
 
@@ -970,7 +1032,7 @@ internal static partial class CopilotSignIn
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            return (null, $"the Copilot CLI could not be run to read it ({ex.GetType().Name}: {Redact(ex.Message)}).");
+            return (null, $"the Copilot CLI could not be run to read it ({ex.GetType().Name}: {secrets.Redact(ex.Message)}).");
         }
         finally
         {
@@ -1148,6 +1210,22 @@ internal sealed class CopilotSignInPlan
     internal string FallbackFinding { get; init; } = "left to the runtime.";
 
     /// <summary>
+    ///     Gets the tokens the sign-in knows, which <see cref="Redact"/> removes from quoted text.
+    /// </summary>
+    /// <remarks>
+    ///     Shared with the runtime's session token provider, which adds each session token to it.
+    /// </remarks>
+    internal CopilotSignInSecrets Secrets { get; init; } = new();
+
+    /// <summary>
+    ///     Removes every token the sign-in knows, and any text shaped like a GitHub token, from a text
+    ///     AgentKit is about to quote.
+    /// </summary>
+    /// <param name="text">The text, such as a runtime's status message or an exception's message.</param>
+    /// <returns>The text with <see cref="Token"/>, every value in <see cref="Secrets"/> and token-shaped values redacted.</returns>
+    internal string Redact(string text) => Secrets.Redact(text, Token);
+
+    /// <summary>
     ///     Builds the plan the host's options alone describe, without reading the machine: the host's
     ///     token, if any, and the host's chosen host.
     /// </summary>
@@ -1157,15 +1235,20 @@ internal sealed class CopilotSignInPlan
     /// </remarks>
     /// <param name="options">The host's options.</param>
     /// <returns>The plan.</returns>
-    internal static CopilotSignInPlan FromOptions(CopilotRuntimeOptions options) =>
-        new()
+    internal static CopilotSignInPlan FromOptions(CopilotRuntimeOptions options)
+    {
+        var secrets = new CopilotSignInSecrets();
+        secrets.Add(options.GitHubToken);
+        return new()
         {
             Source = options.GitHubToken is null ? null : CopilotSignInSource.GitHubToken,
             Token = options.GitHubToken,
             HostName = options.GitHubHost is null ? null : CopilotSignIn.HostName(options.GitHubHost),
             RequestedHost = options.GitHubHost,
             Provider = options.GitHubTokenProvider,
+            Secrets = secrets,
         };
+    }
 
     /// <summary>
     ///     Returns a description of the plan that never contains the token.
@@ -1174,6 +1257,84 @@ internal sealed class CopilotSignInPlan
     public override string ToString() =>
         $"CopilotSignInPlan {{ Source = {Source?.ToString() ?? "runtime fallbacks"}, HostName = {HostName ?? "(unchanged)"}, "
         + $"Token = {(Token is null ? "none" : "<redacted>")} }}";
+}
+
+/// <summary>
+///     The exact tokens a sign-in knows, removed from any runtime, SDK or exception text AgentKit
+///     quotes, whatever their shape.
+/// </summary>
+/// <remarks>
+///     Thread-safe: the runtime's session token provider adds tokens while a start failure on another
+///     thread may be redacting. Values are matched exactly (ordinal), longest first, so a token that
+///     contains another is removed whole. A value is never too short to be removed: a secret's safety
+///     comes before the readability of the text it appears in.
+/// </remarks>
+internal sealed class CopilotSignInSecrets
+{
+    /// <summary>
+    ///     What a redacted value is replaced with.
+    /// </summary>
+    private const string Redacted = "<redacted>";
+
+    /// <summary>
+    ///     Guards <see cref="_values"/>.
+    /// </summary>
+    private readonly object _gate = new();
+
+    /// <summary>
+    ///     The known values.
+    /// </summary>
+    private readonly HashSet<string> _values = new(StringComparer.Ordinal);
+
+    /// <summary>
+    ///     Records a value as a secret.
+    /// </summary>
+    /// <remarks>
+    ///     A <see langword="null"/>, empty or whitespace value is ignored. A value with surrounding
+    ///     whitespace is recorded both as given and trimmed, since a runtime may quote either.
+    /// </remarks>
+    /// <param name="value">The value, such as a token.</param>
+    internal void Add(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return;
+        }
+
+        lock (_gate)
+        {
+            _values.Add(value);
+            _values.Add(value.Trim());
+        }
+    }
+
+    /// <summary>
+    ///     Removes every known value, and then any text shaped like a GitHub token, from a text.
+    /// </summary>
+    /// <param name="text">The text.</param>
+    /// <param name="also">One more value to remove, such as the plan's token, or <see langword="null"/>.</param>
+    /// <returns>The text with the secrets redacted.</returns>
+    internal string Redact(string text, string? also = null)
+    {
+        List<string> values;
+        lock (_gate)
+        {
+            values = [.. _values];
+        }
+
+        if (!string.IsNullOrWhiteSpace(also))
+        {
+            values.Add(also);
+            values.Add(also.Trim());
+        }
+
+        foreach (var value in values.Distinct(StringComparer.Ordinal).OrderByDescending(value => value.Length))
+        {
+            text = text.Replace(value, Redacted, StringComparison.Ordinal);
+        }
+
+        return CopilotSignIn.Redact(text);
+    }
 }
 
 /// <summary>

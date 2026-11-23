@@ -433,6 +433,7 @@ public class AgentKitAgentsCopilotTests
         var failure = await Assert.ThrowsAsync<InvalidOperationException>(() => CopilotRuntime.StartClientAsync(
             _ => Task.FromException(cause),
             new CopilotRuntimeLaunch(CopilotRuntimeSource.Bundled, null, null),
+            signIn: null,
             TestContext.Current.CancellationToken));
 
         // Assert

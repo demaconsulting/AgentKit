@@ -237,7 +237,8 @@ sections:
               not found the host application must reference the Copilot SDK directly so it is
               provisioned; for an installed CLI, the CLI and its version and no package-reference
               advice — and the sources the runtime authenticates from, keeping the original failure as
-              the cause.
+              the cause, and shall quote the runtime's error with every token the sign-in knows and any
+              text shaped like a GitHub token redacted.
             justification: |
               The SDK provisions its runtime only into a project that references it directly, and the
               AgentKit library deliberately ships none, so a host that opted into the bundled runtime
@@ -245,11 +246,13 @@ sections:
               error names a missing file and not the remedy. For an installed CLI that advice would
               mislead, so the CLI that failed is named instead. Because the host's COPILOT_ variables
               are withheld, the explanation says which sign-in sources apply, in order, so an
-              authentication failure can be traced.
+              authentication failure can be traced. The runtime's error may quote a token it was
+              given, which must not reach a message built to be shown or logged.
             tests:
               - CopilotRuntime_StartClient_FailedStart_ExplainsTheMissingRuntimeAndKeepsTheCause
               - CopilotRuntime_StartClient_InstalledCliFailure_DoesNotBlameTheSdkReference
               - CopilotRuntime_StartClient_Succeeds_DoesNotThrow
+              - CopilotRuntime_StartClient_FailureQuotingASignInToken_IsRedacted
 
           - id: AgentKitAgentsCopilot-CopilotRuntime-PassesCancellationThrough
             title: >-

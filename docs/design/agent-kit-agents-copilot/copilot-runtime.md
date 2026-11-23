@@ -113,8 +113,13 @@ bundled runtime or when its output named none). It travels from `ResolveLaunchAs
   runtime's authentication status reports (`CopilotSignIn.Classify`), and the host and login it
   reports. `Unknown` and `null` for a runtime built without a sign-in plan or authentication status;
   available after disposal.
+- **`SignIn`** (`CopilotSignInPlan?`, internal) — the sign-in plan the runtime started with, or `null`
+  for a runtime built without one. Its `Redact` removes the start token, the environment's token
+  values and every session token the host's provider has returned from text AgentKit quotes, such as
+  a failed reconnect's.
 - **`_sessionTokenProvider`** — the SDK session token provider built from the plan's token provider
-  (`CopilotSignIn.CreateSessionTokenProvider`), or `null` when the runtime was not started with one.
+  (`CopilotSignIn.CreateSessionTokenProvider`, given the plan's `Secrets`, into which it records each
+  session token), or `null` when the runtime was not started with one.
 - **`PassThroughVariables`** (`FrozenSet<string>`) — the `COPILOT_` variables that reach the runtime:
   `COPILOT_GITHUB_TOKEN`, `COPILOT_GH_HOST`, `COPILOT_SYSTEM_PROXY`, `COPILOT_PROXY_KERBEROS`,
   `COPILOT_PROXY_KERBEROS_SPN`, `COPILOT_TELEMETRY_DISABLED` and `COPILOT_GITHUB_TELEMETRY_DISABLED`.
@@ -149,7 +154,8 @@ bundled runtime or when its output named none). It travels from `ResolveLaunchAs
 6. Build the client options (`BuildClientOptions`) from the options, the prepared directory, the
    environment, the resolved CLI path and the sign-in plan.
 7. Create the client and start it through `StartOwnedAsync`, whose start step is `StartClientAsync`
-   over the client's own start with the launch, followed by `VerifyStartedAsync` over the client's
+   over the client's own start with the launch and the sign-in plan, followed by
+   `VerifyStartedAsync` over the client's
    status and authentication reads and the sign-in plan. A failed, canceled or unauthenticated start
    disposes the client.
 8. Return a runtime over the started client, carrying the launch, the status, the sign-in plan and the
@@ -327,21 +333,25 @@ The SDK's client options, classified:
 | `Observability.Telemetry`, `Network`, `ClientInfo` | Not exposed | Neutral; deferred |
 | `Entra`, `Models.OnListModels`, `GitHub.OnTelemetry` | Not exposed | Neutral; deferred |
 
-#### StartClientAsync(Func&lt;CancellationToken, Task&gt; start, CopilotRuntimeLaunch? launch, CancellationToken cancellationToken)
+#### StartClientAsync(Func&lt;CancellationToken, Task&gt; start, CopilotRuntimeLaunch? launch, CopilotSignInPlan? signIn, CancellationToken cancellationToken)
 
 **Purpose:** Run a client's start and explain its failure for what was launched. `StartAsync` passes
-its launch; an overload without the launch passes `null` and serves the turn channel's discovery,
-which starts a client idempotently before using its RPC surface.
+its launch and sign-in plan; the turn channel's discovery, which starts a client idempotently before
+using its RPC surface, passes no launch and the runtime's `SignIn`. An overload without the launch
+and plan passes `null` for both.
 
 **Algorithm:** Await the start. An `OperationCanceledException` propagates unchanged. Any other
-exception is rethrown as an `InvalidOperationException` whose message is `ExplainStartFailure` of it
-and the launch, and whose `InnerException` is the original.
+exception is rethrown as an `InvalidOperationException` whose message is `ExplainStartFailure` of it,
+the launch and the plan, and whose `InnerException` is the original, unmodified.
 
-#### ExplainStartFailure(Exception failure, CopilotRuntimeLaunch? launch)
+#### ExplainStartFailure(Exception failure, CopilotRuntimeLaunch? launch, CopilotSignInPlan? signIn)
 
 **Purpose:** Compose the explanation.
 
-**Algorithm:** The runtime's own error first. Then the cause:
+**Algorithm:** The runtime's own error first, redacted: with `signIn.Redact` when a plan is given (the
+plan's token, its secrets — environment token values, the host's token, and every session token the
+host's provider returned — and token-shaped text), else with the token-shape pattern only. The
+protocol-version mismatch is detected on the error as raised. Then the cause:
 
 - When the error is the SDK's protocol-version mismatch and the launch is not the bundled runtime,
   `CopilotCli.ExplainProtocolMismatch` with the CLI's path and version and the protocol the runtime
@@ -358,7 +368,8 @@ Then the pass-through set and the sign-in sources, in order — the host's `gitH
 `gitHubTokenProvider`, `COPILOT_GITHUB_TOKEN`, `GH_TOKEN` or `GITHUB_TOKEN`, the user's Copilot CLI
 sign-in, a sign-in stored in the data directory and the signed-in GitHub CLI user — so an
 authentication or network failure can be traced. A runtime path override can no longer be the cause,
-because `COPILOT_CLI_PATH` is withheld. A null message is tolerated.
+because `COPILOT_CLI_PATH` is withheld. A null message is tolerated. The original exception, kept as
+the inner exception, is not modified and may still carry whatever the SDK put in it.
 
 #### StartOwnedAsync&lt;T&gt;(create, start, dispose, cancellationToken)
 

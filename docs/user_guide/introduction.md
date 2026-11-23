@@ -1268,7 +1268,8 @@ and deletes the folder afterwards. The CLI reads the token from the system crede
 the token and the host, nothing else: none of the user's MCP servers, hooks, agents, skills, plugins,
 instructions, settings or history, and its data directory stays private. The token is kept in memory
 and handed only to the runtime process, in its environment; AgentKit never writes or logs it. This
-adds a second or two to the start.
+adds a second or two to the start. Any token AgentKit was given or obtained, or that your token
+provider returns, is also removed from the runtime and SDK text AgentKit quotes in its own messages.
 
 **GitHub Enterprise Cloud hosts.** Each source is used with its own host. The Copilot CLI sign-in
 uses its account's host. A token needs its host too: GitHub refuses a token for a `*.ghe.com` account

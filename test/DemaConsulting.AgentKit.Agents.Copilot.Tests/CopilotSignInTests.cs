@@ -935,11 +935,13 @@ public sealed class CopilotSignInTests : IDisposable
         // Arrange
         var requests = new List<CopilotGitHubTokenRequest>();
         var lifetime = (TimeSpan?)null;
-        var sessionProvider = CopilotSignIn.CreateSessionTokenProvider((request, _) =>
-        {
-            requests.Add(request);
-            return Task.FromResult(new CopilotGitHubToken(SentinelToken, lifetime));
-        });
+        var sessionProvider = CopilotSignIn.CreateSessionTokenProvider(
+            (request, _) =>
+            {
+                requests.Add(request);
+                return Task.FromResult(new CopilotGitHubToken(SentinelToken, lifetime));
+            },
+            new CopilotSignInSecrets());
 
         // Act
         var initial = await sessionProvider(new GitHubTokenProviderArgs { Host = "https://Example.ghe.com", Reason = GitHubTokenRequestReason.Initial });
@@ -952,6 +954,143 @@ public sealed class CopilotSignInTests : IDisposable
         Assert.Equal(SentinelToken, initial.Token!.AccessToken);
         Assert.Equal(8 * 60 * 60, initial.Token.ExpiresIn);
         Assert.Equal(2 * 60 * 60, refresh.Token!.ExpiresIn);
+    }
+
+    /// <summary>
+    ///     Proves a lifetime with a fraction of a second is reported to the runtime rounded up, so a
+    ///     lifetime of more than one hour is never reported as one hour.
+    /// </summary>
+    /// <param name="extraTicks">The ticks beyond one hour.</param>
+    /// <param name="expectedSeconds">The seconds the runtime is told.</param>
+    [Theory]
+    [InlineData(1L, 3601L)]
+    [InlineData(5_000_000L, 3601L)]
+    [InlineData(36_000_000_000L, 7200L)]
+    public async Task CopilotSignIn_CreateSessionTokenProvider_FractionalLifetime_RoundsUp(long extraTicks, long expectedSeconds)
+    {
+        // Arrange
+        var lifetime = TimeSpan.FromHours(1) + TimeSpan.FromTicks(extraTicks);
+        var sessionProvider = CopilotSignIn.CreateSessionTokenProvider(
+            (_, _) => Task.FromResult(new CopilotGitHubToken(SentinelToken, lifetime)),
+            new CopilotSignInSecrets());
+
+        // Act
+        var result = await sessionProvider(new GitHubTokenProviderArgs { Host = AccountHost, Reason = GitHubTokenRequestReason.Initial });
+
+        // Assert
+        Assert.Equal(expectedSeconds, result.Token!.ExpiresIn);
+    }
+
+    /// <summary>
+    ///     Proves each token the host's provider returns for a session is recorded, so text quoted
+    ///     afterwards never carries it, whatever its shape.
+    /// </summary>
+    [Fact]
+    public async Task CopilotSignIn_CreateSessionTokenProvider_RecordsEachTokenForRedaction()
+    {
+        // Arrange
+        const string sessionToken = "s3cr3t-session-xyz";
+        var secrets = new CopilotSignInSecrets();
+        var sessionProvider = CopilotSignIn.CreateSessionTokenProvider(
+            (_, _) => Task.FromResult(new CopilotGitHubToken(sessionToken)),
+            secrets);
+
+        // Act
+        await sessionProvider(new GitHubTokenProviderArgs { Host = AccountHost, Reason = GitHubTokenRequestReason.Initial });
+        var redacted = secrets.Redact($"session refused: {sessionToken} expired");
+
+        // Assert
+        Assert.False(redacted.Contains(sessionToken, StringComparison.Ordinal), "The session token was not redacted.");
+        Assert.Equal("session refused: <redacted> expired", redacted);
+    }
+
+    /// <summary>
+    ///     Proves every exact token the sign-in knows — the host's token, the provider's token, an
+    ///     environment token and the Copilot CLI's token — is redacted from the runtime's status
+    ///     message in the refusal, even when it is not shaped like a GitHub token.
+    /// </summary>
+    /// <param name="source">Where the secret comes from.</param>
+    [Theory]
+    [InlineData("gitHubToken")]
+    [InlineData("gitHubTokenProvider")]
+    [InlineData("GH_TOKEN")]
+    [InlineData("CopilotCli")]
+    public async Task CopilotSignIn_ExplainUnauthenticated_NonGitHubShapedTokens_AreRedacted(string source)
+    {
+        // Arrange: a secret no token-shape pattern recognizes
+        const string secret = "s3cr3t-value-xyz";
+        WriteUserConfiguration(UserConfiguration);
+        var environment = new Hashtable();
+        var options = source switch
+        {
+            "gitHubToken" => new CopilotRuntimeOptions(DataDirectory, gitHubToken: secret),
+            "gitHubTokenProvider" => new CopilotRuntimeOptions(
+                DataDirectory,
+                gitHubTokenProvider: (_, _) => Task.FromResult(new CopilotGitHubToken(secret))),
+            _ => new CopilotRuntimeOptions(DataDirectory),
+        };
+        if (source == "GH_TOKEN")
+        {
+            environment["GH_TOKEN"] = secret;
+        }
+
+        if (source == "CopilotCli")
+        {
+            Helper.Users = [new AccountAllUsers { AuthInfo = new AuthInfoUser { Host = AccountHost, Login = AccountLogin }, Token = secret }];
+        }
+
+        var plan = await ResolveAsync(options, environment);
+        var authentication = new GetAuthStatusResponse { IsAuthenticated = false, StatusMessage = $"Bad credentials: {secret}" };
+
+        // Act
+        var message = CopilotSignIn.ExplainUnauthenticated(plan, authentication);
+
+        // Assert
+        Assert.False(message.Contains(secret, StringComparison.Ordinal), "The refusal carries the secret.");
+        Assert.Contains("(the runtime reports: Bad credentials: <redacted>)", message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves a helper failure that quotes a known secret — here a GitHub Enterprise token from the
+    ///     environment, not shaped like a GitHub token — leaves a finding without it.
+    /// </summary>
+    [Fact]
+    public async Task CopilotSignIn_ResolveAsync_HelperFailureQuotingAKnownSecret_IsRedacted()
+    {
+        // Arrange
+        const string secret = "s3cr3t-enterprise-xyz";
+        WriteUserConfiguration(UserConfiguration);
+        Helper.StartFailure = new InvalidOperationException($"runtime exited; stray {secret}");
+
+        // Act
+        var plan = await ResolveAsync(new CopilotRuntimeOptions(DataDirectory), new Hashtable { ["GH_ENTERPRISE_TOKEN"] = secret });
+
+        // Assert
+        Assert.Contains("could not be run", plan.CopilotCliFinding, StringComparison.Ordinal);
+        Assert.False(plan.CopilotCliFinding.Contains(secret, StringComparison.Ordinal), "The finding carries the secret.");
+        Assert.Contains("stray <redacted>", plan.CopilotCliFinding, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves the plan's redaction removes overlapping secrets whole, longest first, ignores blank
+    ///     values, and still redacts text shaped like a GitHub token.
+    /// </summary>
+    [Fact]
+    public void CopilotSignIn_PlanRedact_LongestSecretFirstAndTokenShapes()
+    {
+        // Arrange
+        var secrets = new CopilotSignInSecrets();
+        secrets.Add("s3cr3t");
+        secrets.Add("s3cr3t-value-xyz");
+        secrets.Add(null);
+        secrets.Add("   ");
+        var plan = new CopilotSignInPlan { Token = "plan-token-abc", Secrets = secrets };
+
+        // Act
+        var redacted = plan.Redact($"a s3cr3t-value-xyz b s3cr3t c plan-token-abc d {SentinelToken} e");
+
+        // Assert
+        Assert.Equal("a <redacted> b <redacted> c <redacted> d gho_<redacted> e", redacted);
     }
 
     /// <summary>

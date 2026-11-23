@@ -26,7 +26,9 @@ Copilot runtime, reads the real user's Copilot CLI home or touches a credential 
   a logger that keeps every entry.
 
 A sentinel token is used wherever a token appears, and the tests assert it never appears in a
-finding, a message, a log entry or a string form.
+finding, a message, a log entry or a string form. The redaction tests also use secrets that are not
+shaped like a GitHub token (such as `s3cr3t-value-xyz`), so they prove the exact values the sign-in
+knows are removed and not only the GitHub token prefixes.
 
 **What is out of automated scope, stated honestly.** That the Copilot CLI reads its own token from
 the system credential store in CodingAgent mode on a home holding only the account entry, that the
@@ -64,8 +66,10 @@ CLI); a helper in another mode, on another executable or with a token; an accoun
 the status shows the account's stored sign-in; a token taken from another account's entry; a helper
 failure, time-out or account-list failure that fails the start; a helper not disposed or a helper home
 not deleted on any outcome; a configuration with comments and trailing commas not read; an unusable
-configuration that yields an account; a refusal missing a source, its finding or a remedy; or a token
-in any finding, message, log entry or string form constitutes a failure.
+configuration that yields an account; a refusal missing a source, its finding or a remedy; a token
+in any finding, message, log entry or string form; a known token of any shape left in quoted runtime,
+SDK or exception text; or a lifetime of more than one hour reported to the runtime as one hour or less
+constitutes a failure.
 
 ### Test Scenarios
 
@@ -125,7 +129,8 @@ empty authority or a non-host are refused naming the parameter.
 - `CopilotSignIn_ResolveAsync_AccountList_TakesOnlyTheAccountsUserEntry`
 
 Normal operation, boundaries and error paths. The account is read from `COPILOT_HOME` when set and
-from the profile's `.copilot` otherwise, and never from a `COPILOT_HOME` naming the data directory. A
+from the profile's `.copilot` otherwise, and never from a `COPILOT_HOME` naming the data directory
+(compared as a path; a link to the data directory is a documented known limitation, not tested). A
 configuration with comments, trailing commas and only a single `loggedInUsers` entry yields that
 account, its host normalized. No file, invalid JSON, a non-object, no account, several accounts and no
 last one, an `http` host, a host with a path, a blank login, a login with a control character and a
@@ -183,13 +188,16 @@ caller's cancellation while the helper runs propagates.
 - `CopilotSignIn_ResolveAsync_ProviderThrows_ThrowsWithTheCause`
 - `CopilotSignIn_ResolveAsync_ProviderCanceled_PropagatesCancellation`
 - `CopilotSignIn_CreateSessionTokenProvider_AsksTheHostsProvider`
+- `CopilotSignIn_CreateSessionTokenProvider_FractionalLifetime_RoundsUp`
 
-Normal operation and error paths. At start the provider is asked once, not as a refresh. A provider
+Normal operation, boundaries and error paths. At start the provider is asked once, not as a
+refresh. A provider
 returning no token is refused naming the provider; one that throws is refused with the failure as the
 inner exception, by reference; a canceled one propagates the cancellation. The session provider asks
 the host's provider with the normalized host and `IsRefresh` false for `Initial` and true for
 `Refresh`, and hands the runtime the token with eight hours when the lifetime is unknown and the
-given lifetime otherwise.
+given lifetime otherwise, in whole seconds rounded up: one hour and one tick is 3601 seconds, one
+hour and half a second is 3601, and two hours is 7200.
 
 #### AgentKitAgentsCopilot-CopilotSignIn-ReportsWhatEachSourceFound: Every Source, No Secret
 
@@ -197,6 +205,11 @@ given lifetime otherwise.
 
 - `CopilotSignIn_ExplainUnauthenticated_ListsEverySourceWithoutTheToken`
 - `CopilotSignIn_ExplainUnauthenticated_RejectedTokens_SayWhatToChange`
+- `CopilotSignIn_ExplainUnauthenticated_NonGitHubShapedTokens_AreRedacted` (host token, provider
+  token, `GH_TOKEN`, Copilot CLI token)
+- `CopilotSignIn_ResolveAsync_HelperFailureQuotingAKnownSecret_IsRedacted`
+- `CopilotSignIn_CreateSessionTokenProvider_RecordsEachTokenForRedaction`
+- `CopilotSignIn_PlanRedact_LongestSecretFirstAndTokenShapes`
 - `CopilotSignIn_PlanToString_RedactsTheToken`
 - `CopilotSignIn_Report_LogsTheSignInAndWarnsOnAnotherAccount`
 
@@ -207,3 +220,12 @@ without a host adds the GitHub Enterprise Cloud host hint, and with a host does 
 token says how to move on. The plan's string form shows the host and `<redacted>`. The sign-in is
 logged at information level with source, host and login, and a GitHub CLI sign-in on another account
 than the Copilot CLI's is warned about naming the Copilot CLI's host; no entry carries the token.
+
+The secret `s3cr3t-value-xyz`, which no token-shape pattern recognizes, is resolved in turn as the
+host's token, the provider's token, the value of `GH_TOKEN` and the Copilot CLI's token; a runtime
+status message quoting it is explained with `<redacted>` in its place and the secret nowhere in the
+refusal. A helper start failure quoting a `GH_ENTERPRISE_TOKEN` value (which does not make the
+environment step apply) leaves a finding with `<redacted>` in its place. A token the host's provider
+returns for a session is recorded, so text redacted afterwards no longer carries it. Overlapping
+secrets are removed whole, longest first; `null` and blank values are ignored; and a GitHub-shaped
+token is still reduced to its prefix and `<redacted>`.

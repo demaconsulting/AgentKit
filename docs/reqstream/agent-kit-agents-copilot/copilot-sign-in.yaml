@@ -125,30 +125,43 @@ sections:
               a first request, refuse a start whose provider fails or returns no token with an
               explanation that names the provider, let the provider's cancellation propagate, and give
               each session a provider that asks the host's with the session's host and whether it is a
-              refresh, reporting an unknown lifetime as eight hours.
+              refresh, reporting an unknown lifetime as eight hours and a known lifetime in whole
+              seconds, rounded up.
             justification: |
               A host that refreshes its own tokens must be asked for a token the moment the runtime
               needs one, never handed a silent fallback to another sign-in when its provider fails.
+              Rounding a lifetime up keeps a lifetime of more than one hour, which the token type
+              guarantees, above the runtime's one-hour minimum.
             tests:
               - CopilotSignIn_ResolveAsync_Provider_IsAskedForTheEffectiveHost
               - CopilotSignIn_ResolveAsync_ProviderReturnsNull_Throws
               - CopilotSignIn_ResolveAsync_ProviderThrows_ThrowsWithTheCause
               - CopilotSignIn_ResolveAsync_ProviderCanceled_PropagatesCancellation
               - CopilotSignIn_CreateSessionTokenProvider_AsksTheHostsProvider
+              - CopilotSignIn_CreateSessionTokenProvider_FractionalLifetime_RoundsUp
 
           - id: AgentKitAgentsCopilot-CopilotSignIn-ReportsWhatEachSourceFound
             title: >-
               The sign-in shall explain a runtime that is not signed in by listing every source, in
               order, with what it found and the remedies, shall log the source, host and login the
-              runtime signed in with and warn when that is not the Copilot CLI's account, and shall put
-              no token in any finding, message, log entry or string form.
+              runtime signed in with and warn when that is not the Copilot CLI's account, shall put
+              no token in any finding, message, log entry or string form, and shall redact from any
+              runtime, SDK or exception text it quotes every exact token it knows — the host's token,
+              the host's provider's tokens at start and for each session, the Copilot CLI's token and
+              the environment's token values — whatever its shape, and any text shaped like a GitHub
+              token.
             tags: [security]
             justification: |
               A refusal that lists each source shows which one the user expected and why it did not
               apply. A token in a message or log would leak a credential into places built to be
-              shared.
+              shared. A host or provider may hand over a token of any shape, so a pattern for GitHub's
+              token prefixes alone cannot keep it out of quoted text; the exact values can.
             tests:
               - CopilotSignIn_ExplainUnauthenticated_ListsEverySourceWithoutTheToken
               - CopilotSignIn_ExplainUnauthenticated_RejectedTokens_SayWhatToChange
+              - CopilotSignIn_ExplainUnauthenticated_NonGitHubShapedTokens_AreRedacted
+              - CopilotSignIn_ResolveAsync_HelperFailureQuotingAKnownSecret_IsRedacted
+              - CopilotSignIn_CreateSessionTokenProvider_RecordsEachTokenForRedaction
+              - CopilotSignIn_PlanRedact_LongestSecretFirstAndTokenShapes
               - CopilotSignIn_PlanToString_RedactsTheToken
               - CopilotSignIn_Report_LogsTheSignInAndWarnsOnAnotherAccount

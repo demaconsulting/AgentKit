@@ -853,6 +853,7 @@ public class CopilotRuntimeTests
         var failure = await Assert.ThrowsAsync<InvalidOperationException>(() => CopilotRuntime.StartClientAsync(
             _ => Task.FromException(cause),
             bundled,
+            signIn: null,
             TestContext.Current.CancellationToken));
         var nullMessage = new NullMessageException();
         var nullFailure = await Assert.ThrowsAsync<InvalidOperationException>(() => CopilotRuntime.StartClientAsync(
@@ -887,6 +888,7 @@ public class CopilotRuntimeTests
         var failure = await Assert.ThrowsAsync<InvalidOperationException>(() => CopilotRuntime.StartClientAsync(
             _ => Task.FromException(cause),
             launch,
+            signIn: null,
             TestContext.Current.CancellationToken));
 
         // Assert
@@ -913,6 +915,7 @@ public class CopilotRuntimeTests
         var failure = await Assert.ThrowsAsync<InvalidOperationException>(() => CopilotRuntime.StartClientAsync(
             _ => Task.FromException(cause),
             launch,
+            signIn: null,
             TestContext.Current.CancellationToken));
 
         // Assert
@@ -940,6 +943,7 @@ public class CopilotRuntimeTests
         var failure = await Assert.ThrowsAsync<InvalidOperationException>(() => CopilotRuntime.StartClientAsync(
             _ => Task.FromException(cause),
             launch,
+            signIn: null,
             TestContext.Current.CancellationToken));
 
         // Assert
@@ -1626,6 +1630,44 @@ public class CopilotRuntimeTests
         Assert.Null(create.GitHub.Token);
         Assert.Null(untouched.GitHub.TokenProvider);
         Assert.Null(untouched.GitHub.Token);
+    }
+
+    /// <summary>
+    ///     Proves a start failure that quotes the runtime's start token or a session token the host's
+    ///     provider returned is explained without either, even when neither is shaped like a GitHub
+    ///     token, and that the original failure is kept, unmodified, as the cause.
+    /// </summary>
+    [Fact]
+    public async Task CopilotRuntime_StartClient_FailureQuotingASignInToken_IsRedacted()
+    {
+        // Arrange: a runtime started with a token, whose provider has handed a session its token
+        const string startToken = "s3cr3t-start-xyz";
+        const string sessionToken = "s3cr3t-session-xyz";
+        using var directory = new TemporaryDirectory();
+        var plan = new CopilotSignInPlan
+        {
+            Source = CopilotSignInSource.GitHubTokenProvider,
+            Token = startToken,
+            Provider = (_, _) => Task.FromResult(new CopilotGitHubToken(sessionToken)),
+        };
+        await using var runtime = new CopilotRuntime(NewClient(directory.Path), directory.Path, signIn: plan);
+        var session = new CreateSessionOptions();
+        runtime.ApplySessionSignIn(session);
+        await session.GitHub.TokenProvider!(new GitHubTokenProviderArgs { Host = "https://example.ghe.com", Reason = GitHubTokenRequestReason.Initial });
+        var cause = new InvalidOperationException($"connection lost (start {startToken}, session {sessionToken})");
+
+        // Act
+        var failure = await Assert.ThrowsAsync<InvalidOperationException>(() => CopilotRuntime.StartClientAsync(
+            _ => Task.FromException(cause),
+            launch: null,
+            runtime.SignIn,
+            TestContext.Current.CancellationToken));
+
+        // Assert
+        Assert.False(failure.Message.Contains(startToken, StringComparison.Ordinal), "The explanation carries the start token.");
+        Assert.False(failure.Message.Contains(sessionToken, StringComparison.Ordinal), "The explanation carries the session token.");
+        Assert.Contains("connection lost (start <redacted>, session <redacted>)", failure.Message, StringComparison.Ordinal);
+        Assert.Same(cause, failure.InnerException);
     }
 
     /// <summary>

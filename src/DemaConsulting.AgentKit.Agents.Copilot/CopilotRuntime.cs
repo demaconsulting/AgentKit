@@ -242,8 +242,18 @@ public sealed class CopilotRuntime : IAsyncDisposable
             : CopilotSignInSource.Unknown;
         GitHubHost = authentication?.Host;
         GitHubLogin = authentication?.Login;
-        _sessionTokenProvider = signIn?.Provider is { } provider ? CopilotSignIn.CreateSessionTokenProvider(provider) : null;
+        SignIn = signIn;
+        _sessionTokenProvider = signIn?.Provider is { } provider ? CopilotSignIn.CreateSessionTokenProvider(provider, signIn.Secrets) : null;
     }
+
+    /// <summary>
+    ///     Gets the sign-in plan the runtime started with, or <see langword="null"/> when there was none.
+    /// </summary>
+    /// <remarks>
+    ///     Its <see cref="CopilotSignInPlan.Redact"/> removes the start token and every session token
+    ///     the host's provider has returned from text AgentKit quotes, such as a failed reconnect's.
+    /// </remarks>
+    internal CopilotSignInPlan? SignIn { get; }
 
     /// <summary>
     ///     Gets the names of the <c>COPILOT_</c> variables that pass from the host's environment to the
@@ -472,7 +482,7 @@ public sealed class CopilotRuntime : IAsyncDisposable
             () => new CopilotClient(clientOptions),
             async (created, token) =>
             {
-                await StartClientAsync(created.StartAsync, launch, token).ConfigureAwait(false);
+                await StartClientAsync(created.StartAsync, launch, signIn, token).ConfigureAwait(false);
                 (status, authentication) = await VerifyStartedAsync(created.GetStatusAsync, created.GetAuthStatusAsync, signIn, token)
                     .ConfigureAwait(false);
             },
@@ -1122,7 +1132,7 @@ public sealed class CopilotRuntime : IAsyncDisposable
     /// </exception>
     /// <exception cref="OperationCanceledException">The start was canceled. It propagates unchanged.</exception>
     internal static Task StartClientAsync(Func<CancellationToken, Task> start, CancellationToken cancellationToken) =>
-        StartClientAsync(start, launch: null, cancellationToken);
+        StartClientAsync(start, launch: null, signIn: null, cancellationToken);
 
     /// <summary>
     ///     Runs a client's start and explains its failure.
@@ -1134,16 +1144,21 @@ public sealed class CopilotRuntime : IAsyncDisposable
     /// </remarks>
     /// <param name="start">Starts the client.</param>
     /// <param name="launch">What was launched, or <see langword="null"/> when it is not known.</param>
+    /// <param name="signIn">
+    ///     The sign-in plan whose tokens are redacted from the quoted error, or <see langword="null"/>
+    ///     to redact token-shaped text only.
+    /// </param>
     /// <param name="cancellationToken">Cancels the start.</param>
     /// <returns>A task that completes when the start has completed.</returns>
     /// <exception cref="InvalidOperationException">
-    ///     The start failed. The message reports the runtime's own error and the likely cause; the
-    ///     original failure is the <see cref="Exception.InnerException"/>.
+    ///     The start failed. The message reports the runtime's own error, redacted, and the likely
+    ///     cause; the original failure, unmodified, is the <see cref="Exception.InnerException"/>.
     /// </exception>
     /// <exception cref="OperationCanceledException">The start was canceled. It propagates unchanged.</exception>
     internal static async Task StartClientAsync(
         Func<CancellationToken, Task> start,
         CopilotRuntimeLaunch? launch,
+        CopilotSignInPlan? signIn,
         CancellationToken cancellationToken)
     {
         try
@@ -1152,7 +1167,7 @@ public sealed class CopilotRuntime : IAsyncDisposable
         }
         catch (Exception failure) when (failure is not OperationCanceledException)
         {
-            throw new InvalidOperationException(ExplainStartFailure(failure, launch), failure);
+            throw new InvalidOperationException(ExplainStartFailure(failure, launch, signIn), failure);
         }
     }
 
@@ -1172,13 +1187,21 @@ public sealed class CopilotRuntime : IAsyncDisposable
     ///     so an authentication or network failure can be traced. A failure whose message is null is
     ///     still explained.
     ///     </para>
+    ///     <para>
+    ///     The runtime's error is quoted redacted: every token <paramref name="signIn"/> knows (the
+    ///     start token, the environment's token values, and each session token the host's provider
+    ///     returned), and any text shaped like a GitHub token, is removed. The protocol mismatch is
+    ///     detected on the error as raised.
+    ///     </para>
     /// </remarks>
     /// <param name="failure">The failure the start raised.</param>
     /// <param name="launch">What was launched, or <see langword="null"/> when it is not known.</param>
+    /// <param name="signIn">The sign-in plan whose tokens are redacted, or <see langword="null"/> to redact token-shaped text only.</param>
     /// <returns>The explanation.</returns>
-    internal static string ExplainStartFailure(Exception failure, CopilotRuntimeLaunch? launch)
+    internal static string ExplainStartFailure(Exception failure, CopilotRuntimeLaunch? launch, CopilotSignInPlan? signIn)
     {
         var message = failure.Message;
+        var quoted = message is null ? string.Empty : signIn?.Redact(message) ?? CopilotSignIn.Redact(message);
         string cause;
         if (launch?.Source != CopilotRuntimeSource.Bundled && CopilotCli.IsProtocolMismatch(message))
         {
@@ -1199,7 +1222,7 @@ public sealed class CopilotRuntime : IAsyncDisposable
             };
         }
 
-        return "The Copilot runtime could not start: " + message + " " + cause + " The runtime receives none of the "
+        return "The Copilot runtime could not start: " + quoted + " " + cause + " The runtime receives none of the "
             + "host's COPILOT_ or GITHUB_COPILOT_ variables except "
             + string.Join(", ", PassThroughVariables.Order(StringComparer.Ordinal)) + "; it signs in with, in order, "
             + "CopilotRuntimeOptions' gitHubToken or gitHubTokenProvider, COPILOT_GITHUB_TOKEN, GH_TOKEN or GITHUB_TOKEN, "

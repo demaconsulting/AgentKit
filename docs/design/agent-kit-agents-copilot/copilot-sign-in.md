@@ -76,6 +76,18 @@ equality prints or compares the token):
   **`FallbackFinding`** (`string`) — what each step found, in words that name hosts, logins, files and
   variable names only.
 - **`ToString()`** — source, host name and `<redacted>` or `none` for the token.
+- **`Secrets`** (`CopilotSignInSecrets`) — the exact tokens the sign-in knows. `ResolveAsync` and
+  `FromOptions` fill it, and the runtime's session token provider adds each session token to it.
+- **`Redact(text)`** — removes `Token`, every value in `Secrets` and any GitHub-token-shaped text from
+  a text AgentKit is about to quote.
+
+`CopilotSignInSecrets` (internal class): a thread-safe set of secret values, compared ordinally.
+`Add(value)` ignores a `null`, empty or whitespace value, and records a value with surrounding
+whitespace both as given and trimmed. `Redact(text, also)` replaces every known value (and `also`, when
+given), longest first, with `<redacted>`, and then applies the GitHub-token-shape pattern. No value is
+too short to be redacted: a secret's safety comes before the readability of the text it appears in.
+The session token provider can add values while a start failure on another thread is being
+redacted, so the set is read under a lock.
 
 `CopilotCliAccount` (internal record): `Host` (normalized `https://name`) and `Login`; never a token.
 
@@ -96,7 +108,9 @@ temporary home, a factory for the helper, a function that deletes a directory, a
 Constants: `DefaultHost` (`https://github.com`), `ConfigurationSizeLimit` (1 MiB),
 `MaximumLoginLength` (100), `HelperTimeout` (60 seconds, long enough for a first start and a
 credential-store prompt the user answers), `DefaultTokenLifetime` (eight hours, the usual lifetime of
-a GitHub user token), `TokenVariables` (`COPILOT_GITHUB_TOKEN`, `GH_TOKEN`, `GITHUB_TOKEN`).
+a GitHub user token), `TokenVariables` (`COPILOT_GITHUB_TOKEN`, `GH_TOKEN`, `GITHUB_TOKEN`),
+`SecretVariables` (the token variables plus `GH_ENTERPRISE_TOKEN` and `GITHUB_ENTERPRISE_TOKEN`,
+whose values are redacted).
 
 ### Key Methods
 
@@ -108,18 +122,21 @@ a GitHub user token), `TokenVariables` (`COPILOT_GITHUB_TOKEN`, `GH_TOKEN`, `GIT
 
 1. The requested host is `options.GitHubHost`, else a valid `COPILOT_GH_HOST` from the host's
    environment. Only `options.GitHubHost` overrides the runtime's `COPILOT_GH_HOST`; the environment's
-   value already passes through.
+   value already passes through. One `CopilotSignInSecrets` is created and seeded with the value of
+   each `SecretVariables` variable that is set and with `options.GitHubToken`; every plan returned
+   carries it as `Secrets`.
 2. A host-supplied token: plan with that token and source `GitHubToken`; every later step reads "not
    tried: a token from the host takes precedence".
-3. A token provider: ask it (`AskProviderAsync`) for the requested host, else `DefaultHost`; plan with
-   its token, source `GitHubTokenProvider` and the provider for sessions.
+3. A token provider: ask it (`AskProviderAsync`) for the requested host, else `DefaultHost`; record
+   its token as a secret; plan with its token, source `GitHubTokenProvider` and the provider for
+   sessions.
 4. When the host allows the Copilot CLI sign-in, look the account up (`LookUpCopilotCliAccount`), so
    later steps can name it.
 5. Any non-blank token variable: plan with no token and source `EnvironmentVariable`; the Copilot CLI
    step names the variable that took precedence and the account it found.
 6. The Copilot CLI sign-in: skipped with a finding when there is no account or when another host was
-   requested; otherwise `ReadCopilotCliTokenAsync`. With a token, plan with it, source `CopilotCli` and
-   the account's bare host name.
+   requested; otherwise `ReadCopilotCliTokenAsync`. With a token, record it as a secret and plan with
+   it, source `CopilotCli` and the account's bare host name.
 7. Otherwise plan with no token, the requested host name from the option, and a finding saying whether
    the GitHub CLI is on `PATH` (`CopilotCli.FindOnPath`, nothing is run).
 
@@ -132,14 +149,19 @@ home created is deleted.
 only.
 
 **Algorithm:** The home is `COPILOT_HOME` from the host's environment (made full), else `.copilot` in
-the profile. A home equal to AgentKit's data directory is not read. `config.json` is read when it
+the profile. A home whose full path equals the data directory's (compared case-insensitively on
+Windows) is not read. `config.json` is read when it
 exists and is at most `ConfigurationSizeLimit` bytes, parsed with comments and trailing commas
 allowed. `lastLoggedInUser` is the account; when it is missing, a `loggedInUsers` array of exactly one
 entry is. The host must normalize (`TryNormalizeHost`) and the login must be non-blank, at most
 `MaximumLoginLength` characters, with no control characters. Every other key is ignored. Each failure
 is a `Problem` naming the file.
 
-#### ReadCopilotCliTokenAsync(account, hostEnvironment, cliPath, context, logger, cancellationToken)
+**Known limitation.** Links are not resolved when the homes are compared: a `COPILOT_HOME` that is a
+symbolic link or junction to the data directory is not recognized as the data directory, so its
+`config.json` would be read. The link-confinement follow-up tracks this.
+
+#### ReadCopilotCliTokenAsync(account, hostEnvironment, cliPath, context, secrets, logger, cancellationToken)
 
 **Purpose:** Obtain the account's token through the Copilot CLI itself.
 
@@ -161,7 +183,9 @@ is a `Problem` naming the file.
 4. Run the helper under a linked time limit: start it; read its status; continue only when it is
    authenticated through a stored sign-in (`authType` `user`) as exactly the account's host and login
    (login compared case-insensitively). Only then read the account list, guarded, and take the token
-   of the `AuthInfoUser` entry with the account's host and login.
+   of the `AuthInfoUser` entry with the account's host and login. The helper's status message and
+   any exception message it quotes are redacted with the resolution's `secrets` (the known values,
+   then token shapes).
 5. Always dispose the helper, if one was created (stopping its process; the SDK bounds the stop),
    then delete the temporary home by its exact path (`DeleteHelperHome`, retrying briefly while a
    stopped process releases its files); a home that cannot be deleted is logged as a warning naming
@@ -178,19 +202,23 @@ An `OperationCanceledException` propagates; any other failure becomes an `Invali
 naming the provider with the failure as cause; a `null` result becomes an `InvalidOperationException`.
 For sessions, return an SDK `GitHub.TokenProvider` that maps the SDK's arguments to a request (the
 host normalized, `IsRefresh` when the reason is `Refresh`) and the result to the SDK's token, with
-`ExpiresIn` the token's lifetime or `DefaultTokenLifetime`. The SDK refuses a session whose provider
+`ExpiresIn` the token's lifetime, or `DefaultTokenLifetime`, in whole seconds rounded up (so a
+lifetime of more than one hour is never reported as 3600 seconds). Each token it returns is recorded
+in the plan's `Secrets`. The SDK refuses a session whose provider
 fails rather than falling back to another sign-in.
 
 #### ExplainUnauthenticated(CopilotSignInPlan plan, GetAuthStatusResponse authentication)
 
 **Purpose:** Explain a runtime that no source signed in.
 
-**Algorithm:** The runtime's status message (token-shaped text redacted); then the four steps,
+**Algorithm:** The runtime's status message, redacted with `plan.Redact`; then the four steps,
 numbered, each with its finding; then, when a token was handed over and not accepted, which step's,
 with the host hint when no host was chosen for a host-supplied token, or, for an environment token,
 how to move on; then the remedies: `copilot login` (with `--host` for GitHub Enterprise Cloud),
 `gh auth login`, `gitHubToken` or `gitHubTokenProvider` with `gitHubHost`, and that GitHub refuses a
-GitHub Enterprise Cloud token used without its host with 401 Bad credentials. No token appears.
+GitHub Enterprise Cloud token used without its host with 401 Bad credentials. The whole composed text
+is redacted with `plan.Redact` before it is returned, so no token the plan knows, of any shape,
+appears.
 
 #### Classify(string? authType, CopilotSignInPlan plan) and Report(logger, plan, source, authentication)
 
@@ -226,6 +254,10 @@ name; the result is lower case. `HostName` strips the scheme. `NormalizeHost` th
 | No token for the account | Finding; next source |
 | Helper home cannot be deleted | Warning logged naming the path; the start goes on |
 
+Every message and finding AgentKit composes from runtime, SDK or exception text is redacted with the
+plan's secrets and the token-shape pattern. An exception AgentKit keeps as an inner exception, such
+as the host provider's failure, is the original, unmodified.
+
 ### Dependencies
 
 - **CopilotRuntime** — the options, the launch, and the confined runtime's environment the helper's is
@@ -239,7 +271,9 @@ name; the result is lower case. `HostName` strips the scheme. `NormalizeHost` th
 
 `CopilotRuntime.StartAsync` calls `ResolveAsync`, then `Report`; `CopilotRuntime.VerifyStartedAsync`
 calls `ExplainUnauthenticated`; the `CopilotRuntime` constructor calls `Classify` and
-`CreateSessionTokenProvider`; `CopilotRuntimeOptions` calls `NormalizeHost`.
+`CreateSessionTokenProvider`, passing the plan's `Secrets`; `CopilotRuntime.ExplainStartFailure`, on
+`StartAsync`'s path and on the turn channel's discovery path, calls `CopilotSignInPlan.Redact`;
+`CopilotRuntimeOptions` calls `NormalizeHost`.
 
 ### Untested Platforms
 

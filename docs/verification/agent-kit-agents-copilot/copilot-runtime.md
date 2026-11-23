@@ -297,6 +297,7 @@ it carries the token.
 - `CopilotRuntime_StartClient_FailedStart_ExplainsTheMissingRuntimeAndKeepsTheCause`
 - `CopilotRuntime_StartClient_InstalledCliFailure_DoesNotBlameTheSdkReference`
 - `CopilotRuntime_StartClient_Succeeds_DoesNotThrow`
+- `CopilotRuntime_StartClient_FailureQuotingASignInToken_IsRedacted`
 
 Error path and normal operation. A bundled start failing with the SDK's runtime-not-found error is rethrown as an
 `InvalidOperationException` whose message carries the runtime's error and the remedy — a `PackageReference` to
@@ -304,7 +305,10 @@ Error path and normal operation. A bundled start failing with the SDK's runtime-
 user's Copilot CLI sign-in, and whose inner exception is the original, by reference; a failure whose message is null, on
 a start whose launch is not known, is explained for both sources rather than masked. An installed CLI's failure names
 the CLI and its version, keeps the cause and an authentication source, and does not mention a package reference. A start
-that succeeds passes through.
+that succeeds passes through. On a runtime started with a token provider, whose session provider has handed a session
+its token, a start failure quoting both the start token and the session token — neither shaped like a GitHub token —
+is explained with `<redacted>` in their places and neither value in the message, and the inner exception is still the
+original, by reference.
 
 #### AgentKitAgentsCopilot-CopilotRuntime-PassesCancellationThrough: Cancellation Is Not a Fault
 
