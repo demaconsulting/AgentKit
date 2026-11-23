@@ -1272,8 +1272,9 @@ obtained, or that your token provider returns, is also removed from the runtime 
 messages — a failed start, a session error that fails an agent's run, a provider session's refusal — along with any text
 shaped like a GitHub token. When AgentKit keeps a runtime or SDK failure as an inner exception, it keeps a redacted
 copy: the original's type name, message and stack trace, with the same text removed, so no exception in the chain
-carries a token. When a runtime or SDK failure reaches you — a turn that fails on an agent or a provider session, or a
-consolidation that fails — it arrives as a new exception of the same kind (`IOException`, `TimeoutException` or
+carries a token. When a runtime or SDK failure reaches you — a turn that fails on an agent or a provider session, a
+consolidation that fails, a session the runtime fails to create or resume, or a model listing that fails other than for
+a lost or unsigned connection — it arrives as a new exception of the same kind (`IOException`, `TimeoutException` or
 `InvalidOperationException`; any other type as `InvalidOperationException`), with the message redacted and that
 redacted copy as its inner exception. A cancellation or disposal that carries nothing to redact reaches you unchanged.
 
@@ -1523,7 +1524,9 @@ for answer quality across a long conversation, not to save money.
   meanwhile.
 - **`InvalidOperationException`: the runtime "could not list models".** The runtime's connection was
   lost or its sign-in lapsed; start a new runtime, signed in as above. The inner exception is a
-  redacted copy of the SDK's error: its `ToString()` starts with the original type name.
+  redacted copy of the SDK's error: its `ToString()` starts with the original type name. A listing
+  that fails another way — an `IOException` for a runtime that exited, say — arrives as a new
+  exception of the same kind, its message redacted and a redacted copy of the SDK's error inside.
 - **The runtime fails to start.** `CopilotRuntime.StartAsync` raises an `InvalidOperationException`
   carrying the runtime's own error, redacted. The inner exception is a redacted copy of the runtime's
   failure — its type name, message and stack trace, with any token removed — so read its message or
@@ -1555,8 +1558,9 @@ for answer quality across a long conversation, not to save money.
   rather than handed to the model with the server available. Check for MCP servers provided by a
   managed catalog or by the signed-in account or its organization. A resumed
   conversation that is refused this way is kept, not deleted.
-- **The session is refused while AgentKit disables an MCP server — a `RemoteRpcException` from the
-  runtime's disable call, or the "kept … enabled" error above.** The server may be an *owned* MCP
+- **The session is refused while AgentKit disables an MCP server — an `InvalidOperationException`
+  relaying the runtime's RPC error from its disable call, or the "kept … enabled" error above.** The
+  server may be an *owned* MCP
   installation, which the runtime's session-scoped disable may require an installation id to disable.
   The SDK's listing of a session's MCP servers does not expose that id, so AgentKit cannot supply it
   and refuses the session instead. Use a data directory with no MCP installations.
@@ -1609,13 +1613,15 @@ GitHub host:
   stack trace with any token removed; the outer exception is still an `InvalidOperationException`.
   Code that tested the inner exception's type, for example for a `FileNotFoundException`, should read
   its message or `ToString()`, which starts with the original type name.
-- **A failed turn or consolidation raises a redacted copy, not the SDK's exception.** A turn that fails
-  on an agent or a provider session, and a consolidation that fails, now raise a new exception of the
-  same kind with the message redacted and a redacted copy of the SDK's exception as the inner
-  exception. An `IOException`, `TimeoutException` or `InvalidOperationException` keeps its type; any
-  other type — for example the RPC transport's `RemoteInvocationException` — now arrives as an
-  `InvalidOperationException`. Code that caught such a type should catch `InvalidOperationException`
-  and read the inner exception's `ToString()`, which starts with the original type name.
+- **A failed turn, consolidation, session opening or model listing raises a redacted copy, not the
+  SDK's exception.** A turn that fails on an agent or a provider session, a consolidation that fails,
+  a session the runtime fails to create or resume, and a model listing that fails other than for a
+  lost or unsigned connection now raise a new exception of the same kind with the message redacted
+  and a redacted copy of the SDK's exception as the inner exception. An `IOException`,
+  `TimeoutException` or `InvalidOperationException` keeps its type; any other type — for example the
+  RPC transport's `RemoteInvocationException` — now arrives as an `InvalidOperationException`. Code
+  that caught such a type should catch `InvalidOperationException` and read the inner exception's
+  `ToString()`, which starts with the original type name.
 
 ### Migrating from the Earlier Adapter
 

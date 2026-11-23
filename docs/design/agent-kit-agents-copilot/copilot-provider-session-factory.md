@@ -141,8 +141,9 @@ rather than asserted.
 - **`_selection`** (`ModelSelection?`) — The validated model selection every session is configured
   with, or null when the host named a model, or none, instead.
 - **`_signIn`** (`CopilotSignInPlan?`) — The sign-in of the runtime the sessions run on
-  (`runtime.SignIn` in production), handed to every session so its refusals redact the runtime's
-  tokens, or null to redact token-shaped text only.
+  (`runtime.SignIn` in production), handed to every session so its refusals and relayed turn failures
+  redact the runtime's tokens, and used by `CreateAsync` to relay a failure to open a session
+  redacted; or null to redact token-shaped text only.
 - **`RecordOpening`**, **`RecordClosing`** (`const string`) — The fixed lines opening and closing a
   seeded record. Plain text rather than generated tokens, so the rendering is deterministic and a
   test can assert on it exactly.
@@ -208,7 +209,11 @@ exercised without a live runtime and credentials unless the opening of a session
 **Algorithm:** Reject a null seed and a canceled token. Build the observer **first** and hand it to
 the session options, together with the model, the working directory and the selection, so the SDK registers it on
 the session before the create request is issued and the very first turn's events are caught. Open
-the session — the only awaited allocation. Then, under a guard, check cancellation once more and
+the session — the only awaited allocation — through `CopilotSignIn.RelayAsync` with the runtime's
+sign-in, so a failure of the create request, such as a lost connection quoting the runtime's
+standard error or an RPC error carrying the runtime's data, is relayed as a redacted copy of the
+same kind, never the SDK's own exception; a clean cancellation passes unchanged. Then, under a
+guard, check cancellation once more and
 construct the provider session, handing it the composed history preamble so the first message it
 sends carries the record, and the sign-in its refusals redact with; on any failure, release the
 session that was opened and rethrow.
@@ -288,6 +293,7 @@ asserts on it directly — the configuration no longer carries it.
 | Cancellation before opening | `OperationCanceledException`; nothing is opened |
 | Cancellation after opening | `OperationCanceledException`; session released |
 | Opener returned null | `InvalidOperationException` propagates |
+| Opening the session fails | Relayed as a redacted copy of the same kind (`RelayAsync`); nothing to release |
 | Two seeded tools carry one name | `ArgumentException` propagates |
 | A seeded tool carries a built-in tool's name | `ArgumentException` propagates |
 
@@ -305,7 +311,8 @@ asserts on it directly — the configuration no longer carries it.
 - **CopilotRuntime** — the runtime every session runs on, whose client the opener reads at each open
   and release, and whose sign-in every session redacts its refusals with; see *CopilotRuntime Unit
   Design*.
-- **CopilotSignIn** — the sign-in plan type handed to every session; see *CopilotSignIn Unit Design*.
+- **CopilotSignIn** — the sign-in plan type handed to every session, and the relay of a failure to
+  open a session redacted (`RelayAsync(operation, plan)`); see *CopilotSignIn Unit Design*.
 - **Microsoft.Copilot.SDK** — supplies `CopilotClient`, `CreateSessionOptions` and the session event
   type; see *Microsoft.Copilot.SDK Design*.
 

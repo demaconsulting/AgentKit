@@ -21,6 +21,6 @@ package AgentKitAgentsCopilot_CopilotModelCatalog {
     dependency CopilotModelCatalog to CopilotRuntime;
 
     // A listing failure keeps only a redacted copy of the client's failure as its cause, made with
-    // the runtime's sign-in.
+    // the runtime's sign-in, and any other read failure is relayed as a redacted copy.
     dependency CopilotModelCatalog to AgentKitAgentsCopilot_CopilotSignIn::CopilotSignIn;
 }

@@ -53,8 +53,10 @@ session carrying a tool or a non-empty allow-list, any session built with the ru
 compaction left at the runtime's default, any session reused between consolidations, any session left
 unreleased on either the successful or the failing path, any empty answer turned into an exception or
 into invented text, any session opened for a consolidation that was already canceled, any
-consolidation not run on a selection's model and chosen effort, or any model named both ways, or
-any selection carrying a context window or an output limit, that is accepted constitutes a failure.
+consolidation not run on a selection's model and chosen effort, any consolidation failure that
+reaches the caller as the SDK's own exception or carries a token anywhere in its chain, or any model
+named both ways, or any selection carrying a context window or an output limit, that is accepted
+constitutes a failure.
 
 ### Test Scenarios
 
@@ -150,13 +152,21 @@ of a hand-built Copilot model description carrying an output limit is refused wi
 
 #### AgentKitAgentsCopilot-CopilotSummarizer-KeepsTokensOutOfFailures: A Failed Consolidation Carries No Token
 
-**Test**: `CopilotSummarizer_Consolidate_FailureQuotingAToken_IsRelayedRedacted`
+**Tests**:
 
-A summarizer built with a sign-in that knows a secret of no GitHub token shape consolidates on a
-session whose turn fails with the SDK's shape: an `InvalidOperationException` reading
+- `CopilotSummarizer_Consolidate_FailureQuotingAToken_IsRelayedRedacted`
+- `CopilotSummarizer_Consolidate_OpenFailureQuotingAToken_IsRelayedRedacted`
+
+In the first, a summarizer built with a sign-in that knows a secret of no GitHub token shape
+consolidates on a session whose turn fails with the SDK's shape: an `InvalidOperationException` reading
 `Session error: …` that quotes the secret and a `gho_` token, over an `IOException` quoting the
 secret. The consolidation fails with a new `InvalidOperationException`, not the scripted one,
 reading exactly `Session error: refused <redacted> gho_<redacted>`, with a `CopilotRedactedException`
 as its cause; a walk of its whole chain — every inner exception and every inner exception of an
 aggregate — finds neither value in any message, stack trace or string form, and the session was
 still released once.
+
+The second builds the summarizer on an opener that fails with the SDK's lost-connection shape — an
+`IOException` reading `CLI process exited unexpectedly.` followed by standard error quoting both
+values — and asserts the consolidation fails with a new `IOException` reading the redacted text,
+with a `CopilotRedactedException` as its cause and neither value anywhere in its chain.

@@ -491,8 +491,9 @@ sections:
           The library shall put no token the runtime's sign-in knows, and no text shaped like a GitHub
           token, in any exception it raises or keeps as a cause: the runtime's start failure and its
           redacted cause, a session error that fails an agent's run, a turn the runtime or the SDK
-          fails on an agent, a provider session or a consolidation, a provider session's refusals,
-          and a model listing failure and its redacted cause.
+          fails on an agent, a provider session or a consolidation, a session the runtime or the SDK
+          fails to create or resume for an agent, a provider session or a consolidation, a provider
+          session's refusals, and a model listing failure and its redacted cause.
         tags: [security]
         justification: |
           An exception is built to be shown, logged and attached to crash reports, which print its
@@ -513,6 +514,7 @@ sections:
           - AgentKitAgentsCopilot-CopilotProviderSession-RefusesASilentSession
           - AgentKitAgentsCopilot-CopilotProviderSession-EndsOnATurnItCouldNotRecord
           - AgentKitAgentsCopilot-CopilotSummarizer-KeepsTokensOutOfFailures
+          - AgentKitAgentsCopilot-CopilotProviderSessionFactory-KeepsTokensOutOfOpenFailures
           - AgentKitAgentsCopilot-CopilotModelCatalog-ReadsTheServiceThroughTheRuntime
         tests:
           - AgentKitAgentsCopilot_Runtime_FailureQuotingAToken_ReachesNoException

@@ -179,3 +179,19 @@ sections:
             tests:
               - CopilotProviderSessionFactory_Constructor_ConflictingSelection_Throws
               - CopilotProviderSessionFactory_Constructor_SelectionWithAnOutputLimit_Throws
+
+          - id: AgentKitAgentsCopilot-CopilotProviderSessionFactory-KeepsTokensOutOfOpenFailures
+            title: >-
+              The factory shall fail a creation whose session the runtime or the SDK fails to open
+              with a redacted copy of the same kind — its message, and every exception in its chain,
+              with every token the runtime's sign-in knows and any text shaped like a GitHub token
+              redacted — never the SDK's own exception.
+            tags: [security]
+            justification: |
+              Opening a session is an RPC to the runtime, and its failure — a lost connection quoting
+              the runtime's standard error, or an RPC error carrying the runtime's data — can quote a
+              token. A creation failure reaches the host through the session engine, which rethrows
+              it, so it is relayed as a new exception of the same kind, which a host still catches as
+              before; a type outside the base class library arrives as an invalid operation.
+            tests:
+              - CopilotProviderSessionFactory_Create_OpenFailureQuotingAToken_IsRelayedRedacted

@@ -1466,6 +1466,40 @@ public sealed class CopilotSignInTests : IDisposable
     }
 
     /// <summary>
+    ///     Proves an operation run through the relay has its failure relayed redacted whether it throws
+    ///     synchronously or through its task, passes a clean cancellation unchanged, and returns its
+    ///     result when it succeeds.
+    /// </summary>
+    [Fact]
+    public async Task CopilotSignIn_RelayAsync_FailureThrownEitherWay_IsRelayedRedacted()
+    {
+        // Arrange
+        const string secret = "s3cr3t-relay-async-xyz";
+        var plan = PlanKnowing(secret);
+        var canceled = new OperationCanceledException("canceled");
+
+        // Act
+        var synchronous = await Assert.ThrowsAsync<IOException>(() => CopilotSignIn.RelayAsync<int>(
+            () => throw new IOException($"lost {secret}"),
+            plan));
+        var asynchronous = await Assert.ThrowsAsync<InvalidOperationException>(() => CopilotSignIn.RelayAsync(
+            () => Task.FromException<int>(new JsonException($"bad {secret}")),
+            plan));
+        var cancellation = await Assert.ThrowsAsync<OperationCanceledException>(() => CopilotSignIn.RelayAsync(
+            () => Task.FromException<int>(canceled),
+            plan));
+        var result = await CopilotSignIn.RelayAsync(() => Task.FromResult(42), plan);
+
+        // Assert
+        Assert.Equal("lost <redacted>", synchronous.Message);
+        AssertNoSecretInChain(synchronous, secret);
+        Assert.Equal("bad <redacted>", asynchronous.Message);
+        AssertNoSecretInChain(asynchronous, secret);
+        Assert.Same(canceled, cancellation);
+        Assert.Equal(42, result);
+    }
+
+    /// <summary>
     ///     Proves the runtime's sign-in is logged with its source, host and login, that a runtime on
     ///     another account than the Copilot CLI's is warned about, and that no token is logged.
     /// </summary>

@@ -253,6 +253,34 @@ public class CopilotSummarizerTests
     }
 
     /// <summary>
+    ///     Proves a failure opening a consolidation session — a lost connection quoting the runtime's
+    ///     standard error — is relayed as a new <see cref="IOException"/> whose chain carries no
+    ///     secret.
+    /// </summary>
+    [Fact]
+    public async Task CopilotSummarizer_Consolidate_OpenFailureQuotingAToken_IsRelayedRedacted()
+    {
+        // Arrange: an opener that fails as the SDK does, quoting both values
+        const string secret = "s3cr3t-summary-open-xyz";
+        const string shaped = "gho_SummaryOpenSecret123";
+        var lost = new IOException($"CLI process exited unexpectedly.\nstderr: {secret} {shaped}");
+        var summarizer = new CopilotSummarizer(
+            (_, _) => Task.FromException<ICopilotTurnChannel>(lost),
+            model: null,
+            signIn: CopilotSignInTests.PlanKnowing(secret));
+
+        // Act
+        var failure = await Assert.ThrowsAsync<IOException>(
+            () => summarizer.ConsolidateAsync(Request(), TestContext.Current.CancellationToken));
+
+        // Assert
+        Assert.NotSame(lost, failure);
+        Assert.Equal("CLI process exited unexpectedly.\nstderr: <redacted> gho_<redacted>", failure.Message);
+        Assert.IsType<CopilotRedactedException>(failure.InnerException);
+        CopilotSignInTests.AssertNoSecretInChain(failure, secret, shaped);
+    }
+
+    /// <summary>
     ///     Proves a missing request is refused where the engine composed it.
     /// </summary>
     [Fact]

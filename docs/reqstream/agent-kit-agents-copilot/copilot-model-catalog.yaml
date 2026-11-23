@@ -17,7 +17,9 @@ sections:
               restart it, and shall fail a read the client cannot make with a message saying the
               runtime is not connected or not signed in and naming the ways to sign it in, keeping
               as the cause only a redacted copy of the client's failure, its type name, message and
-              stack trace, with every token the runtime's sign-in knows removed.
+              stack trace, with every token the runtime's sign-in knows removed; and shall relay any
+              other read failure as a redacted copy of the same kind, passing unchanged only a
+              cancellation or disposal carrying nothing to redact.
             justification: |
               The listing depends on who is signed in, so only the runtime AgentKit owns can read
               it. Reading the client at every read is what keeps a runtime the host disposed from
@@ -27,10 +29,14 @@ sections:
               connection was lost or the sign-in lapsed; the SDK reports both with the same
               exception, so the message names both and the same ways to sign in that the runtime's
               own refusal names, the Copilot CLI's sign-in among them. The client's failure may quote
-              a token the runtime was given, so only a redacted copy of it is kept.
+              a token the runtime was given, so only a redacted copy of it is kept. Any other failure,
+              such as a lost connection quoting the runtime's standard error or an RPC error carrying
+              the service's data, can quote one too, so it is never handed on as the SDK's own.
             tests:
               - CopilotModelCatalog_ListAsync_ClientNotConnected_FailsWithTheSignInMessage
               - CopilotModelCatalog_ExplainListFailure_QuotingAToken_KeepsOnlyARedactedCause
+              - CopilotModelCatalog_ExplainReadFailure_OtherFailureQuotingAToken_IsRelayedRedacted
+              - CopilotModelCatalog_ExplainReadFailure_Cancellation_PassesUnchanged
               - CopilotModelCatalog_Construct_DisposedRuntime_Throws
               - CopilotModelCatalog_ListAsync_RuntimeDisposedLater_Throws
               - CopilotModelCatalog_RefreshAsync_ReadsTheServiceAgain

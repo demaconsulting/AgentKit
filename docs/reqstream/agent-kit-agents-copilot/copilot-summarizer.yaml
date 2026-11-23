@@ -112,10 +112,10 @@ sections:
 
           - id: AgentKitAgentsCopilot-CopilotSummarizer-KeepsTokensOutOfFailures
             title: >-
-              The summarizer shall fail a consolidation the runtime or the SDK fails with a redacted
-              copy of the same kind — its message, and every exception in its chain, with every token
-              the runtime's sign-in knows and any text shaped like a GitHub token redacted — never the
-              SDK's own exception.
+              The summarizer shall fail a consolidation the runtime or the SDK fails, opening its
+              session or taking its turn, with a redacted copy of the same kind — its message, and
+              every exception in its chain, with every token the runtime's sign-in knows and any text
+              shaped like a GitHub token redacted — never the SDK's own exception.
             tags: [security]
             justification: |
               A consolidation failure reaches the host through the session engine, which rethrows it,
@@ -124,3 +124,4 @@ sections:
               exception of the same kind, which a host still catches as before.
             tests:
               - CopilotSummarizer_Consolidate_FailureQuotingAToken_IsRelayedRedacted
+              - CopilotSummarizer_Consolidate_OpenFailureQuotingAToken_IsRelayedRedacted

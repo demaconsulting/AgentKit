@@ -304,7 +304,11 @@ internal sealed class CopilotAgent : AIAgent
     /// <param name="onEvent">The run's event handler.</param>
     /// <param name="cancellationToken">Cancels the open.</param>
     /// <returns>The opened channel. Ownership passes to the caller.</returns>
-    /// <exception cref="InvalidOperationException">The opener or resumer returned <see langword="null"/>.</exception>
+    /// <exception cref="InvalidOperationException">
+    ///     The opener or resumer returned <see langword="null"/>, or the runtime or the SDK failed to
+    ///     open the session, raised as a redacted copy.
+    /// </exception>
+    /// <exception cref="IOException">The connection to the runtime failed while opening the session, raised as a redacted copy.</exception>
     private async Task<ICopilotTurnChannel> OpenAsync(
         CopilotAgentSession conversation,
         bool ephemeral,
@@ -315,14 +319,14 @@ internal sealed class CopilotAgent : AIAgent
         {
             var resume = _resumeOptions();
             resume.Events.OnEvent = onEvent;
-            return await _resumer(sessionId, resume, cancellationToken).ConfigureAwait(false)
+            return await CopilotSignIn.RelayAsync(() => _resumer(sessionId, resume, cancellationToken), _signIn).ConfigureAwait(false)
                 ?? throw new InvalidOperationException("The Copilot channel resumer returned null.");
         }
 
         var create = _createOptions();
         create.Events.OnEvent = onEvent;
         var opener = ephemeral ? _ephemeralOpener : _opener;
-        var channel = await opener(create, cancellationToken).ConfigureAwait(false)
+        var channel = await CopilotSignIn.RelayAsync(() => opener(create, cancellationToken), _signIn).ConfigureAwait(false)
             ?? throw new InvalidOperationException("The Copilot channel opener returned null.");
 
         conversation.SessionId = channel.SessionId;

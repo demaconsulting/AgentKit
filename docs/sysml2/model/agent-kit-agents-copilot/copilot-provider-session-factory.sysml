@@ -23,6 +23,6 @@ package AgentKitAgentsCopilot_CopilotProviderSessionFactory {
     dependency CopilotProviderSessionFactory to AgentKitCore_ModelSettings::ModelSettings;
 
     // The factory hands every session the runtime's sign-in, whose tokens its refusals are redacted
-    // of.
+    // of, and relays a failure to open a session as a redacted copy made with it.
     dependency CopilotProviderSessionFactory to AgentKitAgentsCopilot_CopilotSignIn::CopilotSignIn;
 }

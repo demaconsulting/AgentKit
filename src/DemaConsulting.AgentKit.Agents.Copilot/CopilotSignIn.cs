@@ -1090,6 +1090,38 @@ internal static partial class CopilotSignIn
     }
 
     /// <summary>
+    ///     Runs a runtime or SDK operation, relaying its failure as <see cref="RedactRelayed"/> builds it.
+    /// </summary>
+    /// <remarks>
+    ///     A failure the operation throws synchronously is relayed the same way as one its task
+    ///     carries. A failure that is relayed unchanged is rethrown with its own stack.
+    /// </remarks>
+    /// <typeparam name="T">The operation's result.</typeparam>
+    /// <param name="operation">The operation, such as opening a runtime session.</param>
+    /// <param name="plan">
+    ///     The sign-in whose tokens are removed, or <see langword="null"/> to remove token-shaped text
+    ///     only.
+    /// </param>
+    /// <returns>The operation's result.</returns>
+    internal static async Task<T> RelayAsync<T>(Func<Task<T>> operation, CopilotSignInPlan? plan)
+    {
+        try
+        {
+            return await operation().ConfigureAwait(false);
+        }
+        catch (Exception failure)
+        {
+            var relayed = RedactRelayed(failure, plan);
+            if (ReferenceEquals(relayed, failure))
+            {
+                throw;
+            }
+
+            throw relayed;
+        }
+    }
+
+    /// <summary>
     ///     Tries the Copilot CLI sign-in: checks the account against the requested host and reads its
     ///     token.
     /// </summary>

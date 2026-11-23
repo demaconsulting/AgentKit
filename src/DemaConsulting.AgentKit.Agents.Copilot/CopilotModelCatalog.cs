@@ -64,8 +64,11 @@ namespace DemaConsulting.AgentKit.Agents.Copilot;
 ///     fails with an <see cref="InvalidOperationException"/> that carries the sign-in message, with a
 ///     redacted copy of the SDK's exception — its type name, message and stack trace, with every
 ///     token the runtime's sign-in knows removed — as the inner exception. A runtime disposed by its
-///     host fails with <see cref="ObjectDisposedException"/>. Any other failure, including a
-///     cancellation no caller requested, propagates unchanged. Nothing is cached.
+///     host fails with <see cref="ObjectDisposedException"/>. Any other failure — a lost connection
+///     quoting the runtime's standard error, say, or an RPC error — is raised as a redacted copy of
+///     the same kind (an <see cref="IOException"/> or a <see cref="TimeoutException"/> keeps its type;
+///     any other type becomes an <see cref="InvalidOperationException"/>), never the SDK's own
+///     exception. A cancellation carrying nothing to redact passes unchanged. Nothing is cached.
 ///     </para>
 ///     <para>
 ///     Cached, single-flight and safe for concurrent use; see <see cref="CachingModelCatalog"/>.
@@ -282,12 +285,40 @@ public sealed class CopilotModelCatalog : CachingModelCatalog
                 var list = await client.Rpc.Models.ListAsync(cancellationToken).ConfigureAwait(false);
                 return list?.Models ?? [];
             }
-            catch (InvalidOperationException exception) when (exception is not ObjectDisposedException)
+            catch (Exception exception)
             {
-                throw ExplainListFailure(exception, runtime.SignIn);
+                var explained = ExplainReadFailure(exception, runtime.SignIn);
+                if (ReferenceEquals(explained, exception))
+                {
+                    throw;
+                }
+
+                throw explained;
             }
         };
     }
+
+    /// <summary>
+    ///     Builds the failure a read fails with in place of the client's own.
+    /// </summary>
+    /// <remarks>
+    ///     A connection that was lost or never signed in — an <see cref="InvalidOperationException"/>
+    ///     other than a disposal — is explained with the sign-in message (<see cref="ExplainListFailure"/>).
+    ///     Any other failure, such as a lost connection quoting the runtime's standard error or an RPC
+    ///     error carrying the service's data, is relayed as a redacted copy of the same kind
+    ///     (<see cref="CopilotSignIn.RedactRelayed"/>). A cancellation or disposal carrying nothing to
+    ///     redact is returned unchanged. The client's own exception is never kept.
+    /// </remarks>
+    /// <param name="failure">The client's failure.</param>
+    /// <param name="signIn">
+    ///     The runtime's sign-in, whose tokens are redacted, or <see langword="null"/> to redact
+    ///     token-shaped text only.
+    /// </param>
+    /// <returns>The failure to throw: <paramref name="failure"/> itself when it passes unchanged.</returns>
+    internal static Exception ExplainReadFailure(Exception failure, CopilotSignInPlan? signIn) =>
+        failure is InvalidOperationException invalid and not ObjectDisposedException
+            ? ExplainListFailure(invalid, signIn)
+            : CopilotSignIn.RedactRelayed(failure, signIn);
 
     /// <summary>
     ///     Builds the failure a read that could not reach the service fails with.

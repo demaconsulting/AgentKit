@@ -19,7 +19,7 @@ package AgentKitAgentsCopilot_CopilotAgent {
     dependency CopilotAgent to CopilotTurnChannel;
 
     // A session error the agent fails a run with quotes the runtime's error redacted with the
-    // runtime's sign-in, and a turn's runtime or SDK failure is relayed as a redacted copy, so no
+    // runtime's sign-in, and a turn's or an open's runtime or SDK failure is relayed as a redacted copy, so no
     // token it knows reaches the exception.
     dependency CopilotAgent to AgentKitAgentsCopilot_CopilotSignIn::CopilotSignIn;
 }

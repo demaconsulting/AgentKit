@@ -107,7 +107,9 @@ one.
 **Purpose:** Produce the record that consolidates one span of history.
 
 **Algorithm:** Reject a null request and a canceled token. Build fresh, tool-free engine session
-options carrying the model or the selection, open a session from them, send the composed
+options carrying the model or the selection, open a session from them through
+`CopilotSignIn.RelayAsync` — so a failure to open it is relayed redacted, as a failure of the send is
+below — send the composed
 consolidation prompt as the only message —
 a `MessageOptions` carrying the prompt and nothing else — and return the answer. A failure of the
 send is relayed through `CopilotSignIn.RedactRelayed(failure, signIn)`: a new exception of the same
@@ -143,6 +145,7 @@ for.
 | Null `request` | `ArgumentNullException` propagates |
 | Cancellation before opening | `OperationCanceledException`; nothing is opened |
 | Opener returned null | `InvalidOperationException` propagates |
+| Opening the session fails | Relayed as a redacted copy of the same kind (`RelayAsync`); nothing to release |
 | Session answered nothing | Empty record returned |
 | Failure during the turn | Relayed as a redacted copy of the same kind (`RedactRelayed`); the session is released |
 
@@ -152,8 +155,9 @@ for.
   *Summarizer Unit Design*; and `ModelSelection`; see *ModelSettings Unit Design*.
 - **CopilotAgentFactory** — supplies the tool-free engine session options; see
   *CopilotAgentFactory Unit Design*.
-- **CopilotSignIn** — relays a consolidation's runtime or SDK failure redacted with the runtime's
-  sign-in (`RedactRelayed(failure, plan)`); see *CopilotSignIn Unit Design*.
+- **CopilotSignIn** — relays a consolidation's runtime or SDK failure, opening its session or taking
+  its turn, redacted with the runtime's sign-in (`RelayAsync(operation, plan)`,
+  `RedactRelayed(failure, plan)`); see *CopilotSignIn Unit Design*.
 - **CopilotTurnChannel** — opens and owns each short-lived runtime session; see *CopilotTurnChannel
   Unit Design*.
 - **CopilotRuntime** — the runtime every consolidation runs on, whose client the opener reads at each

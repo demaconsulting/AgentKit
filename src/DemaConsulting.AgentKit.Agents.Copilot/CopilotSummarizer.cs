@@ -165,7 +165,8 @@ public sealed class CopilotSummarizer : ISummarizer
     ///     a model declining to answer is a thing that happens rather than a defect to escalate.
     ///     </para>
     ///     <para>
-    ///     A consolidation the runtime or the SDK fails is raised as a redacted copy of the same kind
+    ///     A consolidation the runtime or the SDK fails — opening its session or taking its turn — is
+    ///     raised as a redacted copy of the same kind
     ///     — its message, and every exception in its chain, with every token the runtime's sign-in
     ///     knows and any text shaped like a GitHub token removed — never as the SDK's own exception.
     ///     A cancellation carrying nothing to redact passes unchanged.
@@ -190,7 +191,7 @@ public sealed class CopilotSummarizer : ISummarizer
             _model,
             selection: _selection);
 
-        var channel = await _opener(config, cancellationToken).ConfigureAwait(false)
+        var channel = await CopilotSignIn.RelayAsync(() => _opener(config, cancellationToken), _signIn).ConfigureAwait(false)
             ?? throw new InvalidOperationException("The Copilot channel opener returned null.");
 
         try

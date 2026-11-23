@@ -238,3 +238,4 @@ sections:
               - CopilotSignIn_RedactRelayed_CleanCancellationOrDisposal_PassesUnchanged
               - CopilotSignIn_RedactRelayed_CancellationOrDisposalCarryingASecret_IsRebuiltRedacted
               - CopilotSignIn_RedactRelayed_AlreadyRelayed_IsReturnedUnchanged
+              - CopilotSignIn_RelayAsync_FailureThrownEitherWay_IsRelayedRedacted

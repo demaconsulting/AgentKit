@@ -77,8 +77,9 @@ runtime's own identifier, any nested agent's traffic entering the transcript, an
 that is not the one the runtime reported, any non-zero reading before a first turn, any turn accepted
 with no usage reported, any turn accepted after the runtime rewrote the history, any turn sent on a
 session an earlier turn left unable to account for the conversation, any empty answer recorded in
-place of a runtime failure, any released session that accepts a turn, or any disposal that reaches
-the caller's client constitutes a failure.
+place of a runtime failure, any turn failure that reaches the caller as the SDK's own exception or
+carries a token anywhere in its chain, any released session that accepts a turn, or any disposal
+that reaches the caller's client constitutes a failure.
 
 ### Test Scenarios
 

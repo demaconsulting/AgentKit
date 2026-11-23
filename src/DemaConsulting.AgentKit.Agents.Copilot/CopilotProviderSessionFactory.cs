@@ -126,7 +126,9 @@ public sealed class CopilotProviderSessionFactory : IProviderSessionFactory
 
     /// <summary>
     ///     The sign-in of the runtime the sessions run on, whose tokens each session redacts from the
-    ///     runtime text a refusal quotes, or <see langword="null"/> to redact token-shaped text only.
+    ///     runtime text a refusal quotes and from a turn's relayed failure, and this factory from a
+    ///     relayed failure to open a session, or <see langword="null"/> to redact token-shaped text
+    ///     only.
     /// </summary>
     private readonly CopilotSignInPlan? _signIn;
 
@@ -256,7 +258,12 @@ public sealed class CopilotProviderSessionFactory : IProviderSessionFactory
     ///     otherwise discard the only reference to a session the runtime had just created.
     ///     </para>
     /// </remarks>
-    /// <exception cref="InvalidOperationException">The channel opener returned <see langword="null"/>.</exception>
+    /// <exception cref="InvalidOperationException">
+    ///     The channel opener returned <see langword="null"/>, or the runtime or the SDK failed to open
+    ///     the session, raised as a redacted copy (an SDK failure of a type outside the base class
+    ///     library arrives as this type).
+    /// </exception>
+    /// <exception cref="IOException">The connection to the runtime failed while opening the session, raised as a redacted copy.</exception>
     public async Task<IProviderSession> CreateAsync(
         ProviderSessionSeed seed,
         CancellationToken cancellationToken = default)
@@ -267,7 +274,7 @@ public sealed class CopilotProviderSessionFactory : IProviderSessionFactory
         var observer = new CopilotSessionObserver();
         var config = BuildProviderSessionConfig(seed, observer.OnEvent, _model, _workingDirectory, _selection);
 
-        var channel = await _opener(config, cancellationToken).ConfigureAwait(false)
+        var channel = await CopilotSignIn.RelayAsync(() => _opener(config, cancellationToken), _signIn).ConfigureAwait(false)
             ?? throw new InvalidOperationException("The Copilot channel opener returned null.");
 
         try

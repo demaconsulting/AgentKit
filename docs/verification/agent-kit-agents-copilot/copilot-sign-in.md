@@ -21,11 +21,10 @@ Copilot runtime, reads the real user's Copilot CLI home or touches a credential 
 - **`BuildHelperEnvironment` and `BuildHelperOptions`** take the host environment and a fake machine
   for the GitHub CLI and `node` lookups, and return the environment and the SDK client options, which
   the tests inspect.
-- **`ExplainUnauthenticated`, `Classify`, `NormalizeHost`, `CreateSessionTokenProvider`,
-  `RedactFailure`, `RedactRelayed` and `Report`** are pure, or take a fabricated `GetAuthStatusResponse`, SDK
-  token-provider arguments, a fabricated exception chain, and a logger that keeps every entry. The
-  redacted copy's and the relayed failure's tests walk the whole exception chain, every inner
-  exception of an aggregate included.
+- **`ExplainUnauthenticated`, `Classify`, `NormalizeHost`, `CreateSessionTokenProvider`, `RedactFailure`,
+  `RedactRelayed`, `RelayAsync` and `Report`** are pure, or take a fabricated `GetAuthStatusResponse`, SDK
+  token-provider arguments, a fabricated exception chain, and a logger that keeps every entry. The redacted copy's and
+  the relayed failure's tests walk the whole exception chain, every inner exception of an aggregate included.
 
 A sentinel token is used wherever a token appears, and the tests assert it never appears in a
 finding, a message, a log entry or a string form. The redaction tests also use secrets that are not
@@ -290,6 +289,7 @@ twenty exceptions is copied to `MaximumDepth`, sixteen.
 - `CopilotSignIn_RedactRelayed_CleanCancellationOrDisposal_PassesUnchanged`
 - `CopilotSignIn_RedactRelayed_CancellationOrDisposalCarryingASecret_IsRebuiltRedacted`
 - `CopilotSignIn_RedactRelayed_AlreadyRelayed_IsReturnedUnchanged`
+- `CopilotSignIn_RelayAsync_FailureThrownEitherWay_IsRelayedRedacted`
 
 Error paths and boundaries. The first relays a thrown failure in the SDK's shape — an
 `InvalidOperationException` reading `Session error: …` that quotes a known secret and a GitHub-shaped
@@ -313,3 +313,9 @@ instance. The fourth relays an `OperationCanceledException` whose cause quotes a
 not the same instance — the cancellation keeping its token, the disposal's message redacted, and both
 chains clean. The fifth asserts that a failure already built around a redacted copy, and a failure
 relayed once, are each returned unchanged, so relaying twice changes nothing.
+
+The sixth runs operations through `RelayAsync`: one that throws an `IOException` quoting a secret
+synchronously, before any task exists, and one whose task carries a `JsonException` quoting it, are
+relayed as a new `IOException` and a new `InvalidOperationException` reading `<redacted>` in its place
+with clean chains; a clean `OperationCanceledException` arrives as the same instance; and a
+successful operation's result is returned.

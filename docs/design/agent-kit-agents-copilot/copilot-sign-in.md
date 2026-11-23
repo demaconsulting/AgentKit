@@ -317,6 +317,18 @@ cannot catch a type it does not reference.
 
 **Postconditions:** The exception to throw; it never throws itself.
 
+#### RelayAsync&lt;T&gt;(operation, plan)
+
+**Purpose:** Run one runtime or SDK operation, such as opening a session, so its failure reaches the
+caller only as `RedactRelayed` builds it.
+
+**Algorithm:** Invoke the operation and await its task inside one guard, so a failure thrown
+synchronously and one the task carries are treated alike. On a failure, call
+`RedactRelayed(failure, plan)`: rethrow with `throw;` when it returns the failure itself, and throw
+the result otherwise.
+
+**Postconditions:** The operation's result, or a relayed failure.
+
 ### Error Handling
 
 | Condition | Handling |
@@ -361,7 +373,9 @@ calls `ExplainUnauthenticated`; the `CopilotRuntime` constructor calls `Classify
 `ExplainListFailure` calls `RedactFailure`; `CopilotAgent` (a session error) and
 `CopilotProviderSession` (its refusals) call `Redact(plan, text)`; `CopilotAgent`,
 `CopilotProviderSession` and `CopilotSummarizer` call `RedactRelayed` for a turn's failure;
-`CopilotRuntimeOptions` calls `NormalizeHost`.
+`CopilotAgent`, `CopilotProviderSessionFactory` and `CopilotSummarizer` call `RelayAsync` to open a
+session; `CopilotModelCatalog`'s `ExplainReadFailure` calls `RedactRelayed` for any other listing
+failure; `CopilotRuntimeOptions` calls `NormalizeHost`.
 
 ### Untested Platforms
 

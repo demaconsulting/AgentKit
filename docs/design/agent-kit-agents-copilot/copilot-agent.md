@@ -59,9 +59,9 @@ public, because a host needs its `SessionId` to delete a finished conversation.
 - **`_name`** (`string?`) — The host's name for the agent, or null when the host supplied none or a
   blank one.
 - **`_signIn`** (`CopilotSignInPlan?`) — The sign-in of the runtime the sessions run on, whose tokens
-  are redacted from a session error and from a turn's relayed failure, or null to redact
+  are redacted from a session error and from a relayed turn or open failure, or null to redact
   token-shaped text only. Supplied by `CopilotAgentFactory` (`runtime.SignIn` in production), passed
-  to each run's `UpdateMapper` and `SendAsync`.
+  to each run's `UpdateMapper` and `SendAsync`, and used by `OpenAsync`.
 - **`DefaultName`** (`const string`) — `GitHub Copilot Agent`, reported when the host named none.
 - **`DefaultDescription`** (`const string`) — `An AI agent powered by GitHub Copilot`, reported by
   every agent.
@@ -205,7 +205,11 @@ options, set the handler the same way, create the session through the opener, an
 channel's `SessionId` on the conversation at once. When `ephemeral`, the session is created through
 the ephemeral opener instead, whose sessions are deleted when released: nothing could
 ever resume that session, so keeping it would only accumulate persisted state under the runtime's data
-directory. A null channel from either delegate is refused.
+directory. A null channel from either delegate is refused. Each open is run through
+`CopilotSignIn.RelayAsync` with the runtime's sign-in, so a failure of the create or resume request —
+a lost connection quoting the runtime's standard error, or an RPC error carrying the runtime's data —
+is relayed as a redacted copy of the same kind, never the SDK's own exception; AgentKit's own refusals
+during the open, already redacted around a redacted cause, and a clean cancellation pass unchanged.
 
 The handler is set on the options before the session is opened because the SDK registers it before
 the create or resume request is issued, which is what makes the run's first events observable. The
@@ -373,7 +377,7 @@ Each is deliberate and recorded so it is not mistaken for an omission:
 | Serializing another kind of agent's session | `InvalidOperationException` propagates |
 | Serialized form not an object; `sessionId` not string/null; `stateBag` not object/null | `ArgumentException` |
 | Opener or resumer returned null | `InvalidOperationException` propagates |
-| Creating or resuming the runtime session fails | Propagates; nothing to release; gate released |
+| Creating or resuming the runtime session fails | Relayed redacted, same kind; nothing to release; gate released |
 | Root-agent session error during the turn | Run fails with `InvalidOperationException`, its text redacted |
 | The turn fails | Relayed as a redacted copy of the same kind through the stream; session handle released (see below) |
 | Caller cancels, or stops reading early | Turn canceled and awaited; session handle released (see below) |
@@ -386,21 +390,20 @@ resume a session that never took a turn ("Session not found", observed by the li
 run), so after a first run that failed or was canceled before its turn reached the runtime, a later
 run's resume fails and propagates, as in the table above; the host starts a new conversation.
 
-A turn's own failure is the SDK's exception, whose message, chain and RPC data can quote a token, so
-it is relayed through `CopilotSignIn.RedactRelayed`: a new exception of the same kind, with a
-redacted message and a redacted copy as its cause, which a host still catches as before; a type
-outside the base class library arrives as `InvalidOperationException`, and a cancellation carrying
-nothing to redact passes unchanged. The session error, whose text AgentKit composes into its own
-exception, is redacted with no cause. A failure creating or resuming the session is the SDK's
-exception and is passed on unchanged.
+A turn's own failure, and a failure creating or resuming the session, is the SDK's exception, whose
+message, chain and RPC data can quote a token, so it is relayed through `CopilotSignIn.RedactRelayed`:
+a new exception of the same kind, with a redacted message and a redacted copy as its cause, which a
+host still catches as before; a type outside the base class library arrives as
+`InvalidOperationException`, and a cancellation carrying nothing to redact passes unchanged. The
+session error, whose text AgentKit composes into its own exception, is redacted with no cause.
 
 ### Dependencies
 
 - **CopilotAgentFactory** — supplies the builder delegates for the create and resume options, so
   every session this agent opens is confined; see *CopilotAgentFactory Unit Design*.
 - **CopilotSignIn** — redacts a session error's text with the runtime's sign-in
-  (`Redact(plan, text)`), and relays a turn's runtime or SDK failure redacted
-  (`RedactRelayed(failure, plan)`); see *CopilotSignIn Unit Design*.
+  (`Redact(plan, text)`), and relays a turn's or an open's runtime or SDK failure redacted
+  (`RedactRelayed(failure, plan)`, `RelayAsync(operation, plan)`); see *CopilotSignIn Unit Design*.
 - **CopilotTurnChannel** — supplies `ICopilotTurnChannel`, `CopilotChannelOpener` and
   `CopilotChannelResumer`, and in production the channels that keep a conversation's session on
   release and delete the session of a run made without one; see *CopilotTurnChannel Unit Design*.

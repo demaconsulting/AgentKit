@@ -855,13 +855,14 @@ so no path can acquire capability another path withholds.
   shaped like a GitHub token, and a runtime or SDK failure kept as a cause (a start failure's, a model
   listing failure's) is a redacted copy carrying the original's type name, message and stack trace,
   never the original. A runtime or SDK failure AgentKit relays to a host — a turn that fails on an
-  agent, a provider session or a consolidation — is a new exception of the same base class library
-  type with a redacted message and a redacted copy as its cause (`CopilotSignIn.RedactRelayed`); only
-  a cancellation or disposal carrying nothing to redact passes unchanged, and a type outside the base
-  class library arrives as `InvalidOperationException`. The boundary is deliberate: conversation
-  content the model already received — tool results and the event objects carried as raw
-  representations — is not rewritten, because the transcript must agree with the runtime's
-  conversation.
+  agent, a provider session or a consolidation, a session the runtime fails to create or resume for
+  any of them, or a model listing failure other than a lost or unsigned connection — is a new
+  exception of the same base class library type with a redacted message and a redacted copy as its
+  cause (`CopilotSignIn.RedactRelayed`); only a cancellation or disposal carrying nothing to redact
+  passes unchanged, and a type outside the base class library arrives as `InvalidOperationException`.
+  The boundary is deliberate: conversation content the model already received — tool results and the
+  event objects carried as raw representations — is not rewritten, because the transcript must agree
+  with the runtime's conversation.
 
 Two further measures protect the conversation rather than the machine: the runtime's own compaction
 threshold is held clear of the engine's rotation point, with every runtime rewrite of the

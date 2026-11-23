@@ -437,6 +437,35 @@ public class CopilotProviderSessionFactoryTests
     }
 
     /// <summary>
+    ///     Proves a failure opening a session — an RPC error of a type outside the base class library
+    ///     whose message and data quote a token — is relayed as a new
+    ///     <see cref="InvalidOperationException"/> naming the original type in its redacted cause, with
+    ///     no secret anywhere in its chain.
+    /// </summary>
+    [Fact]
+    public async Task CopilotProviderSessionFactory_Create_OpenFailureQuotingAToken_IsRelayedRedacted()
+    {
+        // Arrange: an opener that fails as the SDK's RPC transport does, quoting both values
+        const string secret = "s3cr3t-factory-xyz";
+        const string shaped = "gho_FactorySecret123";
+        var refused = new CopilotSignInTests.RpcErrorException($"session.create refused {secret} {shaped}", new { token = secret });
+        var factory = new CopilotProviderSessionFactory(
+            (_, _) => Task.FromException<ICopilotTurnChannel>(refused),
+            model: null,
+            signIn: CopilotSignInTests.PlanKnowing(secret));
+
+        // Act
+        var failure = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => factory.CreateAsync(new ProviderSessionSeed(null, [], []), TestContext.Current.CancellationToken));
+
+        // Assert
+        Assert.Equal("session.create refused <redacted> gho_<redacted>", failure.Message);
+        var copy = Assert.IsType<CopilotRedactedException>(failure.InnerException);
+        Assert.Equal(typeof(CopilotSignInTests.RpcErrorException).FullName, copy.OriginalTypeName);
+        CopilotSignInTests.AssertNoSecretInChain(failure, secret, shaped);
+    }
+
+    /// <summary>
     ///     Proves a missing runtime is refused where the application composed its provider, rather
     ///     than at the first rotation.
     /// </summary>

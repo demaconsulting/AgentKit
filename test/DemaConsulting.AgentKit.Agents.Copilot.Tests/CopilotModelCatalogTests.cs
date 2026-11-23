@@ -394,6 +394,60 @@ public sealed class CopilotModelCatalogTests
     }
 
     /// <summary>
+    ///     Proves a listing failure other than a lost or unsigned connection — a lost connection
+    ///     quoting the runtime's standard error, or an RPC error of a type outside the base class
+    ///     library — is relayed as a redacted copy of the same kind, or as an
+    ///     <see cref="InvalidOperationException"/> for the RPC error, whose chain carries no secret;
+    ///     and that an <see cref="InvalidOperationException"/> still carries the sign-in message.
+    /// </summary>
+    [Fact]
+    public void CopilotModelCatalog_ExplainReadFailure_OtherFailureQuotingAToken_IsRelayedRedacted()
+    {
+        // Arrange
+        const string secret = "s3cr3t-listing-xyz";
+        const string shaped = "gho_ListingSecret123";
+        var plan = new CopilotSignInPlan { Source = CopilotSignInSource.GitHubToken, Token = secret };
+        var lost = new IOException($"CLI process exited unexpectedly.\nstderr: {secret} {shaped}");
+        var rpc = new CopilotSignInTests.RpcErrorException($"models.list failed for {secret}", new { token = secret });
+        var invalid = new InvalidOperationException($"not connected ({secret})");
+
+        // Act
+        var relayedLost = CopilotModelCatalog.ExplainReadFailure(lost, plan);
+        var relayedRpc = CopilotModelCatalog.ExplainReadFailure(rpc, plan);
+        var explained = CopilotModelCatalog.ExplainReadFailure(invalid, plan);
+
+        // Assert
+        var io = Assert.IsType<IOException>(relayedLost);
+        Assert.NotSame(lost, io);
+        Assert.Equal("CLI process exited unexpectedly.\nstderr: <redacted> gho_<redacted>", io.Message);
+        Assert.IsType<CopilotRedactedException>(io.InnerException);
+        CopilotSignInTests.AssertNoSecretInChain(io, secret, shaped);
+        var other = Assert.IsType<InvalidOperationException>(relayedRpc);
+        var copy = Assert.IsType<CopilotRedactedException>(other.InnerException);
+        Assert.Equal(typeof(CopilotSignInTests.RpcErrorException).FullName, copy.OriginalTypeName);
+        CopilotSignInTests.AssertNoSecretInChain(other, secret, shaped);
+        Assert.Equal(CopilotModelCatalog.SignInMessage, explained.Message);
+        CopilotSignInTests.AssertNoSecretInChain(explained, secret, shaped);
+    }
+
+    /// <summary>
+    ///     Proves a cancellation or a disposal that carries nothing to redact passes a listing failure
+    ///     through unchanged, so a caller's cancellation and disposal handling still applies.
+    /// </summary>
+    [Fact]
+    public void CopilotModelCatalog_ExplainReadFailure_Cancellation_PassesUnchanged()
+    {
+        // Arrange
+        using var source = new CancellationTokenSource();
+        var canceled = new OperationCanceledException("canceled", source.Token);
+        var disposed = new ObjectDisposedException(nameof(CopilotRuntime));
+
+        // Act and assert
+        Assert.Same(canceled, CopilotModelCatalog.ExplainReadFailure(canceled, signIn: null));
+        Assert.Same(disposed, CopilotModelCatalog.ExplainReadFailure(disposed, signIn: null));
+    }
+
+    /// <summary>
     ///     Builds an SDK model mirroring the service's description of <c>claude-haiku-5.5</c>.
     /// </summary>
     /// <returns>The model.</returns>

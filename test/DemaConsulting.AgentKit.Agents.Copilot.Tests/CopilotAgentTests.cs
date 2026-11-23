@@ -417,6 +417,50 @@ public class CopilotAgentTests
     }
 
     /// <summary>
+    ///     Proves a failure creating or resuming a run's runtime session — a lost connection quoting
+    ///     the runtime's standard error, or an RPC error of a type outside the base class library — is
+    ///     relayed redacted: a new exception of the same kind, or an
+    ///     <see cref="InvalidOperationException"/> for the RPC error, whose chain carries no secret.
+    /// </summary>
+    [Fact]
+    public async Task CopilotAgent_Run_OpenFailureQuotingAToken_IsRelayedRedacted()
+    {
+        // Arrange: an opener and a resumer that fail as the SDK does, quoting both values
+        const string secret = "s3cr3t-open-xyz";
+        const string shaped = "gho_AgentOpenSecret123";
+        var lost = new IOException($"CLI process exited unexpectedly.\nstderr: {secret} {shaped}");
+        var refused = new CopilotSignInTests.RpcErrorException($"resume refused for {secret}", new { token = secret });
+        var agent = CopilotAgentFactory.CreateAgent(
+            [AIFunctionFactory.Create(() => "ok", "doc_read")],
+            instructions: null,
+            onPermissionRequest: null,
+            "test-agent",
+            model: null,
+            workingDirectory: null,
+            (_, _) => Task.FromException<ICopilotTurnChannel>(lost),
+            (_, _, _) => Task.FromException<ICopilotTurnChannel>(refused),
+            signIn: CopilotSignInTests.PlanKnowing(secret));
+        var created = await agent.CreateSessionAsync(TestContext.Current.CancellationToken);
+        var resumed = (CopilotAgentSession)await agent.CreateSessionAsync(TestContext.Current.CancellationToken);
+        resumed.SessionId = "session-9";
+
+        // Act
+        var createFailure = await Assert.ThrowsAsync<IOException>(
+            () => agent.RunAsync("q", created, cancellationToken: TestContext.Current.CancellationToken));
+        var resumeFailure = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => agent.RunAsync("q", resumed, cancellationToken: TestContext.Current.CancellationToken));
+
+        // Assert
+        Assert.NotSame(lost, createFailure);
+        Assert.Equal("CLI process exited unexpectedly.\nstderr: <redacted> gho_<redacted>", createFailure.Message);
+        CopilotSignInTests.AssertNoSecretInChain(createFailure, secret, shaped);
+        var copy = Assert.IsType<CopilotRedactedException>(resumeFailure.InnerException);
+        Assert.Equal(typeof(CopilotSignInTests.RpcErrorException).FullName, copy.OriginalTypeName);
+        Assert.Equal("resume refused for <redacted>", resumeFailure.Message);
+        CopilotSignInTests.AssertNoSecretInChain(resumeFailure, secret, shaped);
+    }
+
+    /// <summary>
     ///     Proves the non-streaming run returns exactly what the stream carried, gathered into one
     ///     response.
     /// </summary>
