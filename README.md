@@ -51,7 +51,8 @@ install the [GitHub Copilot CLI][link-copilot-cli] 1.0.113 or later (`winget ins
 `brew install --cask copilot-cli` or `npm install -g @github/copilot`; `copilot --no-auto-update --version` shows the
 version AgentKit runs). AgentKit starts the installed CLI by default; to ship the SDK's bundled runtime instead, pass
 `runtimeSource: CopilotRuntimeSource.Bundled` and reference `Microsoft.Copilot.SDK` 2.0.1 directly from the host
-application. On Ollama, also add `DemaConsulting.AgentKit.Agents.Ollama` so a session is told the context window the
+application. The runtime signs in as your Copilot CLI user (`copilot login`), or with `gh auth login` or a token. On
+Ollama, also add `DemaConsulting.AgentKit.Agents.Ollama` so a session is told the context window the
 instance is actually running.
 
 ## Usage

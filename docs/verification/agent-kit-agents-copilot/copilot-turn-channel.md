@@ -216,6 +216,7 @@ failure would read as a model or tool fault rather than as a deadline nobody cho
 - `CopilotSessionChannel_Seal_ClearsInstalledPluginsFirst`
 - `CopilotSessionChannel_Seal_ServerStillEnabledAfterCreation_IsDisabledThenVerified`
 - `CopilotSessionChannel_Seal_ServerThatStaysEnabled_RefusesNamingIt`
+- `CopilotSessionChannel_Seal_RefusalNamingASecret_IsRedactedWhenRelayed`
 - `CopilotSessionChannel_NoInstalledPluginsPatch_ReplacesTheListWithAnEmptyOne`
 
 The first runs the opening protocol over a confined engine configuration with a discovery that
@@ -231,6 +232,10 @@ a non-GitHub server enabled on the first listing — the case of a source discov
 and disabled on the second, and asserts only that server was disabled, the configuration was listed
 again, and the session was accepted. The sixth keeps reporting the server enabled and asserts the
 refusal names it and points to the signed-in account or its organization among the sources to check.
+The seventh keeps a server enabled whose name quotes the secret `s3cr3t-value-xyz` and runs the seal
+through `CopilotSignIn.RelayAsync` with a sign-in that knows it, as every opener does: the refusal
+arrives as a new `InvalidOperationException` naming `'docs-<redacted>'`, with a redacted copy as its
+cause, and `SecretAssert` finds the secret nowhere in the chain.
 
 The last asserts the plugin patch carries an empty installed list rather than none, which the runtime
 would read as no change.
@@ -241,3 +246,18 @@ in *AgentKitAgentsCopilot System Verification Design* runs the protocol end to e
 factory's own configurations, and the opt-in live suite shows on the real runtime the created path
 (L12a, L12c) and the resume-time disabled list on a session resumed through the channel (L12d); the
 abandonment policy itself is reviewed.
+
+#### AgentKitAgentsCopilot-CopilotTurnChannel-AppliesTheHostsTokenProvider: Sessions on a Provider's Runtime Ask It
+
+**Test**: `CopilotSessionChannel_Open_RuntimeWithTokenProvider_AppliesItToTheSession`
+
+Normal operation. On a runtime built with a sign-in plan carrying a token provider, over a client that
+can never start, `CreateConfinedSessionAsync` and `ResumeConfinedSessionAsync` each fail at discovery
+— so no session is created — after setting a session token provider on the options; on a runtime
+without one, none is set. Invoking the session provider with the SDK's arguments for
+`https://example.ghe.com` and `Refresh` asks the host's provider once, with that host and
+`IsRefresh` true, and hands back its token. That the runtime then asks the session provider is shown
+by the opt-in live suite (L-S4). The discovery's start failure goes through
+`CopilotRuntime.StartClientAsync` with the runtime's sign-in, so its explanation is redacted and its
+cause is a redacted copy of the runtime's failure; that is asserted in *CopilotRuntime Unit
+Verification Design*.

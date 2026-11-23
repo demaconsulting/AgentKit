@@ -328,9 +328,10 @@ sections:
         title: >-
           The library shall report a Copilot runtime that cannot start — no installed CLI found, a CLI
           too old or too new for the library, a CLI whose version cannot be read, a bundled runtime
-          that was not provisioned, or a runtime that is not signed in — with the runtime's own error
+          that was not provisioned, or a runtime that is not signed in, listing what each sign-in
+          source found — with the runtime's own error
           where there is one and the likely cause and remedy, and shall pass a canceled start through
-          unchanged.
+          as a cancellation, unchanged unless it carries a cause or a token to redact.
         justification: |
           Each of these failures otherwise surfaces as an error that names neither the cause nor the
           remedy: a missing file, an SDK handshake failure that tells the user to update the SDK, or
@@ -349,10 +350,12 @@ sections:
           - AgentKitAgentsCopilot-CopilotCli-ReportsWhereItLooked
           - AgentKitAgentsCopilot-CopilotCli-RequiresTheMinimumVersion
           - AgentKitAgentsCopilot-CopilotCli-ExplainsAProbeThatFails
+          - AgentKitAgentsCopilot-CopilotSignIn-ReportsWhatEachSourceFound
         tests:
           - AgentKitAgentsCopilot_Runtime_FailedStart_IsExplained
           - AgentKitAgentsCopilot_Runtime_UnsupportedCli_IsRefusedWithUpgradeGuidance
           - AgentKitAgentsCopilot_Runtime_Unauthenticated_IsRefusedWithSignInGuidance
+          - AgentKitAgentsCopilot_Runtime_NoSourceSignsIn_RefusalListsWhatEachSourceFound
 
       - id: AgentKitAgentsCopilot-Runtime-InstalledCliByDefault
         title: >-
@@ -371,8 +374,8 @@ sections:
           read first and an older CLI is refused with how to upgrade it. Which executable runs is the
           host's choice, never the ambient environment, and either executable runs in Empty mode, as a
           child process with the host's Copilot variables withheld, on the data directory the library
-          owns, so the choice never changes what reaches the model. Authentication is unchanged: the
-          CLI's own sign-in is not used.
+          owns, so the choice never changes what reaches the model. How the runtime signs in does not
+          depend on which executable runs (see AgentKitAgentsCopilot-Runtime-SignsInAsTheUser).
         children:
           - AgentKitAgentsCopilot-CopilotRuntime-SpawnsTheSelectedRuntime
           - AgentKitAgentsCopilot-CopilotRuntime-RefusesAnUnsupportedCli
@@ -448,6 +451,85 @@ sections:
         tests:
           - AgentKitAgentsCopilot_Runtime_ClientOptionsAreConfined
           - AgentKitAgentsCopilot_Runtime_ForeignDataDirectory_IsRefused
+
+      - id: AgentKitAgentsCopilot-Runtime-SignsInAsTheUser
+        title: >-
+          The library shall sign the Copilot runtime in from, in order, a token or token provider the
+          host supplies, a GitHub token in the environment, the user's Copilot CLI sign-in unless the
+          host turns it off, and the runtime's own fallbacks, using the GitHub host that belongs to the
+          source used, and shall take nothing from the user's Copilot CLI configuration but the
+          signed-in account's host and login.
+        tags: [security]
+        justification: |
+          A user signed in only with the Copilot CLI expects an application built on it to work, and
+          a user whose GitHub CLI and Copilot CLI are signed in on different hosts expects the Copilot
+          account; before this, such a runtime was refused or signed in to another host without
+          notice. The order follows the Copilot CLI's own, so the runtime signs in as copilot would in
+          the same shell, and lets a deliberate per-process token win over an ambient per-user
+          sign-in. Sharing only the account entry keeps the user's MCP servers, hooks, agents, skills,
+          plugins, instructions, settings and history out of a confined agent: the confined runtime's
+          mode, environment and data directory are unchanged, and it receives only a token and a host.
+        children:
+          - AgentKitAgentsCopilot-CopilotSignIn-OrdersTheSources
+          - AgentKitAgentsCopilot-CopilotSignIn-KeepsTheHostWithTheSource
+          - AgentKitAgentsCopilot-CopilotSignIn-RefusesAnInvalidEnvironmentHost
+          - AgentKitAgentsCopilot-CopilotSignIn-ReusesTheCopilotCliSignIn
+          - AgentKitAgentsCopilot-CopilotSignIn-SharesOnlyTheAccountEntry
+          - AgentKitAgentsCopilot-CopilotSignIn-FallsThroughOnFailure
+          - AgentKitAgentsCopilot-CopilotSignIn-AsksTheHostsTokenProvider
+          - AgentKitAgentsCopilot-CopilotRuntime-UsesTheResolvedSignIn
+          - AgentKitAgentsCopilot-CopilotRuntime-ReportsHowItSignedIn
+          - AgentKitAgentsCopilot-CopilotRuntime-SuppliesTheSessionSignIn
+          - AgentKitAgentsCopilot-CopilotRuntime-OffersOnlyNeutralOptions
+          - AgentKitAgentsCopilot-CopilotTurnChannel-AppliesTheHostsTokenProvider
+          - AgentKit-OTS-MicrosoftCopilotSDK-GitHubAuthentication
+        tests:
+          - AgentKitAgentsCopilot_Runtime_SignIn_FollowsTheSourceOrderWithTheSourcesHost
+
+      - id: AgentKitAgentsCopilot-Runtime-KeepsTokensOutOfFailures
+        title: >-
+          The library shall put no token the runtime's sign-in knows, and no text shaped like a GitHub
+          token, in any exception it raises or keeps as a cause: the runtime's start failure and its
+          redacted cause, a session error that fails an agent's run, a turn the runtime or the SDK
+          fails on an agent, a provider session or a consolidation, a session the runtime or the SDK
+          fails to create or resume for an agent, a provider session or a consolidation, a session the
+          host asks the runtime to delete, a started runtime's status read, a canceled start's cause,
+          a provider session's refusals, a launch refusal, a failed version probe and its cause,
+          and a model listing failure and its redacted cause; and shall put none in any entry it or
+          the SDK writes to the host's logger.
+        tags: [security]
+        justification: |
+          An exception is built to be shown, logged and attached to crash reports, which print its
+          whole chain. The runtime and the SDK may quote any token they were given in their own error
+          text, so every place AgentKit composes or keeps such text redacts it, and a runtime or SDK
+          failure kept as a cause is a redacted copy rather than the original. A relayed runtime or
+          SDK failure is a new exception of the same base class library type with a redacted message
+          and a redacted copy as its cause; only a cancellation or disposal carrying nothing to
+          redact passes unchanged. A log entry is built to be shared in the same way, so every entry
+          reaches the host's logger through one redacting logger. The conversation content the model
+          already received is left as the runtime produced it: rewriting it would make the transcript
+          disagree with the runtime's conversation.
+        children:
+          - AgentKitAgentsCopilot-CopilotSignIn-ReportsWhatEachSourceFound
+          - AgentKitAgentsCopilot-CopilotSignIn-RedactsLogEntries
+          - AgentKitAgentsCopilot-CopilotSignIn-RedactsWithoutAPlan
+          - AgentKitAgentsCopilot-CopilotSignIn-KeepsOnlyARedactedCause
+          - AgentKitAgentsCopilot-CopilotSignIn-RelaysFailuresRedacted
+          - AgentKitAgentsCopilot-CopilotRuntime-ExplainsAMissingRuntime
+          - AgentKitAgentsCopilot-CopilotRuntime-RelaysDeletionFailuresRedacted
+          - AgentKitAgentsCopilot-CopilotRuntime-RelaysStatusReadFailuresRedacted
+          - AgentKitAgentsCopilot-CopilotRuntime-RedactsTheSdksDiagnostics
+          - AgentKitAgentsCopilot-CopilotRuntime-RedactsLaunchRefusals
+          - AgentKitAgentsCopilot-CopilotCli-ExplainsAProbeThatFails
+          - AgentKitAgentsCopilot-CopilotRuntime-PassesCancellationThrough
+          - AgentKitAgentsCopilot-CopilotAgent-ReportsRuntimeErrors
+          - AgentKitAgentsCopilot-CopilotProviderSession-RefusesASilentSession
+          - AgentKitAgentsCopilot-CopilotProviderSession-EndsOnATurnItCouldNotRecord
+          - AgentKitAgentsCopilot-CopilotSummarizer-KeepsTokensOutOfFailures
+          - AgentKitAgentsCopilot-CopilotProviderSessionFactory-KeepsTokensOutOfOpenFailures
+          - AgentKitAgentsCopilot-CopilotModelCatalog-ReadsTheServiceThroughTheRuntime
+        tests:
+          - AgentKitAgentsCopilot_Runtime_FailureQuotingAToken_ReachesNoException
 
       - id: AgentKitAgentsCopilot-ModelCatalog-ListsTheServicesModels
         title: >-

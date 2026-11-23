@@ -212,9 +212,9 @@ dotnet run --project samples/research-assistant -- \
 The Copilot provider needs the GitHub Copilot CLI, version 1.0.113 or later, installed on the machine
 (check the version AgentKit runs with `copilot --no-auto-update --version`; see *Installing the Copilot
 CLI*). The sample references no Copilot SDK package of its own, so its build downloads nothing and its
-output carries no runtime. It authenticates as the GitHub user signed in with the GitHub CLI
-(`gh auth login`, with `gh` on `PATH`) or with a token in `GH_TOKEN`; a sign-in made only with the
-Copilot CLI is not used. AgentKit starts the runtime itself, with the shell's `COPILOT_`/`GITHUB_COPILOT_`
+output carries no runtime. It signs in as the GitHub user signed in to the Copilot CLI (`copilot login`)
+or the GitHub CLI (`gh auth login`, with `gh` on `PATH`), or with a token in `GH_TOKEN`; see *Signing In*.
+AgentKit starts the runtime itself, with the shell's `COPILOT_`/`GITHUB_COPILOT_`
 variables withheld apart from an allow-listed credential, network and telemetry-off set, so the sample runs from a
 Copilot CLI shell too. The runtime keeps its state in
 `AgentKit/research-assistant/copilot-runtime` under the user's local application data, a directory AgentKit

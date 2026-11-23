@@ -331,8 +331,9 @@ every run the same tool instances, so a reference outlives the run that produced
 
 Starts the bundled runtime with a start that fails the way the SDK does when no runtime was
 provisioned — an error naming the runtime wrapper it did not find. Asserts the failure reaching the host carries the
-runtime's error, names the remedy, a `PackageReference` to `Microsoft.Copilot.SDK`, and keeps the
-original failure as its inner exception. The pass-through of a cancellation and the disposal of a
+runtime's error, names the remedy, a `PackageReference` to `Microsoft.Copilot.SDK`, and keeps a
+redacted copy of the original failure, carrying its type name and message, as its inner exception. The pass-through of
+a cancellation and the disposal of a
 client whose start failed are asserted in *CopilotRuntime Unit Verification Design*.
 
 ### Runtime Startup: An Unsupported Installed CLI Is Refused With Upgrade Guidance
@@ -347,10 +348,48 @@ part of the live evidence below.
 
 ### Runtime Startup: A Runtime That Is Not Signed In Is Refused
 
-**Test**: `AgentKitAgentsCopilot_Runtime_Unauthenticated_IsRefusedWithSignInGuidance`
+**Tests**:
+
+- `AgentKitAgentsCopilot_Runtime_Unauthenticated_IsRefusedWithSignInGuidance`
+- `AgentKitAgentsCopilot_Runtime_NoSourceSignsIn_RefusalListsWhatEachSourceFound`
 
 A started runtime whose authentication status reports it is not signed in is refused, with the ways
-to sign it in — `gh auth login` and `GH_TOKEN` among them.
+to sign it in — `copilot login`, `gh auth login` and `GH_TOKEN` among them. With the Copilot CLI
+sign-in turned off, no token anywhere and no GitHub CLI on `PATH`, the refusal lists the four sources
+in order with what each found — not supplied, none set, turned off by the host, the GitHub CLI not
+found on `PATH` — and carries no token.
+
+### Runtime: The Runtime Signs In as the User, on the Source's Host
+
+**Test**: `AgentKitAgentsCopilot_Runtime_SignIn_FollowsTheSourceOrderWithTheSourcesHost`
+
+Verifies `AgentKitAgentsCopilot-Runtime-SignsInAsTheUser`. On a fake machine whose user signed in to
+the Copilot CLI on `example.ghe.com`, with a fake helper runtime: a host token with `github.com` wins
+over `GH_TOKEN` and gives the runtime `github.com`; `GH_TOKEN` wins over the Copilot CLI sign-in and
+hands over no token; with neither, the Copilot CLI's token is used; with the Copilot CLI sign-in
+turned off, the runtime's own fallbacks decide; and the helper ran exactly once. The confined
+runtime's client options then carry the Copilot CLI's token, `COPILOT_GH_HOST=example.ghe.com`, Empty
+mode and AgentKit's data directory, and the helper's home held exactly the account entry, though the
+user's configuration also configures an MCP server.
+
+### Runtime: No Token Reaches an Exception
+
+**Test**: `AgentKitAgentsCopilot_Runtime_FailureQuotingAToken_ReachesNoException`
+
+Verifies `AgentKitAgentsCopilot-Runtime-KeepsTokensOutOfFailures`. With a sign-in whose token is not
+shaped like a GitHub token, a start failure quoting it, chaining an aggregate of two exceptions that
+quote it and a `gho_` token, is explained through `StartClientAsync`; and an agent built with the same
+sign-in runs a turn on a scripted runtime that reports a session error quoting both values. On a
+second scripted runtime whose every turn fails with the SDK's `Session error: …` exception quoting
+both values, over an aggregate of an `IOException` and a `TimeoutException` that quote them too, the
+same sign-in drives an agent's turn with no session error event before it (so the agent's relay is
+proven, not only its event mapper), a provider session's turn and the refusal of its next turn, and a
+consolidation. Each failure reaching the host is walked through its whole chain — every inner
+exception and every inner exception of an aggregate: no exception carries either value in its
+message, stack trace, string form or data, no aggregate survives (each is copied), the start failure's
+cause is a redacted copy, the session error reads `<redacted>` in their places, and each relayed turn
+failure reads `Session error: refused <redacted> gho_<redacted>` with a redacted copy as its cause.
+The redaction of the model listing's cause is asserted in its unit verification.
 
 ### Runtime: The Installed Copilot CLI Is the Default
 
@@ -403,7 +442,10 @@ built-in that reaches the runtime, any session opened with a discovered MCP serv
 accepted while one stays enabled, any supplied tool that is rejected, any unlisted or built-in request that is approved
 on either path, any missing runtime that is accepted, any runtime client options not confined as asserted for either
 runtime source, any default that does not run the installed CLI, any unsupported CLI or unauthenticated runtime that is
-accepted or refused without its guidance, any foreign data directory that is accepted, any occupancy figure that is not
+accepted or refused without its guidance, any sign-in source that wins out of order or with another source's host, any
+helper home holding more than the account entry, any refusal that omits a source's finding or carries a token, any
+exception reaching the host, or cause it keeps, that carries a token the sign-in knows, any
+foreign data directory that is accepted, any occupancy figure that is not
 the one the runtime reported, any rotation that fails to seed the consolidated record, any part of a seeded record
 appearing in a session's system message, any rotation that costs more than the one request the engine was already
 making, any superseded session left unreleased, any session created with the runtime's own compaction left at the
@@ -457,8 +499,9 @@ that what those tests assert about the options is what the runtime honors.
 - **Fixture**: one shared `CopilotRuntime` per run, started exactly as a host starts one — Empty
   mode, the selected runtime spawned with the host's Copilot variables withheld bar the
   pass-through set, a data directory AgentKit created under the run's temporary root —
-  authenticated as the logged-in user or from
-  `GH_TOKEN`/`GITHUB_TOKEN`. A sandbox folder holds a `notes.txt` carrying the codeword `PERIWINKLE-42` and a
+  signed in from the user's sources in AgentKit's order: in CI from `GH_TOKEN`/`GITHUB_TOKEN`, on a
+  developer machine usually as the Copilot CLI account, else through the GitHub CLI; the run's log
+  records the source, host and login. A sandbox folder holds a `notes.txt` carrying the codeword `PERIWINKLE-42` and a
   generated PNG split blue and yellow; a file outside the sandbox carries a second codeword no confined
   tool may return. The tests run sequentially in one collection, to control cost and because one
   scenario changes the process environment. The ambient-server scenario, L12, starts a second,
@@ -497,6 +540,10 @@ dotnet test --project test/DemaConsulting.AgentKit.Agents.Copilot.LiveTests -c R
 On the bundled runtime, build without the property, so the SDK provisions its runtime into the
 suite's output, and set `AGENTKIT_COPILOT_LIVE_RUNTIME` to `bundled`.
 
+The suite signs in as AgentKit does for a host, so on a machine signed in to the Copilot CLI it runs
+as that account. When that account does not offer the model named, choose a low-cost model it does
+offer (the catalog scenario, L16, logs the account's models).
+
 To try a CLI version without touching the machine's own installation, download the standalone CLI
 release archive for the platform (`gh release download v<version> --repo github/copilot-cli`), check it
 against the release's `SHA256SUMS.txt`, extract it to a scratch folder and name it with
@@ -523,9 +570,10 @@ leaves the TRX in `artifacts/live/` too, and the log beside it when
 
 ### Live Scenarios
 
-Every test name carries the prefix `AgentKitAgentsCopilotLive_`, omitted in the table. Thirty tests cover nineteen
-scenarios; the image-delivery scenario, L8, is two tests, the agent scenario, L10, is three, the ambient-server
-scenario, L12, is four, and the MCP-source scenario, L14, is six. L16 to L18 are in `CopilotModelCatalogLiveTests`.
+Every test name carries the prefix `AgentKitAgentsCopilotLive_`, omitted in the table. Thirty-five tests cover
+twenty-four scenarios; the image-delivery scenario, L8, is two tests, the agent scenario, L10, is three, the
+ambient-server scenario, L12, is four, and the MCP-source scenario, L14, is six. L16 to L18 are in
+`CopilotModelCatalogLiveTests`, and L-S1 to L-S5 in `CopilotSignInLiveTests`.
 
 | # | Test | Recorded result |
 | --- | --- | --- |
@@ -559,6 +607,11 @@ scenario, L12, is four, and the MCP-source scenario, L14, is six. L16 to L18 are
 | L16 | `Catalog_ListsFiltersAndRefreshes` | Pass (installed and bundled; 24 entries; `auto` skipped) |
 | L17 | `Selection_SessionRunsOnTheChosenEffortAndTier` | Pass (installed and bundled; limits 100,000 and 872,000) |
 | L18 | `Selection_UnofferedEffort_IsRefusedBeforeAnySession` | Pass (installed and bundled) |
+| L-S1 | `SignIn_DefaultOptions_UseTheCopilotCliAccount` | Pass (installed; GitHub Enterprise Cloud account) |
+| L-S2 | `SignIn_GitHubCliHidden_StillUsesTheCopilotCliAccount` | Pass (installed) |
+| L-S3 | `SignIn_ExplicitTokenAndHost_AreUsed` | Pass (installed; without the host: refused with the host hint) |
+| L-S4 | `SignIn_TokenProvider_SignsInTheRuntimeAndItsSessions` | Pass (installed; 2 calls: start, session) |
+| L-S5 | `SignIn_NoSource_IsRefusedListingEachSource` | Pass (installed) |
 
 What each asserts. Assertions are made on the runtime's events and metadata wherever possible; the
 few that rest on the model's prose are marked.
@@ -662,6 +715,33 @@ few that rest on the model's prose are marked.
   *CopilotModelCatalog Unit Design*, "Context Tiers and the Reported Limit".
 - **L18**: an effort the model does not offer is refused by selection, with the reason listing the
   efforts it does offer, before any session exists.
+- **L-S1**: with no token variable set, the fixture's runtime — started with default options, as a
+  host starts one — reports `CopilotSignInSource.CopilotCli` and the host and login of the account in
+  the user's Copilot CLI `config.json`, and answers a turn. Skipped when the user is not signed in to
+  the Copilot CLI or a token variable is set.
+- **L-S2**: with the GitHub CLI hidden from the runtimes the scenario starts (`PATH` without its
+  folder, `GH_CONFIG_DIR` an empty folder under the run's root, for that start only), a new runtime
+  still signs in as the Copilot CLI account. The user's own GitHub CLI sign-in is never changed.
+- **L-S3**: the Copilot CLI account's token, obtained in-process through the same helper and never
+  logged, passed as `gitHubToken` with the account's host as `gitHubHost`, signs the runtime in as
+  `GitHubToken` on that host. For a GitHub Enterprise Cloud account the same token without the host
+  must be refused, with the host hint and not the token; a runtime that starts with it fails the
+  scenario. For a `github.com` account the no-host case does not apply and is logged as such.
+- **L-S4**: a token provider returning that token, with the account's host, signs the runtime in as
+  `GitHubTokenProvider`, is asked exactly once at start, and is asked again for the session a turn
+  runs on — so a client-level token from the provider and a session-level provider work together —
+  every request for the account's host.
+- **L-S5**: with the Copilot CLI sign-in turned off, the token variables cleared and the GitHub CLI
+  hidden, the start is refused with the four sources listed in order with their findings, and the
+  message holds no `gho_`, `ghu_`, `ghp_`, `ghs_`, `ghr_` or `github_pat_` text and not the token.
+  The secret checks run before any assertion that would echo the message.
+
+Every L-S scenario clears `COPILOT_GITHUB_TOKEN`, `GH_TOKEN` and `GITHUB_TOKEN` in the process environment for its own
+runtimes and restores them, and logs hosts, logins, sources, and token and refusal lengths only. A refusal's text is
+never logged, and is checked for secrets with assertions that do not echo it before any assertion that would. L-S1 to
+L-S4 need a Copilot CLI sign-in and skip without one, as in CI; L-S5 runs everywhere. They have been run on Windows with
+the installed CLI only; macOS, Linux and the bundled runtime as the helper are untested. A token refresh (`IsRefresh`
+true) was not observed live, because a session does not outlive its token in a run; it is covered by the unit tests.
 
 ### Live Acceptance Criteria
 
@@ -672,19 +752,23 @@ working as designed against a machine without a supported CLI, and the refusal's
 run's log as "Runtime start refused: …", is the evidence. A failure of L0 means the runtime that started is not the one
 selected or not a supported version. A failure of L1, L2, L5 or L6 means a confined session is not confined on the real
 runtime; of L3 or L4, that the reserved-name set or the guard no longer matches the runtime; of L7, L8 or L8b, that a
-tool's result does not reach the model intact; of L9, that the session engine does not hold on the runtime's own usage;
-of L10a to L10c, that the agent does not stream, resume or deliver attachments as designed; of L11, that a host's
-Copilot variable reaches the runtime AgentKit starts, or that the control no longer fails, so L11 proves nothing; of
-L12a, that an ambient MCP server survives the confinement; of L12b, that the fixture no longer injects one, so L12a
-proves nothing; of L12c, that the seal's session-scoped disable does not take effect on the real runtime; of L12d, that
-the resume-time disabled list is not honored on a session resumed through the channel; of L13, that an agent definition
-or built-in sub-agent reaches a confined session; of L14a, L14c or L14e, that an MCP server of that source starts on the
-runtime AgentKit owns, or, for L14a, that some server of any source started — a renamed built-in server, or a
-managed-catalog or account server for the run's account; of L14b, L14d or L14f, that the probe no longer runs without
-the protection, so the paired scenario proves nothing; of L15, that an ambient channel reaches a session; of L16, that
-the catalog cannot list the service's models for the signed-in user, or lists the automatic choice; of L17, that a
-chosen effort or tier is not accepted by the runtime, or that no limit is reported for it; of L18, that an unoffered
-effort reaches a session. Any such failure is investigated before a release.
+tool's result does not reach the model intact; of L9, that the session engine
+does not hold on the runtime's own usage; of L10a to L10c, that the agent does not stream, resume or deliver attachments
+as designed; of L11, that a host's Copilot variable reaches the runtime AgentKit starts, or that the control no longer
+fails, so L11 proves nothing; of L12a, that an ambient MCP server survives the confinement; of L12b, that the fixture no
+longer injects one, so L12a proves nothing; of L12c, that the seal's session-scoped disable does not take effect on the
+real runtime; of L12d, that the resume-time disabled list is not honored on a session resumed through the channel; of
+L13, that an agent definition or built-in sub-agent reaches a confined session; of L14a, L14c or L14e, that an MCP
+server of that source starts on the runtime AgentKit owns, or, for L14a, that some server of any source started — a
+renamed built-in server, or a managed-catalog or account server for the run's account; of L14b, L14d or L14f, that the
+probe no longer runs without the protection, so the paired scenario proves nothing; of L15, that an ambient channel
+reaches a session; of L16, that the catalog cannot list the service's models for the signed-in user, or lists the
+automatic choice; of L17, that a chosen effort or tier is not accepted by the runtime, or that no limit is reported
+for it; of L18, that an unoffered effort reaches a session; of L-S1 or L-S2, that the Copilot CLI sign-in is not used,
+or is used on another host or account; of L-S3 or L-S4, that a host's token or token provider, or its host, is not
+used as given, or that a session does not ask the provider, or, for a GitHub Enterprise Cloud account, that L-S3's
+token without its host is not refused; of L-S5, that a refusal omits a source's finding or carries
+a secret. Any such failure is investigated before a release.
 
 ### Recorded Run
 
@@ -762,6 +846,32 @@ to the same SDK call. After the branch was rebased onto large tool output retent
 run again on 2026-11-21, on the same machine and model, with `COPILOT_CLI_PATH` removed from the shell first and no
 filter; all 25 tests passed, in 5 minutes 22 seconds, including L10a to L10c, so the agent scenarios' cleanup through
 `CopilotRuntime.DeleteSessionAsync` held on the real runtime.
+
+When the runtime came to sign in from the user's Copilot CLI sign-in, the whole suite was run on 2026-11-22, on the same
+machine, installed CLI, with `COPILOT_CLI_PATH` removed from the shell first and no filter; all 34 tests passed. The
+machine's Copilot CLI is signed in to a GitHub Enterprise Cloud host and the GitHub CLI to that host and `github.com`,
+with no token variable set, and the fixture's runtime now signed in as the Copilot CLI account on its host. That account
+does not offer `claude-haiku-5.5` (a session on it is refused with "Model is not available"), so the run used its
+lightweight, low-cost `gpt-5.6-luna`. L-S1 and L-S2 reported `CopilotCli` on the account's host; L-S3 reported
+`GitHubToken` on that host, and the same token without the host was refused with the host hint; L-S4 reported
+`GitHubTokenProvider` with two provider calls, one at start and one for the session's first token, both for the
+account's host; L-S5 was refused with the four sources listed. Before and after the run, the names, users, last-written
+times and sizes of the machine's credential-store entries for GitHub and Copilot were identical, and no temporary
+sign-in folder was left behind.
+
+When L-S3 came to require the refusal of the token without its host, and L-S3 and L-S5 to check a refusal for secrets
+before any assertion that echoes it and to log only its length, the two were re-run on 2026-11-22, on the same machine,
+installed CLI 1.0.114 and model `gpt-5.6-luna`, with `COPILOT_CLI_PATH` removed from the shell first, filtered to those
+two tests; both passed. The account was on the machine's GitHub Enterprise Cloud host, as before. L-S3 signed in as
+`GitHubToken` on that host, and the same token without the host was refused with the host hint and without the token;
+L-S5 was refused listing all four sources and carrying no secret.
+
+Before the helper was built, it was confirmed on the same machine that the confined runtime cannot read the credential
+store itself: an Empty-mode runtime on a home holding only the account entry, with the variable that disables the system
+keychain set to `0` in its replacement environment and the GitHub CLI hidden from `PATH`, reported `Not authenticated`
+(with the GitHub CLI visible it signed in through it, on `github.com`), while the same home in CodingAgent mode reported
+the account signed in through its stored sign-in. With the GitHub CLI visible to the CodingAgent-mode runtime, its
+account list failed to deserialize, which is why the helper hides the GitHub CLI from its `PATH`.
 
 When the installed Copilot CLI became the default runtime, the suite — now 26 tests with L0 — was run
 on 2026-11-21, on the same machine and model, once on each runtime source, with `COPILOT_CLI_PATH`

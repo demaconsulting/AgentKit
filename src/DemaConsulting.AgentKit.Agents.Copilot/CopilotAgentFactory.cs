@@ -354,7 +354,8 @@ public static class CopilotAgentFactory
             CopilotSessionChannel.OpenRetained(runtime),
             CopilotSessionChannel.Resume(runtime),
             CopilotSessionChannel.Open(runtime),
-            selection: selection);
+            selection: selection,
+            signIn: runtime.SignIn);
     }
 
     /// <summary>
@@ -389,6 +390,10 @@ public static class CopilotAgentFactory
     /// <param name="selection">
     ///     A validated model selection, or <see langword="null"/>: the model and any chosen effort and tier.
     /// </param>
+    /// <param name="signIn">
+    ///     The sign-in of the runtime the sessions run on, whose tokens are redacted from a session
+    ///     error, or <see langword="null"/> to redact the process environment's secrets and token-shaped text only.
+    /// </param>
     /// <returns>The agent.</returns>
     /// <exception cref="ArgumentNullException">
     ///     <paramref name="tools"/> is <see langword="null"/>, or contains a <see langword="null"/> entry.
@@ -406,7 +411,8 @@ public static class CopilotAgentFactory
         CopilotChannelOpener opener,
         CopilotChannelResumer resumer,
         CopilotChannelOpener? ephemeralOpener = null,
-        ModelSelection? selection = null)
+        ModelSelection? selection = null,
+        CopilotSignInPlan? signIn = null)
     {
         ValidateTools(tools);
 
@@ -420,7 +426,8 @@ public static class CopilotAgentFactory
             opener,
             ephemeralOpener ?? opener,
             resumer,
-            name);
+            name,
+            signIn);
     }
 
     /// <summary>

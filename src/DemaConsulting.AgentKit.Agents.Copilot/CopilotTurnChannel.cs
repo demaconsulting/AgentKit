@@ -454,17 +454,24 @@ internal sealed class CopilotSessionChannel : ICopilotTurnChannel
     ///     it runs rather than once up front, so a runtime disposed before or between the steps fails
     ///     the step with <see cref="ObjectDisposedException"/> instead of being restarted by the SDK.
     ///     </para>
+    ///     <para>
+    ///     The runtime's session-level sign-in is applied first: on a runtime started with the host's
+    ///     token provider, the session asks that provider for its tokens (see
+    ///     <see cref="CopilotRuntime.ApplySessionSignIn"/>).
+    ///     </para>
     /// </remarks>
     /// <param name="runtime">The runtime to create the session on.</param>
-    /// <param name="config">The session configuration; updated with the discovered MCP servers.</param>
+    /// <param name="config">The session configuration; updated with the runtime's session sign-in and the discovered MCP servers.</param>
     /// <param name="cancellationToken">Cancels the creation.</param>
     /// <returns>The created, sealed session. Ownership passes to the caller.</returns>
     /// <exception cref="ObjectDisposedException">The runtime has been disposed.</exception>
     internal static Task<CopilotSession> CreateConfinedSessionAsync(
         CopilotRuntime runtime,
         CreateSessionOptions config,
-        CancellationToken cancellationToken) =>
-        OpenConfinedAsync(
+        CancellationToken cancellationToken)
+    {
+        runtime.ApplySessionSignIn(config);
+        return OpenConfinedAsync(
             config,
             token => DiscoverMcpServerNamesAsync(runtime, config.WorkingDirectory, token),
             token => runtime.Client.CreateSessionAsync(config, token),
@@ -473,6 +480,7 @@ internal sealed class CopilotSessionChannel : ICopilotTurnChannel
                 session.DisposeAsync,
                 () => runtime.Client.DeleteSessionAsync(session.SessionId, CancellationToken.None)),
             cancellationToken);
+    }
 
     /// <summary>
     ///     Resumes a session on a runtime through the confinement's runtime half, detaching it — never
@@ -481,11 +489,12 @@ internal sealed class CopilotSessionChannel : ICopilotTurnChannel
     /// <remarks>
     ///     A resumed session is the user's conversation: refusing to continue it must not destroy
     ///     it, so a failed seal only releases the handle. Like
-    ///     <see cref="CreateConfinedSessionAsync"/>, each step reads the runtime's client when it runs.
+    ///     <see cref="CreateConfinedSessionAsync"/>, each step reads the runtime's client when it runs,
+    ///     and the runtime's session-level sign-in is applied first.
     /// </remarks>
     /// <param name="runtime">The runtime to resume the session on.</param>
     /// <param name="sessionId">The runtime's identifier for the session.</param>
-    /// <param name="config">The resume configuration; updated with the discovered MCP servers.</param>
+    /// <param name="config">The resume configuration; updated with the runtime's session sign-in and the discovered MCP servers.</param>
     /// <param name="cancellationToken">Cancels the resumption.</param>
     /// <returns>The resumed, sealed session. Ownership passes to the caller.</returns>
     /// <exception cref="ObjectDisposedException">The runtime has been disposed.</exception>
@@ -493,14 +502,17 @@ internal sealed class CopilotSessionChannel : ICopilotTurnChannel
         CopilotRuntime runtime,
         string sessionId,
         ResumeSessionOptions config,
-        CancellationToken cancellationToken) =>
-        OpenConfinedAsync(
+        CancellationToken cancellationToken)
+    {
+        runtime.ApplySessionSignIn(config);
+        return OpenConfinedAsync(
             config,
             token => DiscoverMcpServerNamesAsync(runtime, config.WorkingDirectory, token),
             token => runtime.Client.ResumeSessionAsync(sessionId, config, token),
             SealSessionAsync,
             session => ReleaseAsync(session.DisposeAsync, delete: null),
             cancellationToken);
+    }
 
     /// <summary>
     ///     Discovers the names of the MCP servers the runtime's discovery reports for a session — the
@@ -510,9 +522,11 @@ internal sealed class CopilotSessionChannel : ICopilotTurnChannel
     ///     The client's RPC surface exists only once the client has started, so the client is
     ///     started first. Starting is idempotent on a started client — a <see cref="CopilotRuntime"/>
     ///     hands over a started one — and it reconnects a client whose connection was lost; it goes
-    ///     through <see cref="CopilotRuntime.StartClientAsync(Func{CancellationToken, Task}, CancellationToken)"/> so a runtime that cannot start still
-    ///     reports why. The client is read from the runtime first, so a disposed runtime fails here
-    ///     with <see cref="ObjectDisposedException"/> rather than being started again.
+    ///     through <see cref="CopilotRuntime.StartClientAsync(Func{CancellationToken, Task}, CopilotRuntimeLaunch?, CopilotSignInPlan?, CancellationToken)"/>
+    ///     with the runtime's sign-in plan, so a runtime that cannot start still reports why, and
+    ///     neither the report nor its cause, a redacted copy of the runtime's failure, carries a token
+    ///     the runtime knows. The client is read from the runtime first, so a disposed runtime fails
+    ///     here with <see cref="ObjectDisposedException"/> rather than being started again.
     /// </remarks>
     /// <param name="runtime">The runtime to discover on.</param>
     /// <param name="workingDirectory">The session's working directory, whose workspace configuration is included.</param>
@@ -525,7 +539,7 @@ internal sealed class CopilotSessionChannel : ICopilotTurnChannel
         CancellationToken cancellationToken)
     {
         var client = runtime.Client;
-        await CopilotRuntime.StartClientAsync(client.StartAsync, cancellationToken).ConfigureAwait(false);
+        await CopilotRuntime.StartClientAsync(client.StartAsync, launch: null, runtime.SignIn, cancellationToken).ConfigureAwait(false);
 
         var discovered = await client.Rpc.Mcp
             .DiscoverAsync(workingDirectory, cancellationToken: cancellationToken)

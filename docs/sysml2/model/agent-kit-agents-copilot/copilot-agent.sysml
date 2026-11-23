@@ -17,4 +17,9 @@ package AgentKitAgentsCopilot_CopilotAgent {
     // The agent creates, resumes, drives and releases every runtime session through the turn
     // channel seam, because the SDK's session types are sealed and cannot be stood in for.
     dependency CopilotAgent to CopilotTurnChannel;
+
+    // A session error the agent fails a run with quotes the runtime's error redacted with the
+    // runtime's sign-in, and a turn's or an open's runtime or SDK failure is relayed as a redacted copy, so no
+    // token it knows reaches the exception.
+    dependency CopilotAgent to AgentKitAgentsCopilot_CopilotSignIn::CopilotSignIn;
 }

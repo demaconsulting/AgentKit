@@ -68,8 +68,9 @@ streamed twice or not at all, any tool call or result streamed without the runti
 any sub-agent event streamed, any usage figure not carried, any root session error that does not fail
 the run, any non-streaming response that differs from the stream, any inline data not sent as an
 attachment, any serialized form that loses the identity or the state bag, any concurrent runs that
-open two runtime sessions for one conversation, or any foreign session accepted constitutes a
-failure.
+open two runtime sessions for one conversation, any turn or open failure that reaches the caller as
+the SDK's own exception or carries a token anywhere in its chain, or any foreign session accepted
+constitutes a failure.
 
 ### Test Scenarios
 
@@ -192,11 +193,35 @@ conversation.
 
 #### AgentKitAgentsCopilot-CopilotAgent-ReportsRuntimeErrors: A Root Session Error Fails the Run
 
-**Test**: `CopilotAgent_RunStreaming_SessionError_FailsTheRunNamingTheError`
+**Tests**:
+
+- `CopilotAgent_RunStreaming_SessionError_FailsTheRunNamingTheError`
+- `CopilotAgent_RunStreaming_SessionErrorQuotingAToken_IsRedacted`
+- `CopilotAgent_RunStreaming_TurnFailureQuotingAToken_IsRelayedRedacted`
+- `CopilotAgent_Run_OpenFailureQuotingAToken_IsRelayedRedacted`
 
 Replays a root session error and asserts the run fails with `InvalidOperationException` naming the
 runtime's message, and that the channel was still released once. The sub-agent case, which must not
-fail the run, is asserted in the streaming scenario above.
+fail the run, is asserted in the streaming scenario above. An agent built with a sign-in that knows a
+secret of no GitHub token shape replays a session error quoting that secret and a `gho_` token: the
+run fails with exactly `Session error: refused <redacted> and gho_<redacted>`, neither value appears
+in the exception's string form, and no cause is attached.
+
+The third scripts the turn itself failing, with no session error event before it, so the failure
+reaches the run only through the send: an `InvalidOperationException` in the SDK's `Session error: …`
+shape quoting both values, over an `IOException` quoting the secret. The run fails with a new
+`InvalidOperationException`, not the scripted one, reading exactly
+`Session error: refused <redacted> gho_<redacted>`, with a `CopilotRedactedException` as its cause; a
+walk of its whole chain — every inner exception and every inner exception of an aggregate — finds
+neither value, and the channel was released once.
+
+The fourth builds an agent whose opener fails with the SDK's lost-connection shape — an `IOException`
+reading `CLI process exited unexpectedly.` followed by standard error quoting both values — and whose
+resumer fails with an RPC-shaped exception of a type outside the base class library, quoting the
+secret in its message and its error data. A run on a new conversation fails with a new `IOException`
+reading the redacted text; a run on a conversation that already names a session fails with a new
+`InvalidOperationException` reading `resume refused for <redacted>`, whose cause names the RPC-shaped
+type; and the walk finds neither value in either chain.
 
 #### AgentKitAgentsCopilot-CopilotAgent-RejectsForeignSessions: Another Agent's Session Is Refused
 

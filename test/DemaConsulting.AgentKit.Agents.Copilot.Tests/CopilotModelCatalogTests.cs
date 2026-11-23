@@ -340,8 +340,8 @@ public sealed class CopilotModelCatalogTests
     }
 
     /// <summary>
-    ///     Proves a runtime whose client cannot answer fails with the sign-in message, keeping the
-    ///     SDK's own failure as the cause.
+    ///     Proves a runtime whose client cannot answer fails with the sign-in message, keeping a
+    ///     redacted copy of the SDK's own failure, with its type name, as the cause.
     /// </summary>
     [Fact]
     public async Task CopilotModelCatalog_ListAsync_ClientNotConnected_FailsWithTheSignInMessage()
@@ -357,8 +357,94 @@ public sealed class CopilotModelCatalogTests
         // Assert
         Assert.Equal(CopilotModelCatalog.SignInMessage, failure.Message);
         Assert.Contains("gh auth login", failure.Message, StringComparison.Ordinal);
-        Assert.Contains("Copilot CLI's own sign-in is not used", failure.Message, StringComparison.Ordinal);
-        Assert.IsType<InvalidOperationException>(failure.InnerException, exactMatch: false);
+        Assert.Contains("copilot login", failure.Message, StringComparison.Ordinal);
+        Assert.Contains("gitHubHost", failure.Message, StringComparison.Ordinal);
+        var cause = Assert.IsType<CopilotRedactedException>(failure.InnerException);
+        Assert.False(string.IsNullOrEmpty(cause.OriginalTypeName), "The cause does not name the SDK's exception type.");
+    }
+
+    /// <summary>
+    ///     Proves a listing failure whose text quotes a token the runtime's sign-in knows, or one shaped
+    ///     like a GitHub token, keeps only a redacted copy of it as the cause: no exception in the
+    ///     chain carries either token, and the copy keeps the original's type name.
+    /// </summary>
+    [Fact]
+    public void CopilotModelCatalog_ExplainListFailure_QuotingAToken_KeepsOnlyARedactedCause()
+    {
+        // Arrange: a sign-in that knows a token of no GitHub shape, and a failure quoting it and a gho_ token
+        const string secret = "s3cr3t-catalog-xyz";
+        const string shaped = "gho_CatalogSecret123";
+        var plan = new CopilotSignInPlan { Source = CopilotSignInSource.GitHubToken, Token = secret };
+        var original = new InvalidOperationException($"not connected ({secret})", new IOException($"pipe closed for {shaped}"));
+
+        // Act
+        var failure = CopilotModelCatalog.ExplainListFailure(original, plan);
+
+        // Assert
+        Assert.Equal(CopilotModelCatalog.SignInMessage, failure.Message);
+        var cause = Assert.IsType<CopilotRedactedException>(failure.InnerException);
+        Assert.NotSame(original, failure.InnerException);
+        Assert.Equal(typeof(InvalidOperationException).FullName, cause.OriginalTypeName);
+        Assert.Equal("not connected (<redacted>)", cause.Message);
+        var inner = Assert.IsType<CopilotRedactedException>(cause.InnerException);
+        Assert.Equal(typeof(IOException).FullName, inner.OriginalTypeName);
+        Assert.Equal("pipe closed for gho_<redacted>", inner.Message);
+        Assert.DoesNotContain(secret, failure.ToString(), StringComparison.Ordinal);
+        Assert.DoesNotContain(shaped, failure.ToString(), StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves a listing failure other than a lost or unsigned connection — a lost connection
+    ///     quoting the runtime's standard error, or an RPC error of a type outside the base class
+    ///     library — is relayed as a redacted copy of the same kind, or as an
+    ///     <see cref="InvalidOperationException"/> for the RPC error, whose chain carries no secret;
+    ///     and that an <see cref="InvalidOperationException"/> still carries the sign-in message.
+    /// </summary>
+    [Fact]
+    public void CopilotModelCatalog_ExplainReadFailure_OtherFailureQuotingAToken_IsRelayedRedacted()
+    {
+        // Arrange
+        const string secret = "s3cr3t-listing-xyz";
+        const string shaped = "gho_ListingSecret123";
+        var plan = new CopilotSignInPlan { Source = CopilotSignInSource.GitHubToken, Token = secret };
+        var lost = new IOException($"CLI process exited unexpectedly.\nstderr: {secret} {shaped}");
+        var rpc = new CopilotSignInTests.RpcErrorException($"models.list failed for {secret}", new { token = secret });
+        var invalid = new InvalidOperationException($"not connected ({secret})");
+
+        // Act
+        var relayedLost = CopilotModelCatalog.ExplainReadFailure(lost, plan);
+        var relayedRpc = CopilotModelCatalog.ExplainReadFailure(rpc, plan);
+        var explained = CopilotModelCatalog.ExplainReadFailure(invalid, plan);
+
+        // Assert
+        var io = Assert.IsType<IOException>(relayedLost);
+        Assert.NotSame(lost, io);
+        Assert.Equal("CLI process exited unexpectedly.\nstderr: <redacted> gho_<redacted>", io.Message);
+        Assert.IsType<CopilotRedactedException>(io.InnerException);
+        SecretAssert.NoSecret(io, secret, shaped);
+        var other = Assert.IsType<InvalidOperationException>(relayedRpc);
+        var copy = Assert.IsType<CopilotRedactedException>(other.InnerException);
+        Assert.Equal(typeof(CopilotSignInTests.RpcErrorException).FullName, copy.OriginalTypeName);
+        SecretAssert.NoSecret(other, secret, shaped);
+        Assert.Equal(CopilotModelCatalog.SignInMessage, explained.Message);
+        SecretAssert.NoSecret(explained, secret, shaped);
+    }
+
+    /// <summary>
+    ///     Proves a cancellation or a disposal that carries nothing to redact passes a listing failure
+    ///     through unchanged, so a caller's cancellation and disposal handling still applies.
+    /// </summary>
+    [Fact]
+    public void CopilotModelCatalog_ExplainReadFailure_Cancellation_PassesUnchanged()
+    {
+        // Arrange
+        using var source = new CancellationTokenSource();
+        var canceled = new OperationCanceledException("canceled", source.Token);
+        var disposed = new ObjectDisposedException(nameof(CopilotRuntime));
+
+        // Act and assert
+        Assert.Same(canceled, CopilotModelCatalog.ExplainReadFailure(canceled, signIn: null));
+        Assert.Same(disposed, CopilotModelCatalog.ExplainReadFailure(disposed, signIn: null));
     }
 
     /// <summary>

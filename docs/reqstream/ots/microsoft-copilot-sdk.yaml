@@ -168,6 +168,32 @@ sections:
               - CopilotRuntime_DisposeAsync_IsIdempotentAndClientIsThenUnavailable
               - CopilotRuntime_BuildClientOptions_InstalledCli_SpawnsTheResolvedCliOverStdio
 
+          - id: AgentKit-OTS-MicrosoftCopilotSDK-GitHubAuthentication
+            title: >-
+              Microsoft.Copilot.SDK shall pass a client-level GitHub token to the runtime it spawns;
+              shall start a supplied executable in CodingAgent mode on a supplied home whose runtime
+              reads the system credential store, reports its authentication status and lists the
+              accounts it holds with their tokens; and shall accept on session options a token provider
+              it asks for each session's token, with the host and whether the token is a refresh.
+            justification: |
+              The Copilot package signs the confined runtime in with a token it passes at client level,
+              obtains the user's Copilot CLI token through a short-lived CodingAgent-mode client whose
+              home holds only the account entry, and lets a host's token provider supply session
+              tokens. The SDK forces the credential store off for an Empty-mode runtime it spawns,
+              after the caller's environment, which is why the second client exists. AgentKit's tests
+              build these options — the client token, the helper's CodingAgent options on the same
+              executable, the session provider and its arguments — and prove the SDK types carry them;
+              the opt-in live suite shows the runtime honors them (L-S1 to L-S4). In version 2.0.1 the
+              account list fails to deserialize any account other than a stored sign-in, so the package
+              reads it only after the status reports a stored sign-in, and treats a failure as a
+              finding (L-S1, with the GitHub CLI hidden from the helper).
+            tags: [ots]
+            tests:
+              - CopilotRuntime_BuildClientOptions_SignInPlan_CarriesTheTokenAndHost
+              - CopilotSignIn_BuildHelperOptions_RunsTheSameExecutableWithNothingElse
+              - CopilotSignIn_CreateSessionTokenProvider_AsksTheHostsProvider
+              - CopilotSignIn_ResolveAsync_AccountList_TakesOnlyTheAccountsUserEntry
+
           - id: AgentKit-OTS-MicrosoftCopilotSDK-ModelListing
             title: >-
               The Copilot SDK shall list the models the service offers the signed-in user, each with

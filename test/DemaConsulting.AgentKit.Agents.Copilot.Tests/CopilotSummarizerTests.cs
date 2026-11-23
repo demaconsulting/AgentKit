@@ -224,6 +224,63 @@ public class CopilotSummarizerTests
     }
 
     /// <summary>
+    ///     Proves a consolidation the runtime or the SDK fails with a session error quoting a token is
+    ///     relayed as a new <see cref="InvalidOperationException"/> whose chain carries no secret, and
+    ///     the consolidation session is still released.
+    /// </summary>
+    [Fact]
+    public async Task CopilotSummarizer_Consolidate_FailureQuotingAToken_IsRelayedRedacted()
+    {
+        // Arrange: the SDK's session-error shape, over a cause that quotes the secret too
+        const string secret = "s3cr3t-summary-xyz";
+        const string shaped = "gho_SummarySecret123";
+        var cause = new InvalidOperationException(
+            $"Session error: refused {secret} {shaped}",
+            new IOException($"pipe {secret}"));
+        var runtime = new FakeCopilotRuntime(_ => [new ScriptedTurn([], Failure: cause)]);
+        var summarizer = new CopilotSummarizer(runtime.Opener, model: null, signIn: CopilotSignInTests.PlanKnowing(secret));
+
+        // Act
+        var failure = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => summarizer.ConsolidateAsync(Request(), TestContext.Current.CancellationToken));
+
+        // Assert
+        Assert.NotSame(cause, failure);
+        Assert.Equal("Session error: refused <redacted> gho_<redacted>", failure.Message);
+        Assert.IsType<CopilotRedactedException>(failure.InnerException);
+        SecretAssert.NoSecret(failure, secret, shaped);
+        Assert.Equal(1, Assert.Single(runtime.Channels).DisposeCount);
+    }
+
+    /// <summary>
+    ///     Proves a failure opening a consolidation session — a lost connection quoting the runtime's
+    ///     standard error — is relayed as a new <see cref="IOException"/> whose chain carries no
+    ///     secret.
+    /// </summary>
+    [Fact]
+    public async Task CopilotSummarizer_Consolidate_OpenFailureQuotingAToken_IsRelayedRedacted()
+    {
+        // Arrange: an opener that fails as the SDK does, quoting both values
+        const string secret = "s3cr3t-summary-open-xyz";
+        const string shaped = "gho_SummaryOpenSecret123";
+        var lost = new IOException($"CLI process exited unexpectedly.\nstderr: {secret} {shaped}");
+        var summarizer = new CopilotSummarizer(
+            (_, _) => Task.FromException<ICopilotTurnChannel>(lost),
+            model: null,
+            signIn: CopilotSignInTests.PlanKnowing(secret));
+
+        // Act
+        var failure = await Assert.ThrowsAsync<IOException>(
+            () => summarizer.ConsolidateAsync(Request(), TestContext.Current.CancellationToken));
+
+        // Assert
+        Assert.NotSame(lost, failure);
+        Assert.Equal("CLI process exited unexpectedly.\nstderr: <redacted> gho_<redacted>", failure.Message);
+        Assert.IsType<CopilotRedactedException>(failure.InnerException);
+        SecretAssert.NoSecret(failure, secret, shaped);
+    }
+
+    /// <summary>
     ///     Proves a missing request is refused where the engine composed it.
     /// </summary>
     [Fact]

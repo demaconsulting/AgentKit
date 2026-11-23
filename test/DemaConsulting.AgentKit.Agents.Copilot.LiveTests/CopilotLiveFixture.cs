@@ -20,8 +20,10 @@ namespace DemaConsulting.AgentKit.Agents.Copilot.LiveTests;
 ///     <para>
 ///     One <see cref="CopilotRuntime"/> serves the whole run, started exactly as a host starts one —
 ///     Empty mode, the selected runtime spawned with the host's Copilot variables withheld, a data
-///     directory AgentKit created under the run's root — authenticated as the logged-in user (or
-///     from <c>GH_TOKEN</c>/<c>GITHUB_TOKEN</c> in CI), and disposed when the run ends.
+///     directory AgentKit created under the run's root — signed in from the user's sources in
+///     AgentKit's order (in CI, <c>GH_TOKEN</c>/<c>GITHUB_TOKEN</c>; on a developer machine usually the
+///     Copilot CLI sign-in, else the GitHub CLI), and disposed when the run ends. The fixture logs the
+///     sign-in source, host and login, never a token.
 ///     </para>
 ///     <para>
 ///     <b>The runtime source is selectable.</b> <see cref="RuntimeVariable"/> chooses
@@ -234,7 +236,7 @@ public sealed class CopilotLiveFixture : IAsyncLifetime
             throw;
         }
 
-        Log($"Runtime started on {_runtime.DataDirectory}: cli={_runtime.CliPath ?? "(bundled)"} version={_runtime.RuntimeVersion} protocol={_runtime.ProtocolVersion}.");
+        Log($"Runtime started on {_runtime.DataDirectory}: cli={_runtime.CliPath ?? "(bundled)"} version={_runtime.RuntimeVersion} protocol={_runtime.ProtocolVersion} signed in via {_runtime.SignInSource} as {_runtime.GitHubHost} / {_runtime.GitHubLogin}.");
     }
 
     /// <inheritdoc/>

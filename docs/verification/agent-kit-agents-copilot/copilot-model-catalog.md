@@ -64,9 +64,10 @@ Unit tests reside in `CopilotModelCatalogTests.cs` within the
 
 ### Acceptance Criteria
 
-A unit test run passes when all seventeen scenarios below pass without error or exception beyond those
+A unit test run passes when every scenario below passes without error or exception beyond those
 explicitly asserted. Any read of a disposed runtime that does not throw, any failure to list that
-does not carry the sign-in message, any refresh that does not read again, any model the service
+does not carry the sign-in message, any other listing failure that reaches the caller as the SDK's
+own exception or carries a token anywhere in its chain, any refresh that does not read again, any model the service
 does not report on treated as unable to call tools, any model reported unable to call tools treated
 as usable, any vision flag set without a positive report, any tier window, label or default that
 differs from the billing derivation, any declared tier duplicated, any effort renamed, reordered or
@@ -79,12 +80,35 @@ choice or changes the service's order each constitute a failure.
 
 #### AgentKitAgentsCopilot-CopilotModelCatalog-ReadsTheServiceThroughTheRuntime: Sign-In Message on Failure
 
-**Test**: `CopilotModelCatalog_ListAsync_ClientNotConnected_FailsWithTheSignInMessage`
+**Tests**:
+
+- `CopilotModelCatalog_ListAsync_ClientNotConnected_FailsWithTheSignInMessage`
+- `CopilotModelCatalog_ExplainListFailure_QuotingAToken_KeepsOnlyARedactedCause`
 
 Error path through the real SDK. A runtime whose client was never connected fails the listing with
-`InvalidOperationException` carrying exactly the sign-in message, which names `gh auth login` and
-says the Copilot CLI's own sign-in is not used, with the SDK's own `InvalidOperationException` kept
-as the inner exception.
+`InvalidOperationException` carrying exactly the sign-in message, which names `copilot login`,
+`gh auth login` and `gitHubHost`, with a redacted copy of the SDK's own failure, naming its type,
+kept as the inner exception. A client failure quoting a secret the runtime's sign-in knows, chaining
+an `IOException` quoting a `gho_` token, becomes the sign-in message with a redacted copy of the
+failure, not the failure itself, as its cause: the copy and its inner copy carry the original type
+names and `<redacted>` in place of each value, and neither value appears in the string form.
+
+#### AgentKitAgentsCopilot-CopilotModelCatalog-ReadsTheServiceThroughTheRuntime: Any Other Failure Is Relayed Redacted
+
+**Tests**:
+
+- `CopilotModelCatalog_ExplainReadFailure_OtherFailureQuotingAToken_IsRelayedRedacted`
+- `CopilotModelCatalog_ExplainReadFailure_Cancellation_PassesUnchanged`
+
+Error paths. With a sign-in whose token is not shaped like a GitHub token, an `IOException` in the
+SDK's lost-connection shape — `CLI process exited unexpectedly.` followed by standard error quoting
+the token and a `gho_` token — becomes a new `IOException` reading the redacted text with a
+`CopilotRedactedException` as its cause; an RPC-shaped exception of a type outside the base class
+library becomes a new `InvalidOperationException` whose cause names that type; and an
+`InvalidOperationException` still becomes the sign-in message. A walk of each chain — every inner
+exception and every inner exception of an aggregate — finds neither value. An
+`OperationCanceledException` carrying a token, and an `ObjectDisposedException` for the runtime, each
+carrying nothing to redact, come back as the same instance.
 
 #### AgentKitAgentsCopilot-CopilotModelCatalog-ReadsTheServiceThroughTheRuntime: Disposed Runtime Refused
 

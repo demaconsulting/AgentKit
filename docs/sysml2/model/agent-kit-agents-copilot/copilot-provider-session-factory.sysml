@@ -21,4 +21,8 @@ package AgentKitAgentsCopilot_CopilotProviderSessionFactory {
     // Every session is configured from a validated model selection when the host supplies one, and
     // its window becomes the ceiling the session accounts against.
     dependency CopilotProviderSessionFactory to AgentKitCore_ModelSettings::ModelSettings;
+
+    // The factory hands every session the runtime's sign-in, whose tokens its refusals are redacted
+    // of, and relays a failure to open a session as a redacted copy made with it.
+    dependency CopilotProviderSessionFactory to AgentKitAgentsCopilot_CopilotSignIn::CopilotSignIn;
 }

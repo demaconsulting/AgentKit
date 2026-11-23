@@ -52,6 +52,9 @@ and the model name.
   the runtime.
 - **`_selection`** (`ModelSelection?`) — The validated model selection performing each consolidation,
   or null when the host named a model, or none, instead.
+- **`_signIn`** (`CopilotSignInPlan?`) — The sign-in of the runtime the consolidations run on, whose
+  tokens a relayed failure is redacted of, or null to redact token-shaped text only (`runtime.SignIn`
+  in production).
 
 ### Key Methods
 
@@ -66,7 +69,8 @@ the production channel opener over the runtime — one that deletes each session
 released, because a consolidation session is finished with once it has answered. The opener is handed
 the runtime, not its client, and reads the client at each open and release: the SDK restarts a
 disposed client on demand, so a summarizer that held the client would bring a runtime the host had
-disposed back to life. Record the model name without checking it, for the same reason the session factory
+disposed back to life. Record the runtime's sign-in (`runtime.SignIn`), whose tokens a relayed
+failure is redacted of. Record the model name without checking it, for the same reason the session factory
 does: only the runtime knows which models the signed-in user may use.
 
 The model is named separately from the conversation's because consolidation is summarization rather
@@ -86,12 +90,13 @@ selection carries no context window and no output limit.
 
 **Postconditions:** A summarizer ready to consolidate, owning nothing disposable.
 
-#### The CopilotSummarizer Constructor (CopilotChannelOpener, string?, ModelSelection?)
+#### The CopilotSummarizer Constructor (CopilotChannelOpener, string?, ModelSelection?, CopilotSignInPlan?)
 
 **Purpose:** The test seam, for the reason *CopilotTurnChannel Unit Design* gives.
 
 **Algorithm:** Reject a null opener, refuse a selection as the public constructor does,
-and record the opener, the model and the selection.
+and record the opener, the model, the selection and the sign-in, which is null unless a test passes
+one.
 
 **Preconditions:** `opener` is not null.
 
@@ -102,9 +107,15 @@ and record the opener, the model and the selection.
 **Purpose:** Produce the record that consolidates one span of history.
 
 **Algorithm:** Reject a null request and a canceled token. Build fresh, tool-free engine session
-options carrying the model or the selection, open a session from them, send the composed
+options carrying the model or the selection, open a session from them through
+`CopilotSignIn.RelayAsync` — so a failure to open it is relayed redacted, as a failure of the send is
+below — send the composed
 consolidation prompt as the only message —
-a `MessageOptions` carrying the prompt and nothing else — and return the answer. Release the session
+a `MessageOptions` carrying the prompt and nothing else — and return the answer. A failure of the
+send is relayed through `CopilotSignIn.RedactRelayed(failure, signIn)`: a new exception of the same
+kind with a redacted message and the failure's redacted copy as its cause, never the SDK's own
+exception, whose message, chain or RPC data can quote a token; a cancellation carrying nothing to
+redact passes unchanged. Release the session
 in a `finally`, so a consolidation that failed,
 timed out or was canceled leaves nothing behind on the runtime — which matters because a long
 conversation performs one of these per rotation, and a session leaked here would accumulate for
@@ -134,8 +145,9 @@ for.
 | Null `request` | `ArgumentNullException` propagates |
 | Cancellation before opening | `OperationCanceledException`; nothing is opened |
 | Opener returned null | `InvalidOperationException` propagates |
+| Opening the session fails | Relayed as a redacted copy of the same kind (`RelayAsync`); nothing to release |
 | Session answered nothing | Empty record returned |
-| Failure during the turn | Propagates; the session is released first |
+| Failure during the turn | Relayed as a redacted copy of the same kind (`RedactRelayed`); the session is released |
 
 ### Dependencies
 
@@ -143,6 +155,9 @@ for.
   *Summarizer Unit Design*; and `ModelSelection`; see *ModelSettings Unit Design*.
 - **CopilotAgentFactory** — supplies the tool-free engine session options; see
   *CopilotAgentFactory Unit Design*.
+- **CopilotSignIn** — relays a consolidation's runtime or SDK failure, opening its session or taking
+  its turn, redacted with the runtime's sign-in (`RelayAsync(operation, plan)`,
+  `RedactRelayed(failure, plan)`); see *CopilotSignIn Unit Design*.
 - **CopilotTurnChannel** — opens and owns each short-lived runtime session; see *CopilotTurnChannel
   Unit Design*.
 - **CopilotRuntime** — the runtime every consolidation runs on, whose client the opener reads at each

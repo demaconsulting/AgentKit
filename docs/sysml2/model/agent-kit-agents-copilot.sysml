@@ -8,6 +8,7 @@ package AgentKitAgentsCopilot {
     private import AgentKitAgentsCopilot_CopilotProviderSessionFactory::*;
     private import AgentKitAgentsCopilot_CopilotRuntime::*;
     private import AgentKitAgentsCopilot_CopilotSessionObserver::*;
+    private import AgentKitAgentsCopilot_CopilotSignIn::*;
     private import AgentKitAgentsCopilot_CopilotSummarizer::*;
     private import AgentKitAgentsCopilot_CopilotTurnChannel::*;
 
@@ -36,7 +37,10 @@ package AgentKitAgentsCopilot {
      * RID-specific native runtime is provisioned only by a host application that opts into the bundled
      * runtime, never by this library.
      * It also describes the models the service offers the signed-in user as a model catalog, and
-     * applies a validated model selection to every session it configures.
+     * applies a validated model selection to every session it configures. The runtime signs in from
+     * the host's token or token provider, the environment, the user's Copilot CLI sign-in or its own
+     * fallbacks, in that order and with the host that belongs to the source, sharing nothing of the
+     * user's Copilot CLI home but the signed-in account's host and login.
      */
 
     part def AgentKitAgentsCopilotSystem {
@@ -57,6 +61,7 @@ package AgentKitAgentsCopilot {
         part copilotProviderSessionFactory : CopilotProviderSessionFactory;
         part copilotRuntime : CopilotRuntime;
         part copilotSessionObserver : CopilotSessionObserver;
+        part copilotSignIn : CopilotSignIn;
         part copilotSummarizer : CopilotSummarizer;
         part copilotTurnChannel : CopilotTurnChannel;
     }

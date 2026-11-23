@@ -352,6 +352,115 @@ public class CopilotAgentTests
     }
 
     /// <summary>
+    ///     Proves a session error that quotes a token the runtime's sign-in knows, or one shaped like a
+    ///     GitHub token, fails the run with both redacted and no cause attached.
+    /// </summary>
+    [Fact]
+    public async Task CopilotAgent_RunStreaming_SessionErrorQuotingAToken_IsRedacted()
+    {
+        // Arrange: a sign-in that knows a token of no GitHub shape, and an error quoting it and a gho_ token
+        const string secret = "s3cr3t-agent-xyz";
+        const string shaped = "gho_AgentSecret123";
+        var secrets = new CopilotSignInSecrets();
+        secrets.Add(secret);
+        var plan = new CopilotSignInPlan { Secrets = secrets };
+        var runtime = new FakeCopilotRuntime(_ =>
+            [new ScriptedTurn([CopilotEvents.Error($"refused {secret} and {shaped}")])]);
+        var agent = CopilotAgentFactory.CreateAgent(
+            [AIFunctionFactory.Create(() => "ok", "doc_read")],
+            instructions: null,
+            onPermissionRequest: null,
+            "test-agent",
+            model: null,
+            workingDirectory: null,
+            runtime.Opener,
+            runtime.Resumer,
+            signIn: plan);
+
+        // Act
+        var failure = await Assert.ThrowsAsync<InvalidOperationException>(() => Collect(agent, "q"));
+
+        // Assert
+        Assert.Equal("Session error: refused <redacted> and gho_<redacted>", failure.Message);
+        Assert.DoesNotContain(secret, failure.ToString(), StringComparison.Ordinal);
+        Assert.DoesNotContain(shaped, failure.ToString(), StringComparison.Ordinal);
+        Assert.Null(failure.InnerException);
+    }
+
+    /// <summary>
+    ///     Proves a turn the runtime or the SDK fails — with no session error event before it, so the
+    ///     failure reaches the run only through the send — is relayed redacted: a new
+    ///     <see cref="InvalidOperationException"/> whose message is redacted, whose cause is the
+    ///     redacted copy, and whose chain carries no secret.
+    /// </summary>
+    [Fact]
+    public async Task CopilotAgent_RunStreaming_TurnFailureQuotingAToken_IsRelayedRedacted()
+    {
+        // Arrange: the SDK's session-error shape, over a cause that quotes the secret too
+        const string secret = "s3cr3t-turn-xyz";
+        const string shaped = "gho_AgentTurnSecret123";
+        var cause = new InvalidOperationException(
+            $"Session error: refused {secret} {shaped}",
+            new IOException($"pipe {secret}"));
+        var runtime = new FakeCopilotRuntime(_ => [new ScriptedTurn([], Failure: cause)]);
+        var agent = MakeAgent(runtime, signIn: CopilotSignInTests.PlanKnowing(secret));
+
+        // Act
+        var failure = await Assert.ThrowsAsync<InvalidOperationException>(() => Collect(agent, "q"));
+
+        // Assert
+        Assert.NotSame(cause, failure);
+        Assert.Equal("Session error: refused <redacted> gho_<redacted>", failure.Message);
+        Assert.IsType<CopilotRedactedException>(failure.InnerException);
+        SecretAssert.NoSecret(failure, secret, shaped);
+        Assert.Equal(1, Assert.Single(runtime.Channels).DisposeCount);
+    }
+
+    /// <summary>
+    ///     Proves a failure creating or resuming a run's runtime session — a lost connection quoting
+    ///     the runtime's standard error, or an RPC error of a type outside the base class library — is
+    ///     relayed redacted: a new exception of the same kind, or an
+    ///     <see cref="InvalidOperationException"/> for the RPC error, whose chain carries no secret.
+    /// </summary>
+    [Fact]
+    public async Task CopilotAgent_Run_OpenFailureQuotingAToken_IsRelayedRedacted()
+    {
+        // Arrange: an opener and a resumer that fail as the SDK does, quoting both values
+        const string secret = "s3cr3t-open-xyz";
+        const string shaped = "gho_AgentOpenSecret123";
+        var lost = new IOException($"CLI process exited unexpectedly.\nstderr: {secret} {shaped}");
+        var refused = new CopilotSignInTests.RpcErrorException($"resume refused for {secret}", new { token = secret });
+        var agent = CopilotAgentFactory.CreateAgent(
+            [AIFunctionFactory.Create(() => "ok", "doc_read")],
+            instructions: null,
+            onPermissionRequest: null,
+            "test-agent",
+            model: null,
+            workingDirectory: null,
+            (_, _) => Task.FromException<ICopilotTurnChannel>(lost),
+            (_, _, _) => Task.FromException<ICopilotTurnChannel>(refused),
+            signIn: CopilotSignInTests.PlanKnowing(secret));
+        var created = await agent.CreateSessionAsync(TestContext.Current.CancellationToken);
+        var resumed = (CopilotAgentSession)await agent.CreateSessionAsync(TestContext.Current.CancellationToken);
+        resumed.SessionId = "session-9";
+
+        // Act
+        var createFailure = await Assert.ThrowsAsync<IOException>(
+            () => agent.RunAsync("q", created, cancellationToken: TestContext.Current.CancellationToken));
+        var resumeFailure = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => agent.RunAsync("q", resumed, cancellationToken: TestContext.Current.CancellationToken));
+
+        // Assert
+        Assert.NotSame(lost, createFailure);
+        Assert.Equal("CLI process exited unexpectedly.\nstderr: <redacted> gho_<redacted>", createFailure.Message);
+        SecretAssert.NoSecret(createFailure, secret, shaped);
+        var copy = Assert.IsType<CopilotRedactedException>(resumeFailure.InnerException);
+        Assert.Equal(typeof(CopilotSignInTests.RpcErrorException).FullName, copy.OriginalTypeName);
+        Assert.Equal("resume refused for <redacted>", resumeFailure.Message);
+        SecretAssert.NoSecret(resumeFailure, secret, shaped);
+    }
+
+    /// <summary>
     ///     Proves the non-streaming run returns exactly what the stream carried, gathered into one
     ///     response.
     /// </summary>
@@ -608,8 +717,9 @@ public class CopilotAgentTests
     /// </summary>
     /// <param name="runtime">The scripted runtime.</param>
     /// <param name="name">The agent's name.</param>
+    /// <param name="signIn">The runtime's sign-in, whose tokens a failure is redacted of, or <see langword="null"/>.</param>
     /// <returns>The agent.</returns>
-    private static CopilotAgent MakeAgent(FakeCopilotRuntime runtime, string? name = "test-agent") =>
+    private static CopilotAgent MakeAgent(FakeCopilotRuntime runtime, string? name = "test-agent", CopilotSignInPlan? signIn = null) =>
         CopilotAgentFactory.CreateAgent(
             [AIFunctionFactory.Create(() => "ok", "doc_read")],
             instructions: null,
@@ -618,7 +728,8 @@ public class CopilotAgentTests
             model: null,
             workingDirectory: null,
             runtime.Opener,
-            runtime.Resumer);
+            runtime.Resumer,
+            signIn: signIn);
 
     /// <summary>
     ///     Builds a scripted turn whose only event is a complete assistant message.

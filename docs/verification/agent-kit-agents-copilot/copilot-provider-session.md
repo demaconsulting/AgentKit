@@ -77,8 +77,9 @@ runtime's own identifier, any nested agent's traffic entering the transcript, an
 that is not the one the runtime reported, any non-zero reading before a first turn, any turn accepted
 with no usage reported, any turn accepted after the runtime rewrote the history, any turn sent on a
 session an earlier turn left unable to account for the conversation, any empty answer recorded in
-place of a runtime failure, any released session that accepts a turn, or any disposal that reaches
-the caller's client constitutes a failure.
+place of a runtime failure, any turn failure that reaches the caller as the SDK's own exception or
+carries a token anywhere in its chain, any released session that accepts a turn, or any disposal
+that reaches the caller's client constitutes a failure.
 
 ### Test Scenarios
 
@@ -202,12 +203,16 @@ the same way and are refused through the same check.
 
 - `CopilotProviderSession_Send_NoAssistantMessage_ThrowsNamingTheRuntimeError`
 - `CopilotProviderSession_Send_NoAssistantMessageAndNoError_ThrowsSayingSo`
+- `CopilotProviderSession_Send_NoAssistantMessageQuotingAToken_IsRedacted`
 
 Error paths. The first scripts a runtime that reports an error and produces no assistant message, and
 asserts the refusal carries the runtime's own message — recording an empty answer there would present
 a runtime failure as a model with nothing to say, and the engine would seed the next session from a
 turn that never happened. The second is the boundary: a session that went idle with no answer and no
-error is still refused, and says so rather than naming a cause it does not have.
+error is still refused, and says so rather than naming a cause it does not have. The third opens the
+session with a sign-in that knows a secret of no GitHub token shape, scripts the runtime's error
+quoting that secret and a `gho_` token, and asserts the refusal reads
+`The runtime reported: refused <redacted> and gho_<redacted>` with neither value in its string form.
 
 That the named cause belongs to *this* turn needs no scenario here: the observer discards the last
 turn's reported error when a turn begins — asserted directly in *CopilotSessionObserver Unit
@@ -220,6 +225,9 @@ on this session that could inherit a stale cause.
 
 - `CopilotProviderSession_Send_AfterATurnItCouldNotRecord_RefusesWithoutSending`
 - `CopilotProviderSession_Send_ChannelFails_EndsTheSessionAndHandsNothingBack`
+- `CopilotProviderSession_Send_ChannelFailureQuotingAToken_IsRelayedRedacted`
+- `CopilotProviderSession_Send_SessionErrorQuotingAToken_IsRelayedRedacted`
+- `CopilotProviderSession_Send_Canceled_PassesTheCancellationUnchanged`
 
 Error paths, and the ones that distinguish refusing from merely reporting. The first scripts a turn
 the runtime answers normally while reporting no usage — so the turn is refused *after* the runtime
@@ -244,6 +252,25 @@ wrong and ends the session the same way.
 Scripting the first failure as an unreported usage rather than as a rewrite is deliberate: it proves
 the rule is about *where the failure happened* rather than about which condition held, which is what
 makes one latch correct for every cause.
+
+The third, `CopilotProviderSession_Send_ChannelFailureQuotingAToken_IsRelayedRedacted`, opens the
+session with a sign-in that knows a secret of no GitHub token shape and scripts the send failing with
+an `IOException` quoting that secret and a `gho_` token. The first send throws a new `IOException`,
+not the channel's own: its message carries `<redacted>` in place of each value, its inner exception
+is a `CopilotRedactedException` naming `System.IO.IOException`, and a walk of its whole chain — every
+inner exception and every inner exception of an aggregate — finds neither value in any message,
+stack trace or string form. The later refusal, which AgentKit composes, quotes the failure redacted
+and passes the same walk.
+
+The fourth, `CopilotProviderSession_Send_SessionErrorQuotingAToken_IsRelayedRedacted`, scripts the
+SDK's own shape — an `InvalidOperationException` reading `Session error: …` that quotes both values,
+over a cause quoting the secret — and asserts a new `InvalidOperationException` with the redacted
+message and a redacted copy as its cause, a clean chain, and a next send refused naming the redacted
+text.
+
+The fifth, `CopilotProviderSession_Send_Canceled_PassesTheCancellationUnchanged`, scripts the send
+failing with an `OperationCanceledException` that carries nothing to redact, and asserts the very
+same instance reaches the caller, so a caller's cancellation handling is unchanged.
 
 #### AgentKitAgentsCopilot-CopilotProviderSession-RejectsInvalidArguments: Bad Arguments Are Refused
 

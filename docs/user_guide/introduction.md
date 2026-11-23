@@ -1097,8 +1097,9 @@ is not a candidate. If `npm config get prefix` names another folder, name that p
 — well over half a minute under antivirus scanning — while the CLI unpacks its package into the user's
 cache (`%LOCALAPPDATA%\copilot\pkg` on Windows);
 later starts take a second or two. That cache, and any organization policy in its managed-settings
-folder, is shared with the user's own `copilot`. The CLI's own configuration, MCP servers, plugins and
-sign-in are **not** used: the runtime's home is AgentKit's data directory.
+folder, is shared with the user's own `copilot`. The CLI's own configuration, MCP servers and plugins
+are **not** used: the runtime's home is AgentKit's data directory. Its sign-in can be: see *Signing
+In*.
 
 ### Bundling the Runtime Instead
 
@@ -1179,17 +1180,12 @@ The runtime is always:
   caches are not kept there: they go to the platform's cache folder (`%LOCALAPPDATA%` on Windows,
   `XDG_CACHE_HOME` or its default elsewhere).
 
-`CopilotRuntimeOptions` takes only the data directory and, optionally, a GitHub token, a log level, a
-logger, the runtime source and a CLI path. With no token the runtime authenticates from the
-`COPILOT_GITHUB_TOKEN`, `GH_TOKEN` or `GITHUB_TOKEN` environment variable, or as the user the GitHub
-CLI is signed in as (`gh auth login`; the runtime runs `gh auth token`, so `gh` must be on `PATH`).
-**A sign-in made only with the Copilot CLI is not used**, even when the installed CLI is the runtime:
-it lives in the system keychain or the Copilot CLI's own home, and the runtime AgentKit starts reads
-neither. Pass `gitHubToken:` to supply a credential directly, and set `COPILOT_GH_HOST` for a GitHub
-Enterprise Cloud account with data residency. `StartAsync` refuses a runtime that started but is not
-signed in, naming these options. Once started, the runtime reports what runs: `runtime.CliPath` (the
-installed CLI, or `null` for the bundled runtime), `runtime.RuntimeVersion` and
-`runtime.ProtocolVersion`.
+`CopilotRuntimeOptions` takes only the data directory and, optionally, how the runtime signs in (a
+GitHub token or token provider, a GitHub host, and whether the Copilot CLI sign-in may be used), a log
+level, a logger, the runtime source and a CLI path. *Signing In* below covers the sign-in options.
+Once started, the runtime reports what runs: `runtime.CliPath` (the installed CLI, or `null` for the
+bundled runtime), `runtime.RuntimeVersion` and `runtime.ProtocolVersion`, and who it runs as:
+`runtime.SignInSource`, `runtime.GitHubHost` and `runtime.GitHubLogin`.
 
 Copilot arrives as a complete runtime carrying its own tools — shell, fetch, file editing and more.
 The factory suppresses them by deriving the session allow-list from the same tools you supplied, so
@@ -1244,6 +1240,106 @@ the same way it does when you pick an Ollama model for an `IChatClient` agent. S
 the working directory *through* the factory rather than by building a session configuration
 yourself — a hand-built session forgoes the built-in tool suppression and the default-safe
 permission handler.
+
+### Signing In
+
+The runtime signs in to GitHub from the first of these sources that applies:
+
+1. **A token from the application**: `gitHubToken:`, or `gitHubTokenProvider:` for an application
+   that refreshes its own tokens.
+2. **A token in the environment**: `COPILOT_GITHUB_TOKEN`, `GH_TOKEN` or `GITHUB_TOKEN`.
+3. **The user's Copilot CLI sign-in** (`copilot login`), unless the application passes
+   `useCopilotCliSignIn: false`.
+4. **The runtime's own fallbacks**: a sign-in stored in AgentKit's data directory, then the GitHub CLI
+   (`gh auth login`; the runtime runs `gh auth token`, so `gh` must be on `PATH`).
+
+This is the order the Copilot CLI itself uses, so the runtime signs in as `copilot` would in the same
+shell. A token in the environment comes before the stored sign-ins on purpose: it is set for one
+process or job — CI, a container, a service account — and a sign-in stored for the user should not
+quietly replace it. If a stray `GITHUB_TOKEN` is set for another tool, unset it for the application,
+or pass `gitHubToken:` explicitly.
+
+**What the Copilot CLI sign-in shares.** Only the login. AgentKit reads the signed-in account's host and login from the
+Copilot CLI's `config.json` (in `COPILOT_HOME`, or `.copilot` in the user's profile; a `COPILOT_HOME` that is not a
+valid path is reported, and the next source applies) and asks the Copilot CLI itself for that account's token: it runs
+the same CLI once more, for a moment, on a new temporary folder holding nothing but that host and login, with no
+session, and deletes the folder afterwards. The CLI reads the token from the system credential store, where
+`copilot login` put it; AgentKit never reads the credential store itself. The runtime then receives the token and the
+host, nothing else: none of the user's MCP servers, hooks, agents, skills, plugins, instructions, settings or history,
+and its data directory stays private. The token is kept in memory and handed only to the runtime process, in its
+environment; AgentKit never writes or logs it. This adds a second or two to the start. Any token AgentKit was given or
+obtained, or that your token provider returns, is also removed from the runtime and SDK text AgentKit quotes in its own
+messages — a failed start, a session error that fails an agent's run, a provider session's refusal — along with any text
+shaped like a GitHub token. When AgentKit keeps a runtime or SDK failure as an inner exception, it keeps a redacted
+copy: the original's type name, message and stack trace, with the same text removed, so no exception in the chain
+carries a token. When a runtime or SDK failure reaches you — a turn that fails on an agent or a provider session, a
+consolidation that fails, a session the runtime fails to create, resume or delete, or a model listing that fails other
+than for a lost or unsigned connection — it arrives as a new exception of the same kind (`IOException`,
+`TimeoutException` or `InvalidOperationException`; any other type as `InvalidOperationException`), with the message
+redacted and that redacted copy as its inner exception. A cancellation or disposal of exactly its base type that carries
+no cause, no data and nothing to redact reaches you unchanged. Any other cancellation, including a canceled runtime
+start, is rebuilt with the same token, a redacted message and that redacted copy as its cause; a `TaskCanceledException`
+stays one. A disposal with no cause is rebuilt with its object name and message redacted; one with a cause keeps the
+redacted copy as its cause, and its object name appears only in its redacted message. A
+failed read of a started runtime's status is relayed the same way.
+
+**What your logger receives.** Every entry AgentKit writes to the logger you pass, and every entry the SDK writes to
+it, is redacted the same way: the message, every structured value except numbers, Booleans, enumerations, dates,
+times, durations and GUIDs (which keep their value and type; any other value arrives as its redacted text), every
+scope, and a logged exception, which arrives as its redacted copy. Levels and event IDs are unchanged. Paths and
+messages AgentKit quotes before the sign-in is resolved — a CLI that was not found or is too old, a version check that
+failed — are redacted of the environment's token values and your `gitHubToken:`. AgentKit removes exact values, so a
+very short or common token value can also replace unrelated text with `<redacted>`.
+
+**GitHub Enterprise Cloud hosts.** Each source is used with its own host. The Copilot CLI sign-in
+uses its account's host. A token needs its host too: GitHub refuses a token for a `*.ghe.com` account
+used against `github.com` with 401 Bad credentials. Pass the host as `gitHubHost:`, or set
+`COPILOT_GH_HOST`:
+
+```csharp
+var options = new CopilotRuntimeOptions(
+    dataDirectory,
+    gitHubToken: token,
+    gitHubHost: "example.ghe.com");
+```
+
+When a host is chosen this way, the Copilot CLI sign-in is used only if its account is on that host.
+`COPILOT_GH_HOST` must be a host name or an https URL without a path, query, user name or port, as
+`gitHubHost:` must: any other value stops the start with an explanation, unless `gitHubHost:` is
+passed, which takes precedence over it. A valid value is handed to the runtime as a bare host name,
+whatever form it was written in, so the runtime always signs in to the host the token is for.
+
+**A token provider** is asked once when the runtime starts, and again by each session the runtime
+opens, so the runtime can refresh a token before it expires. It receives the host and whether the
+token replaces one about to expire, may be called from any thread, and returns a
+`CopilotGitHubToken` with the token's remaining lifetime when known:
+
+```csharp
+var options = new CopilotRuntimeOptions(
+    dataDirectory,
+    gitHubHost: "example.ghe.com",
+    gitHubTokenProvider: async (request, cancellationToken) =>
+        new CopilotGitHubToken(await tokenStore.GetTokenAsync(request.Host, cancellationToken)));
+```
+
+Pass either a token or a provider, not both. A provider that fails or returns no token stops the
+start, with the provider's error as the inner exception; a session whose provider fails is refused.
+
+**Which account it is.** `runtime.SignInSource` says which source was used, and `runtime.GitHubHost`
+and `runtime.GitHubLogin` which account; with a logger, the start logs the same, and warns when the
+runtime signed in on another account than the Copilot CLI's. The account decides which models are
+offered: a GitHub Enterprise Cloud account may offer different models from a `github.com` one.
+
+**Platforms.** The Copilot CLI sign-in has been tested on Windows with the installed CLI. It has not
+been tested on macOS, where the Copilot CLI may ask the user to allow access to its keychain item (an
+unanswered prompt ends the attempt after 60 seconds), on Linux, or with the bundled runtime. Wherever
+it does not work, AgentKit moves on to the next source, and the reason appears in the start's log and
+in the message if no source signs the runtime in.
+
+**Signing in from the application, later.** The runtime can also run GitHub's device-code sign-in and
+keep the result in AgentKit's data directory. AgentKit does not offer that yet: the runtime would store
+the token in plain text in the data directory, and each sign-in creates a new token. It may be added
+later, with that caveat documented.
 
 ### Permissions Are Default-Deny
 
@@ -1414,17 +1510,42 @@ for answer quality across a long conversation, not to save money.
   through `cliPath:`, or opt into the bundled runtime.
 - **`InvalidOperationException`: "AgentKit could not read the version of the Copilot CLI".** The CLI
   could not be started, exited with an error, or did not answer within two minutes; the message carries
-  its error output. An npm installation also needs `node` on `PATH`.
+  the end of its error output, redacted. When the CLI could not be started, the inner exception is a
+  redacted copy of the platform's error: read its message or `ToString()`, which starts with the
+  original type name. An npm installation also needs `node` on `PATH`.
 - **`ArgumentException`: the Copilot CLI path "is a batch file".** The `cliPath` names a `copilot.cmd`
   or `.bat`, which Windows would run through `cmd.exe`. Name `copilot.exe` — such as the one
   `CopilotCli.FindInstalled()` returns — or, for an npm installation, the package's `npm-loader.js`.
-- **`InvalidOperationException`: the runtime "started but is not signed in".** Supply a token, set
-  `COPILOT_GITHUB_TOKEN`, `GH_TOKEN` or `GITHUB_TOKEN`, or sign in with `gh auth login` and keep `gh`
-  on `PATH`; a Copilot CLI sign-in is not used.
+- **`InvalidOperationException`: the runtime "started but is not signed in".** The message lists each
+  sign-in source in order and what it found. Sign in with `copilot login` (add
+  `--host https://<name>.ghe.com` for a GitHub Enterprise Cloud account) or `gh auth login` with `gh`
+  on `PATH`, or pass `gitHubToken:` or `gitHubTokenProvider:`, with `gitHubHost:` for a `*.ghe.com`
+  account. When a token was used and not accepted, the message says which: a GitHub Enterprise Cloud
+  token without its host is the usual cause, and an environment token that is not meant for the
+  application can be unset.
+- **The runtime signed in as an unexpected account or host.** Check `runtime.SignInSource`,
+  `runtime.GitHubHost` and `runtime.GitHubLogin`. A token in `COPILOT_GITHUB_TOKEN`, `GH_TOKEN` or
+  `GITHUB_TOKEN` comes before the Copilot CLI sign-in; otherwise the Copilot CLI's account comes before
+  the GitHub CLI's. Pass `gitHubHost:` to choose a host, or `useCopilotCliSignIn: false` to skip the
+  Copilot CLI sign-in.
+- **`InvalidOperationException`: "The COPILOT_GH_HOST environment variable is not a valid GitHub
+  host".** `COPILOT_GH_HOST` is set to something other than a host name such as `example.ghe.com` or
+  an https URL such as `https://example.ghe.com` — for example an `http` URL, or one with a path or
+  port. The message does not repeat the value. Correct it, unset it to sign in to `github.com`, or
+  pass `gitHubHost:`, which takes precedence over it.
+- **The Copilot CLI account was found but its token could not be read.** The message names the account
+  and the reason. Run `copilot` once to check that it is still signed in (`copilot login` again if
+  not); on macOS, allow access to the keychain item if asked. AgentKit moves on to the GitHub CLI
+  meanwhile.
 - **`InvalidOperationException`: the runtime "could not list models".** The runtime's connection was
-  lost or its sign-in lapsed; start a new runtime, signed in as above.
+  lost or its sign-in lapsed; start a new runtime, signed in as above. The inner exception is a
+  redacted copy of the SDK's error: its `ToString()` starts with the original type name. A listing
+  that fails another way — an `IOException` for a runtime that exited, say — arrives as a new
+  exception of the same kind, its message redacted and a redacted copy of the SDK's error inside.
 - **The runtime fails to start.** `CopilotRuntime.StartAsync` raises an `InvalidOperationException`
-  carrying the runtime's own error. On the installed CLI the message names the CLI and its version.
+  carrying the runtime's own error, redacted. The inner exception is a redacted copy of the runtime's
+  failure — its type name, message and stack trace, with any token removed — so read its message or
+  `ToString()` rather than its type. On the installed CLI the message names the CLI and its version.
   On the bundled runtime the runtime is most often missing from the application's output: the host
   project does not reference `Microsoft.Copilot.SDK` directly, `CopilotSkipCliDownload` is set for the
   host, or the platform is one the runtime does not support — it is published for `win-x64`,
@@ -1452,8 +1573,9 @@ for answer quality across a long conversation, not to save money.
   rather than handed to the model with the server available. Check for MCP servers provided by a
   managed catalog or by the signed-in account or its organization. A resumed
   conversation that is refused this way is kept, not deleted.
-- **The session is refused while AgentKit disables an MCP server — a `RemoteRpcException` from the
-  runtime's disable call, or the "kept … enabled" error above.** The server may be an *owned* MCP
+- **The session is refused while AgentKit disables an MCP server — an `InvalidOperationException`
+  relaying the runtime's RPC error from its disable call, or the "kept … enabled" error above.** The
+  server may be an *owned* MCP
   installation, which the runtime's session-scoped disable may require an installation id to disable.
   The SDK's listing of a session's MCP servers does not expose that id, so AgentKit cannot supply it
   and refuses the session instead. Use a data directory with no MCP installations.
@@ -1478,6 +1600,54 @@ the machine. These are breaking changes, accepted while the package is pre-1.0:
   anything starts, and a runtime that started but is not signed in; each refusal says what to do. On
   the installed CLI it also takes longer: it runs the CLI once to read its version, and the first
   start of a CLI version unpacks it.
+
+### Migrating to the Copilot CLI Sign-In
+
+This release lets the runtime sign in with the user's Copilot CLI sign-in, and against the right
+GitHub host:
+
+- **The account may change.** With no token from the application or the environment, the runtime
+  now signs in as the Copilot CLI's account before trying the GitHub CLI. A machine whose GitHub CLI
+  is signed in to `github.com` while the Copilot CLI is signed in to a GitHub Enterprise Cloud host
+  now runs on the Copilot CLI's account and host, whose models and policies may differ. Check
+  `runtime.SignInSource`, `runtime.GitHubHost` and `runtime.GitHubLogin`, and pass
+  `useCopilotCliSignIn: false` to keep the earlier behavior.
+- **`CopilotRuntimeOptions`'s constructor gained three optional parameters**, `gitHubHost`,
+  `gitHubTokenProvider` and `useCopilotCliSignIn`. Source that calls it compiles unchanged, but a host
+  built against an earlier release must be recompiled.
+- **The start can take a second or two longer** when the Copilot CLI sign-in is used, while the CLI
+  reads the account's token.
+- **The "not signed in" message has changed.** It now lists what each source found. Code that matched
+  its earlier text should match the exception type instead.
+- **An invalid `COPILOT_GH_HOST` now stops the start.** It was ignored: AgentKit resolved the sign-in
+  for `github.com` while the runtime still received the invalid value. Correct or unset it, or pass
+  `gitHubHost:`. A valid `COPILOT_GH_HOST` written as a URL is now handed to the runtime as a bare
+  host name.
+- **A failed start's and a failed model listing's inner exception is a redacted copy.** It is no
+  longer the runtime's or the SDK's own exception, but a copy carrying its type name, message and
+  stack trace with any token removed; the outer exception is still an `InvalidOperationException`.
+  Code that tested the inner exception's type, for example for a `FileNotFoundException`, should read
+  its message or `ToString()`, which starts with the original type name.
+- **A failed turn, consolidation, session opening or deletion or model listing raises a redacted
+  copy, not the SDK's exception.** A turn that fails on an agent or a provider session, a consolidation that fails,
+  a session the runtime fails to create, resume or delete, and a model listing that fails other than for a
+  lost or unsigned connection now raise a new exception of the same kind with the message redacted
+  and a redacted copy of the SDK's exception as the inner exception. An `IOException`,
+  `TimeoutException` or `InvalidOperationException` keeps its type; any other type — for example the
+  SDK's RPC error, `Microsoft.Copilot.RemoteRpcException` — now arrives as an `InvalidOperationException`.
+  Code that caught such a type should catch `InvalidOperationException` and read the inner exception's
+  `ToString()`, which starts with the original type name. In particular, `runtime.DeleteSessionAsync`
+  now reports a session the runtime does not hold as an `InvalidOperationException`, not the SDK's
+  `RemoteRpcException`. A failed read of a started runtime's status is relayed the same way.
+- **Your logger receives redacted entries.** The SDK's entries reach your logger through AgentKit's
+  redacting logger, as AgentKit's own do. Structured values other than numbers, Booleans, enumerations,
+  dates, times, durations and GUIDs arrive as redacted text rather than their original objects, and a
+  logged exception arrives as a redacted copy whose `ToString()` starts with the original type name, not
+  as the SDK's exception. Code that inspected logged exception types or structured values should read
+  the text instead.
+- **A failed version check's inner exception is a redacted copy.** When the installed CLI could not be
+  started, the inner exception is no longer the platform's own exception, but a redacted copy whose
+  `ToString()` starts with the original type name.
 
 ### Migrating from the Earlier Adapter
 

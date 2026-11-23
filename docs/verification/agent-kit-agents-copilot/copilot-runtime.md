@@ -1,7 +1,8 @@
 ## CopilotRuntime Unit Verification Design
 
 This document describes the unit-level verification strategy for the `CopilotRuntime` class, its
-options type, `CopilotRuntimeOptions`, and its runtime-source type, `CopilotRuntimeSource`.
+options type, `CopilotRuntimeOptions`, its runtime-source type, `CopilotRuntimeSource`, and its
+token-provider types, `CopilotGitHubTokenRequest` and `CopilotGitHubToken`.
 
 ### Verification Approach
 
@@ -68,7 +69,9 @@ project; the tests that nothing built on a disposed runtime starts it reside in
   `CopilotClient` whose runtime path names no file — stands in for a runtime that must not be started
 - **File system**: Directories under the system temporary folder, one per test, deleted afterwards;
   the runtime path and base directory of the client that cannot start are never created
-- **Isolation**: No test reads or changes the process environment; no state is shared
+- **Isolation**: No test changes the process environment, and no state is shared. Tests that build a client without a
+  sign-in let the code read the process environment's secret variables, as it does in use, so it can redact their
+  values. No assertion depends on those values
 
 ### Acceptance Criteria
 
@@ -79,8 +82,10 @@ working directory, or with any client-level capability channel set; options or e
 differ between the two runtime sources; a launch that searches or probes for the bundled runtime,
 prefers discovery to a named CLI, or follows `COPILOT_CLI_PATH`; a missing named CLI, a machine
 without a CLI, or a too-old CLI that is not refused before a client exists; a protocol mismatch not
-explained as too old or too new; a runtime that does not report its launch and status, or an
-unauthenticated one that is accepted; any
+explained as too old or too new; a runtime that does not report its launch, status and sign-in, or an
+unauthenticated one that is accepted or refused without each sign-in source's finding; a resolved
+token or host that does not reach the client options, or an environment changed when the plan names
+neither; a session provider applied on a runtime without one, or missing on a runtime with one; any
 `COPILOT_` or `GITHUB_COPILOT_` variable outside the pass-through set reaching the runtime environment,
 or any other host variable dropped; a pass-through set other than the documented one; a data directory
 accepted when it names a file, is a non-empty directory without the marker, or has a marker that is a
@@ -88,7 +93,8 @@ link, a directory, the wrong size or the wrong content, or is found populated on
 written, or marked when refused; a marker written in
 any form other than the exact versioned bytes, or an existing marker overwritten;
 a failed bundled start whose explanation omits the runtime's error, the direct SDK reference or an
-authentication source, or loses the original failure, or a failed installed-CLI start whose
+authentication source, or keeps the original failure rather than a redacted copy of it as the cause, or leaves a
+token anywhere in the cause's chain, or a failed installed-CLI start whose
 explanation blames the SDK reference; a cancellation that is wrapped; a failed or canceled start that
 leaves the client
 undisposed; a disposal that is not idempotent or leaves the client usable; an agent, provider-session
@@ -163,9 +169,36 @@ status is returned as read.
 **Test**: `CopilotRuntime_VerifyStarted_Unauthenticated_IsRefusedWithSignInGuidance`
 
 Error path. A runtime reporting it is not authenticated is refused with an `InvalidOperationException`
-carrying the runtime's status message, that the Copilot CLI's own sign-in is not used, and every
-remedy: `gitHubToken`, `COPILOT_GITHUB_TOKEN`, `GH_TOKEN` or `GITHUB_TOKEN`, `gh auth login`, and
-`COPILOT_GH_HOST`.
+carrying the runtime's status message, the four sign-in sources numbered in order with what each
+found, and the remedies: `copilot login`, `gh auth login` and `gitHubHost`. The message no longer
+says that the Copilot CLI's own sign-in is not used.
+
+#### AgentKitAgentsCopilot-CopilotRuntime-UsesTheResolvedSignIn: The Chosen Token and Host Reach the Runtime
+
+**Tests**:
+
+- `CopilotRuntime_BuildClientOptions_SignInPlan_CarriesTheTokenAndHost`
+- `CopilotRuntime_BuildClientOptions_NoTokenOrHost_LeavesTheEnvironmentUnchanged`
+
+Normal operation. A plan carrying the Copilot CLI's token and its host puts the token in the client's
+GitHub token and the bare host name in the runtime's `COPILOT_GH_HOST`, replacing the host
+environment's value, still in Empty mode. A plan for an environment token hands over no token and
+leaves the runtime's environment exactly the filtered host environment.
+
+#### AgentKitAgentsCopilot-CopilotRuntime-ReportsHowItSignedIn: The Account That Signed In
+
+**Test**: `CopilotRuntime_Properties_ReportTheSignIn`
+
+A runtime built with a Copilot CLI plan and an authentication status of kind `token` reports
+`CopilotSignInSource.CopilotCli` and the reported host and login; one built without reports
+`Unknown` and no host or login.
+
+#### AgentKitAgentsCopilot-CopilotRuntime-SuppliesTheSessionSignIn: Sessions Ask the Host's Provider
+
+**Test**: `CopilotRuntime_ApplySessionSignIn_SetsTheProviderOnlyWhenTheRuntimeHasOne`
+
+A runtime started with a token provider sets a session token provider on create and resume options
+and no session token; one without leaves the session's GitHub options untouched.
 
 #### AgentKitAgentsCopilot-CopilotRuntime-WithholdsCopilotEnvironment: The Host's Copilot Variables Stay Out
 
@@ -244,13 +277,22 @@ behind is empty, so the next start refuses the directory as carrying an invalid 
 - `CopilotRuntimeOptions_Constructor_RelativeDataDirectory_IsResolvedToAFullPath`
 - `CopilotRuntimeOptions_Constructor_BlankCliPath_IsNull`
 - `CopilotRuntimeOptions_Constructor_FullyQualifiedCliPath_IsKept`
+- `CopilotRuntimeOptions_GitHubHost_IsNormalized`
+- `CopilotRuntimeOptions_SignInOptions_DefaultAndKeepTheirValues`
+- `CopilotGitHubToken_Constructor_ValidatesAndRedacts`
 
 With every option a host can set supplied, the tests assert no plugin directory, session filesystem,
 test options, extension launch provider, installation handler, model request handler, model listing
 handler, telemetry, network callbacks, Entra registration or telemetry forwarder is set; that the
-token, log level and logger reach the client options; that a blank token is treated as none; that
+token and log level reach the client options, and the logger only behind the redacting logger, which
+passes an entry on to it, while no logger gives the SDK none; that a blank token is treated as none; that
 a relative data directory is resolved to a full path when the options are built; that a blank CLI path
-is treated as none for either source; and that a fully qualified CLI path is kept, normalized.
+is treated as none for either source; and that a fully qualified CLI path is kept, normalized. A
+GitHub host given as `example.ghe.com`, `https://example.ghe.com` or `https://example.ghe.com/` is kept
+as `https://example.ghe.com`, and a blank one as none; by default there is no host and no provider and
+the Copilot CLI sign-in is allowed, and a provider and `useCopilotCliSignIn: false` are kept. A
+provider's token must not be blank and must report more than one hour of life, and no string form of
+it carries the token.
 
 #### AgentKitAgentsCopilot-CopilotRuntime-ExplainsAMissingRuntime: The Cause That Fits What Was Launched
 
@@ -259,21 +301,40 @@ is treated as none for either source; and that a fully qualified CLI path is kep
 - `CopilotRuntime_StartClient_FailedStart_ExplainsTheMissingRuntimeAndKeepsTheCause`
 - `CopilotRuntime_StartClient_InstalledCliFailure_DoesNotBlameTheSdkReference`
 - `CopilotRuntime_StartClient_Succeeds_DoesNotThrow`
+- `CopilotRuntime_StartClient_FailureQuotingASignInToken_IsRedacted`
+- `CopilotRuntime_StartClient_InstalledCliPathQuotingASecret_IsRedacted` (ordinary failure, protocol mismatch)
 
-Error path and normal operation. A bundled start failing with the SDK's runtime-not-found error is
-rethrown as an `InvalidOperationException` whose message carries the runtime's error and the remedy —
-a `PackageReference` to `Microsoft.Copilot.SDK` — and names every authentication source,
-`COPILOT_GITHUB_TOKEN` among them, and whose inner exception is the original, by reference; a failure
-whose message is null, on a start whose launch is not known, is explained for both sources rather
-than masked. An installed CLI's failure names the CLI and its version, keeps the cause and an
-authentication source, and does not mention a package reference. A start that succeeds passes
-through.
+Error path and normal operation. A bundled start failing with the SDK's runtime-not-found error is rethrown as an
+`InvalidOperationException` whose message carries the runtime's error and the remedy — a `PackageReference` to
+`Microsoft.Copilot.SDK` — and names every sign-in source, in order, from `gitHubToken` or `gitHubTokenProvider` to the
+user's Copilot CLI sign-in, and whose inner exception is a redacted copy of the original — not the original — carrying
+its type name and message; a failure whose message is null, on
+a start whose launch is not known, is explained for both sources rather than masked. An installed CLI's failure names
+the CLI and its version, keeps a redacted copy of the cause and an authentication source, and does not mention a package
+reference. A start
+that succeeds passes through. On a runtime started with a token provider, whose session provider has handed a session
+its token, a start failure quoting both the start token and the session token — neither shaped like a GitHub token —
+and chaining an inner exception that chains an aggregate of two exceptions quoting them, is explained with `<redacted>`
+in their places and neither value in the message; the inner exception is a redacted copy carrying the original's type
+name and the redacted message, the aggregate is copied with its type name, and a walk of the whole chain, every inner
+exception of any aggregate included, finds neither value in any message, stack trace, string form or data. The whole
+explanation is redacted: an installed CLI at `/opt/s3cr3t-value-xyz/bin/copilot`, on a sign-in that knows the secret,
+is named as `/opt/<redacted>/bin/copilot` both by the installed-CLI cause and by the protocol-mismatch explanation,
+and `SecretAssert` finds the secret nowhere in the chain.
 
 #### AgentKitAgentsCopilot-CopilotRuntime-PassesCancellationThrough: Cancellation Is Not a Fault
 
-**Test**: `CopilotRuntime_StartClient_Canceled_PropagatesUnchanged`
+**Tests**:
 
-The very same `OperationCanceledException` instance reaches the caller.
+- `CopilotRuntime_StartClient_Canceled_PropagatesUnchanged`
+- `CopilotRuntime_StartClient_CanceledCarryingASecret_IsRebuiltRedacted`
+
+A clean cancellation — no cause and nothing in its message to redact — reaches the caller as the very same
+`OperationCanceledException` instance. A cancellation quoting a known secret in its message and chaining an I/O failure
+quoting it and a token-shaped value is rebuilt as a new `OperationCanceledException` of exactly that type, with the same
+token, the message `stopped <redacted>` and a redacted copy naming `OperationCanceledException` as its cause; a
+`TaskCanceledException` with a cause is rebuilt as a `TaskCanceledException` with its token. `SecretAssert` finds no
+secret in either.
 
 #### AgentKitAgentsCopilot-CopilotRuntime-LeavesNoRuntimeBehind: Disposed on Failure, Once on Request, Never Restarted
 
@@ -314,6 +375,65 @@ disposed runtime fails with `ObjectDisposedException`. That the runtime deletes 
 property of the SDK call the method forwards to; the opt-in live suite's agent scenarios delete their
 conversations through this method.
 
+#### AgentKitAgentsCopilot-CopilotRuntime-RelaysDeletionFailuresRedacted: Deletion Failures Relayed Redacted
+
+**Tests**:
+
+- `CopilotRuntime_DeleteSessionAsync_RuntimeFailureQuotingASecret_IsRelayedRedacted`
+- `CopilotRuntime_DeleteSessionAsync_CleanCancellation_PassesUnchanged`
+
+The deletion is injected through the runtime's `RelayDeleteSessionAsync` seam, on a runtime whose sign-in knows a
+secret. An RPC-shaped error quoting the secret in its message, error data and `Data`, the same error wrapped in an
+`InvalidOperationException` that also quotes a token-shaped value, and an `IOException` thrown synchronously each
+arrive as a new `InvalidOperationException` or `IOException` with the secret and token replaced by `<redacted>`, a
+redacted copy naming the original type as the cause, no `Data` at any level, and no secret anywhere `SecretAssert`
+looks. The deletion receives the session identifier and the caller's token. A clean cancellation reaches the caller as
+the same instance.
+
+#### AgentKitAgentsCopilot-CopilotRuntime-RelaysStatusReadFailuresRedacted: Status Read Failures Relayed Redacted
+
+**Tests**:
+
+- `CopilotRuntime_VerifyStarted_ReadFailureQuotingASecret_IsRelayedRedacted` (status or authentication read; an
+  `IOException` or an RPC-shaped error)
+- `CopilotRuntime_VerifyStarted_CleanCancellation_PassesUnchanged`
+
+Error paths. The status and authentication reads are injected into `VerifyStartedAsync` with a sign-in that knows the
+secret `s3cr3t-value-xyz`, which is not shaped like a GitHub token. Each read in turn fails, the other succeeding,
+with an `IOException` or an RPC-shaped error whose message quotes the secret and a token-shaped value and whose error
+data and `Data` quote the secret. Each arrives as a new `IOException` or `InvalidOperationException` respectively,
+with `<redacted> gho_<redacted>` in place of the values, a redacted copy naming the original type as its cause, and no
+secret anywhere `SecretAssert` looks. A clean `OperationCanceledException` from the status read and a clean
+`ObjectDisposedException` from the authentication read reach the caller as the same instances.
+
+#### AgentKitAgentsCopilot-CopilotRuntime-RedactsTheSdksDiagnostics: The SDK Logs Only Through the Redacting Logger
+
+**Tests**:
+
+- `CopilotRuntime_BuildClientOptions_CarriesTokenLogLevelAndLogger`
+- `CopilotRuntime_BuildClientOptions_Logger_RedactsTheSdksEntries`
+
+Normal operation and error paths. The client options' logger is a `CopilotRedactingLogger` over the host's, which
+receives an entry written to it, and a host that gave no logger gives the SDK none. Two clients are configured: one
+without a sign-in, whose host environment's `GITHUB_ENTERPRISE_TOKEN` is `s3cr3t-value-xyz`, and one whose sign-in
+knows that secret and learns a session token after the client was configured. Each logger receives, under a scope
+naming a CLI path that quotes both values, an entry in the SDK's shape whose message and structured error quote both,
+with a numeric value, and an exception whose data and an aggregate's second inner exception quote them. The host's
+loggers receive the secret as `<redacted>` from both clients; the session token is redacted only by the client whose
+sign-in learned it, proving the logger reads the sign-in's live secrets; the numeric value keeps its type; the
+exception arrives as a redacted copy; and `SecretAssert` finds no value the client knew in any entry or scope.
+
+#### AgentKitAgentsCopilot-CopilotRuntime-RedactsLaunchRefusals: Launch Refusals Carry No Secret
+
+**Test**: `CopilotRuntime_ResolveLaunch_RefusalQuotingAnEnvironmentSecret_IsRedacted` (named CLI missing, none found,
+too old, version check failed)
+
+Error paths. The host's environment holds `GH_ENTERPRISE_TOKEN` set to `s3cr3t-value-xyz` and the host passes the
+token `s3cr3t-host-token`; both are part of the folder the named CLI, the `PATH` entry searched or the CLI found is in.
+Each refusal names that folder with `<redacted>` in place of both values, and `SecretAssert` finds neither anywhere in
+the chain. In the version-check case the CLI found exits with code 3 and an error quoting its folder; the refusal comes
+from the version check itself, which redacts the host's token only because the runtime passes it.
+
 #### AgentKitAgentsCopilot-CopilotRuntime-RejectsInvalidOptions: Missing Options Are Refused
 
 **Tests**:
@@ -325,6 +445,8 @@ conversations through this method.
 - `CopilotRuntimeOptions_Constructor_RelativeCliPath_Throws`
 - `CopilotRuntimeOptions_Constructor_BatchFileCliPath_Throws` (`.cmd`, `.CMD` and `.bat`)
 - `CopilotRuntimeOptions_Constructor_CliPathWithBundled_Throws`
+- `CopilotRuntimeOptions_InvalidGitHubHost_Throws`
+- `CopilotRuntimeOptions_TokenAndProvider_Throws`
 
 Null options are refused with `ArgumentNullException` before anything is created; a null data
 directory with `ArgumentNullException`, a whitespace one with `ArgumentException`, and a path the
@@ -334,4 +456,6 @@ kept as its inner exception. An undefined runtime source is refused with
 the bundled runtime, with `ArgumentException` naming `cliPath`. A CLI path naming a batch file —
 `copilot.cmd`, `copilot.CMD` or `copilot.bat` — is refused with `ArgumentException` naming `cliPath`,
 whose message says it is a batch file and points to `copilot.exe` or the npm package's
-`npm-loader.js`.
+`npm-loader.js`. A GitHub host using `http`, carrying a path, a port or a user name is refused with
+`ArgumentException` naming `gitHubHost`, and a token given with a token provider with
+`ArgumentException` naming `gitHubTokenProvider`.

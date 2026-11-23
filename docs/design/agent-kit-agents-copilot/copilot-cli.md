@@ -109,7 +109,7 @@ does not do, and the `copilot.cmd` shim npm puts on `PATH` cannot be started wit
 names that prefix's entry point with `cliPath`, for example
 `<prefix>\node_modules\@github\copilot\npm-loader.js` on Windows.
 
-#### ReadVersionAsync(cliPath, dataDirectory, runtimeEnvironment, context, runner, cancellationToken)
+#### ReadVersionAsync(cliPath, dataDirectory, runtimeEnvironment, context, runner, cancellationToken, hostToken)
 
 **Purpose:** Read the version the CLI runs when the SDK starts it.
 
@@ -127,6 +127,14 @@ names that prefix's entry point with `cliPath`, for example
 2. Run it through the runner within `VersionProbeTimeout`. A failure to start, a time-out and a
    non-zero exit are refused with `InvalidOperationException` naming the CLI, the command, the failure
    and the end of its error output.
+
+Every refusal is redacted with `CopilotSignInSecrets.FromEnvironment(runtimeEnvironment)` — exactly
+the secrets the probe was given and could echo — plus the host's token the caller passes as the
+optional `hostToken`, since the CLI's path can come from the host's options, and the token shapes: the
+error output before its last 500 characters are cut, so a secret the cut would split is never half
+quoted, and then the whole message, which names the CLI's path and command. The `node`-missing refusal
+is redacted the same way. A failure to start keeps only its redacted copy (`CopilotSignIn.RedactFailure`)
+as the cause, never the original.
 3. Parse the version from standard output (`ParseVersion`) and return it, or `null` when it names none.
 
 #### ParseVersion(string? output)
@@ -208,7 +216,7 @@ probe's output open after the probe exits. What is stopped therefore differs per
 | A candidate file cannot be read during the launcher check | Not judged a launcher; the probe decides |
 | A well-known folder is missing or unreadable | Listed as empty |
 | `.js` CLI without `node` on `PATH` | `InvalidOperationException` naming Node.js |
-| Probe cannot start | `InvalidOperationException` naming the CLI and command; the cause is the inner exception |
+| Probe cannot start | `InvalidOperationException` naming the CLI and command, redacted; a redacted copy of the cause |
 | Probe exits non-zero | `InvalidOperationException` with the exit code and error output |
 | Probe or its output outlasts the limit | Stopped with what it started; `InvalidOperationException` naming the limit |
 | A child holds the output past the limit | Windows: job ended; Linux: pipe holders stopped; macOS: tree only |
@@ -224,12 +232,15 @@ Refusing the CLI (not found, too old) is `CopilotRuntime`'s decision, made with 
 - **.NET base class library** — `System.Diagnostics.Process` and the file system; on Windows, the
   kernel32 job object functions by P/Invoke (`CreateJobObjectW`, `SetInformationJobObject`,
   `AssignProcessToJobObject`, `TerminateJobObject`, `CloseHandle`); no OTS item.
-- No other unit: the runtime environment the probe runs under is passed in by `CopilotRuntime`, so
-  this unit does not depend on it.
+- **CopilotSignIn** — `CopilotSignInSecrets` and `RedactFailure`, which redact the probe's refusals
+  and keep only a redacted copy of a start failure. The runtime environment the probe runs under is
+  passed in by `CopilotRuntime`, so this unit does not depend on it.
 
 ### Callers
 
-`CopilotRuntime.ResolveLaunchAsync` calls `FindInstalled`, `ReadVersionAsync`, `IsSupported` and the
-explanations; `CopilotRuntime.ExplainStartFailure` calls `IsProtocolMismatch`, `ParseServerProtocol`
-and `ExplainProtocolMismatch`. A host calls `FindInstalled()` to show a user which CLI AgentKit would
-run, and reads `MinimumVersion` for its own diagnostics.
+`CopilotRuntime.ResolveLaunchAsync` calls `FindInstalled`, `ReadVersionAsync`, `IsSupported` and the explanations;
+`CopilotRuntime.ExplainStartFailure` calls `IsProtocolMismatch`, `ParseServerProtocol` and `ExplainProtocolMismatch`.
+`CopilotSignIn` calls `FindOnPath` to report whether the GitHub CLI is on `PATH`, and `IsSearchableDirectory` with the
+search context's `ExecutableName` to keep the GitHub CLI off the sign-in helper's `PATH`; both are internal for that
+reason. A host calls `FindInstalled()` to show a user which CLI AgentKit would run, and reads `MinimumVersion` for its
+own diagnostics.

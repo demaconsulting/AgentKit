@@ -27,10 +27,9 @@ Every sample needs the .NET SDK matching the repository's `global.json`. On the 
   executable, so check it with `copilot --no-auto-update --version` (`copilot --version` can report a
   newer version that `copilot update` downloaded, which AgentKit does not run; only upgrading the
   installation changes it). Nothing is downloaded at build time and no sample ships a runtime.
-- **A GitHub sign-in** as a user with Copilot access, through the GitHub CLI (`gh auth login`, with
-  `gh` on `PATH`) or a token in `GH_TOKEN`. Signing in to the Copilot CLI itself is **not** enough:
-  AgentKit keeps the runtime's credentials in its own data directory and does not use the CLI's
-  sign-in.
+- **A GitHub sign-in** as a user with Copilot access, through the Copilot CLI (`copilot login`),
+  the GitHub CLI (`gh auth login`, with `gh` on `PATH`) or a token in `GH_TOKEN`. AgentKit uses only
+  the Copilot CLI sign-in's account, never the CLI's other configuration.
 
 To run without an installed CLI, opt into the runtime the SDK bundles: see *Bundling the Runtime
 Instead* in the user guide. `--provider ollama` needs no Copilot CLI at all, only a reachable Ollama

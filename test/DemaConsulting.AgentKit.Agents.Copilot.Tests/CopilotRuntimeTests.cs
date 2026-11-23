@@ -1,5 +1,6 @@
 using System.Collections;
 using Microsoft.Copilot;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace DemaConsulting.AgentKit.Agents.Copilot.Tests;
@@ -122,23 +123,85 @@ public class CopilotRuntimeTests
 
     /// <summary>
     ///     Proves the neutral options a host may set — token, log level and logger — reach the client
-    ///     options.
+    ///     options, the logger only through the redacting logger, and no logger as none.
     /// </summary>
     [Fact]
     public void CopilotRuntime_BuildClientOptions_CarriesTokenLogLevelAndLogger()
     {
         // Arrange
         using var directory = new TemporaryDirectory();
-        var logger = NullLogger.Instance;
+        var logger = new CapturingLogger();
         var options = new CopilotRuntimeOptions(directory.Path, "gho_token", CopilotLogLevel.Warning, logger);
 
         // Act
         var clientOptions = CopilotRuntime.BuildClientOptions(options, directory.Path, new Hashtable());
+        var withoutLogger = CopilotRuntime.BuildClientOptions(new CopilotRuntimeOptions(directory.Path), directory.Path, new Hashtable());
+        clientOptions.Observability.Logger!.Log(LogLevel.Information, new EventId(1, "Sdk"), "started", null, (state, _) => state);
 
         // Assert
         Assert.Equal("gho_token", clientOptions.GitHub.Token);
         Assert.Equal(CopilotLogLevel.Warning, clientOptions.Observability.LogLevel);
-        Assert.Same(logger, clientOptions.Observability.Logger);
+        Assert.IsType<CopilotRedactingLogger>(clientOptions.Observability.Logger);
+        Assert.Equal("started", Assert.Single(logger.Entries).Message);
+        Assert.Null(withoutLogger.Observability.Logger);
+    }
+
+    /// <summary>
+    ///     Proves every entry the SDK writes to the host's logger arrives redacted — its message, its
+    ///     structured values, its scope and its exception, whose data and an aggregate's second inner
+    ///     exception quote the secret — with the environment's secrets known when no sign-in is given,
+    ///     and with a session token the sign-in learns after the client was configured.
+    /// </summary>
+    [Fact]
+    public void CopilotRuntime_BuildClientOptions_Logger_RedactsTheSdksEntries()
+    {
+        // Arrange: one client without a sign-in, whose environment holds the secret, and one whose
+        // sign-in knows the secret and learns a session token after the client was configured
+        const string secret = "s3cr3t-value-xyz";
+        const string sessionToken = "s3cr3t-session-abc";
+        using var directory = new TemporaryDirectory();
+        var environmentLog = new CapturingLogger();
+        var planLog = new CapturingLogger();
+        var plan = CopilotSignInTests.PlanKnowing(secret);
+        var fromEnvironment = CopilotRuntime.BuildClientOptions(
+            new CopilotRuntimeOptions(directory.Path, logger: environmentLog),
+            directory.Path,
+            new Hashtable { ["GITHUB_ENTERPRISE_TOKEN"] = secret });
+        var fromPlan = CopilotRuntime.BuildClientOptions(
+            new CopilotRuntimeOptions(directory.Path, logger: planLog),
+            directory.Path,
+            new Hashtable(),
+            signIn: plan);
+        var failure = new InvalidOperationException(
+            "CopilotClient.StartAsync failed",
+            new AggregateException("both failed", new IOException("first"), new IOException($"second {secret} {sessionToken}")));
+        failure.Data["token"] = secret;
+
+        // Act: entries in the SDK's shape, under a scope naming the CLI's path
+        plan.Secrets.Add(sessionToken);
+        foreach (var sdkLogger in new[] { fromEnvironment.Observability.Logger!, fromPlan.Observability.Logger! })
+        {
+            using (sdkLogger.BeginScope(new Dictionary<string, object?> { ["CliPath"] = $"/opt/{secret}/{sessionToken}/copilot" }))
+            {
+                sdkLogger.Log(
+                    LogLevel.Error,
+                    new EventId(5, "StartFailed"),
+                    new Dictionary<string, object?> { ["Error"] = $"stderr: {secret} {sessionToken}", ["Elapsed"] = 12 },
+                    failure,
+                    (_, _) => $"CopilotClient.StartAsync failed: {secret} {sessionToken}");
+            }
+        }
+
+        // Assert
+        var environmentEntry = Assert.Single(environmentLog.Entries);
+        var planEntry = Assert.Single(planLog.Entries);
+        Assert.Equal("CopilotClient.StartAsync failed: <redacted> s3cr3t-session-abc", environmentEntry.Message);
+        Assert.Equal("CopilotClient.StartAsync failed: <redacted> <redacted>", planEntry.Message);
+        Assert.Contains(planEntry.State, pair => pair.Key == "Elapsed" && Equals(pair.Value, 12));
+        Assert.Contains(Assert.Single(planLog.Scopes).State, pair => pair.Key == "CliPath");
+        Assert.IsType<CopilotRedactedException>(planEntry.Exception);
+        SecretAssert.NoSecret(environmentLog, secret);
+        SecretAssert.NoSecret(planLog, secret, sessionToken);
     }
 
     /// <summary>
@@ -838,9 +901,10 @@ public class CopilotRuntimeTests
     /// <summary>
     ///     Proves a start that fails on the bundled runtime is explained — the runtime's own error
     ///     first, then the missing direct SDK reference as the common cause of a runtime that was not
-    ///     found, then every source the runtime authenticates from — with the original failure kept as
-    ///     the cause, and that a start whose launch is not known, including one whose failure message
-    ///     is null, is explained for both sources.
+    ///     found, then every source the runtime authenticates from — with a redacted copy of the
+    ///     original failure, carrying its type name and message, kept as the cause, and that a start
+    ///     whose launch is not known, including one whose failure message is null, is explained for
+    ///     both sources.
     /// </summary>
     [Fact]
     public async Task CopilotRuntime_StartClient_FailedStart_ExplainsTheMissingRuntimeAndKeepsTheCause()
@@ -853,6 +917,7 @@ public class CopilotRuntimeTests
         var failure = await Assert.ThrowsAsync<InvalidOperationException>(() => CopilotRuntime.StartClientAsync(
             _ => Task.FromException(cause),
             bundled,
+            signIn: null,
             TestContext.Current.CancellationToken));
         var nullMessage = new NullMessageException();
         var nullFailure = await Assert.ThrowsAsync<InvalidOperationException>(() => CopilotRuntime.StartClientAsync(
@@ -860,14 +925,14 @@ public class CopilotRuntimeTests
             TestContext.Current.CancellationToken));
 
         // Assert
-        Assert.Same(cause, failure.InnerException);
+        AssertRedactedCopyOf(cause, failure.InnerException);
         Assert.Contains(cause.Message, failure.Message, StringComparison.Ordinal);
         Assert.Contains("PackageReference to Microsoft.Copilot.SDK", failure.Message, StringComparison.Ordinal);
         Assert.Contains(
-            "CopilotRuntimeOptions, COPILOT_GITHUB_TOKEN, GH_TOKEN, GITHUB_TOKEN or the signed-in GitHub CLI user",
+            "gitHubToken or gitHubTokenProvider, COPILOT_GITHUB_TOKEN, GH_TOKEN or GITHUB_TOKEN, the user's Copilot CLI sign-in",
             failure.Message,
             StringComparison.Ordinal);
-        Assert.Same(nullMessage, nullFailure.InnerException);
+        AssertRedactedCopyOf(nullMessage, nullFailure.InnerException);
         Assert.Contains("Microsoft.Copilot.SDK", nullFailure.Message, StringComparison.Ordinal);
         Assert.Contains("installed Copilot CLI", nullFailure.Message, StringComparison.Ordinal);
     }
@@ -887,10 +952,11 @@ public class CopilotRuntimeTests
         var failure = await Assert.ThrowsAsync<InvalidOperationException>(() => CopilotRuntime.StartClientAsync(
             _ => Task.FromException(cause),
             launch,
+            signIn: null,
             TestContext.Current.CancellationToken));
 
         // Assert
-        Assert.Same(cause, failure.InnerException);
+        AssertRedactedCopyOf(cause, failure.InnerException);
         Assert.Contains(cause.Message, failure.Message, StringComparison.Ordinal);
         Assert.Contains("'/fake/bin/copilot' (version 1.0.114)", failure.Message, StringComparison.Ordinal);
         Assert.DoesNotContain("PackageReference", failure.Message, StringComparison.Ordinal);
@@ -913,10 +979,11 @@ public class CopilotRuntimeTests
         var failure = await Assert.ThrowsAsync<InvalidOperationException>(() => CopilotRuntime.StartClientAsync(
             _ => Task.FromException(cause),
             launch,
+            signIn: null,
             TestContext.Current.CancellationToken));
 
         // Assert
-        Assert.Same(cause, failure.InnerException);
+        AssertRedactedCopyOf(cause, failure.InnerException);
         Assert.Contains(cause.Message, failure.Message, StringComparison.Ordinal);
         Assert.Contains("speaks SDK protocol version 3", failure.Message, StringComparison.Ordinal);
         Assert.Contains($"{CopilotCli.MinimumVersion} or later", failure.Message, StringComparison.Ordinal);
@@ -940,11 +1007,42 @@ public class CopilotRuntimeTests
         var failure = await Assert.ThrowsAsync<InvalidOperationException>(() => CopilotRuntime.StartClientAsync(
             _ => Task.FromException(cause),
             launch,
+            signIn: null,
             TestContext.Current.CancellationToken));
 
         // Assert
         Assert.Contains("speaks SDK protocol version 5", failure.Message, StringComparison.Ordinal);
         Assert.Contains("Update AgentKit", failure.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves the whole start-failure explanation is redacted, the installed CLI's path the cause
+    ///     names included, for an ordinary failure and for a protocol mismatch alike.
+    /// </summary>
+    /// <param name="mismatch">Whether the failure is the SDK's protocol-version mismatch.</param>
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task CopilotRuntime_StartClient_InstalledCliPathQuotingASecret_IsRedacted(bool mismatch)
+    {
+        // Arrange
+        const string secret = "s3cr3t-value-xyz";
+        var cause = new InvalidOperationException(mismatch
+            ? "SDK protocol version mismatch: SDK supports versions 4-4, but server reports version 3. Please update your SDK or server to ensure compatibility."
+            : "The pipe has been ended.");
+        var launch = new CopilotRuntimeLaunch(CopilotRuntimeSource.InstalledCli, $"/opt/{secret}/bin/copilot", new Version(1, 0, 114));
+
+        // Act
+        var failure = await Assert.ThrowsAsync<InvalidOperationException>(() => CopilotRuntime.StartClientAsync(
+            _ => Task.FromException(cause),
+            launch,
+            CopilotSignInTests.PlanKnowing(secret),
+            TestContext.Current.CancellationToken));
+
+        // Assert
+        Assert.Contains("/opt/<redacted>/bin/copilot", failure.Message, StringComparison.Ordinal);
+        Assert.Contains(mismatch ? "speaks SDK protocol version 3" : "(version 1.0.114)", failure.Message, StringComparison.Ordinal);
+        SecretAssert.NoSecret(failure, secret);
     }
 
     /// <summary>
@@ -964,6 +1062,51 @@ public class CopilotRuntimeTests
 
         // Assert
         Assert.Same(canceled, failure);
+    }
+
+    /// <summary>
+    ///     Proves a canceled start carrying a cause or a token is rebuilt as a new cancellation of the
+    ///     same kind — an <see cref="OperationCanceledException"/>, or a
+    ///     <see cref="TaskCanceledException"/> kept as one — with the same token, a redacted message and
+    ///     a redacted copy as its cause, so nothing in its chain carries a secret.
+    /// </summary>
+    [Fact]
+    public async Task CopilotRuntime_StartClient_CanceledCarryingASecret_IsRebuiltRedacted()
+    {
+        // Arrange
+        const string secret = "s3cr3t-start-cancel-xyz";
+        const string tokenShaped = "gho_STOPPED0123456789abcdefABCDEF0123";
+        var plan = CopilotSignInTests.PlanKnowing(secret);
+        using var source = new CancellationTokenSource();
+        var canceled = new OperationCanceledException(
+            $"stopped {secret}",
+            new IOException($"pipe {secret} {tokenShaped}"),
+            source.Token);
+        var taskCanceled = new TaskCanceledException("task stopped", new IOException($"pipe {secret}"), source.Token);
+
+        // Act
+        var failure = await Assert.ThrowsAsync<OperationCanceledException>(() => CopilotRuntime.StartClientAsync(
+            _ => Task.FromException(canceled),
+            launch: null,
+            plan,
+            TestContext.Current.CancellationToken));
+        var taskFailure = await Assert.ThrowsAsync<TaskCanceledException>(() => CopilotRuntime.StartClientAsync(
+            _ => Task.FromException(taskCanceled),
+            launch: null,
+            plan,
+            TestContext.Current.CancellationToken));
+
+        // Assert
+        Assert.NotSame(canceled, failure);
+        Assert.Equal(source.Token, failure.CancellationToken);
+        Assert.Equal("stopped <redacted>", failure.Message);
+        var copy = Assert.IsType<CopilotRedactedException>(failure.InnerException);
+        Assert.Equal(typeof(OperationCanceledException).FullName, copy.OriginalTypeName);
+        SecretAssert.NoSecret(failure, secret, tokenShaped);
+        Assert.NotSame(taskCanceled, taskFailure);
+        Assert.Equal(source.Token, taskFailure.CancellationToken);
+        Assert.IsType<CopilotRedactedException>(taskFailure.InnerException);
+        SecretAssert.NoSecret(taskFailure, secret);
     }
 
     /// <summary>
@@ -1126,6 +1269,105 @@ public class CopilotRuntimeTests
     }
 
     /// <summary>
+    ///     Proves a deletion the runtime refuses or fails — an RPC error quoting a secret in its
+    ///     message, data and error data, the same error wrapped in an
+    ///     <see cref="InvalidOperationException"/> that also quotes a token-shaped value, and an I/O
+    ///     failure thrown synchronously — is relayed with this runtime's sign-in plan as a new
+    ///     exception of the kind a host catches, with a redacted message, a redacted copy carrying no
+    ///     data as its cause, and nothing in its chain carrying a secret.
+    /// </summary>
+    [Fact]
+    public async Task CopilotRuntime_DeleteSessionAsync_RuntimeFailureQuotingASecret_IsRelayedRedacted()
+    {
+        // Arrange: a runtime whose sign-in knows the secret, and deletions the runtime fails
+        const string secret = "s3cr3t-delete-xyz";
+        const string tokenShaped = "gho_DELETE0123456789abcdefABCDEF012345";
+        const string sessionId = "session-to-delete";
+        using var directory = new TemporaryDirectory();
+        await using var runtime = new CopilotRuntime(NewClient(directory.Path), directory.Path, signIn: CopilotSignInTests.PlanKnowing(secret));
+        using var source = new CancellationTokenSource();
+        var seen = new List<(string SessionId, CancellationToken Token)>();
+        CopilotSignInTests.RpcErrorException NewRpcError()
+        {
+            var rpc = new CopilotSignInTests.RpcErrorException($"delete {sessionId} refused {secret}", new { token = secret });
+            rpc.Data["token"] = secret;
+            return rpc;
+        }
+
+        // Act
+        var rpcFailure = await Assert.ThrowsAsync<InvalidOperationException>(() => runtime.RelayDeleteSessionAsync(
+            (id, token) =>
+            {
+                seen.Add((id, token));
+                return Task.FromException(NewRpcError());
+            },
+            sessionId,
+            source.Token));
+        var wrappedFailure = await Assert.ThrowsAsync<InvalidOperationException>(() => runtime.RelayDeleteSessionAsync(
+            (id, token) =>
+            {
+                seen.Add((id, token));
+                return Task.FromException(new InvalidOperationException($"Session error: {secret} {tokenShaped}", NewRpcError()));
+            },
+            sessionId,
+            source.Token));
+        var ioFailure = await Assert.ThrowsAsync<IOException>(() => runtime.RelayDeleteSessionAsync(
+            (id, token) =>
+            {
+                seen.Add((id, token));
+                throw new IOException($"pipe broke on {secret}");
+            },
+            sessionId,
+            source.Token));
+
+        // Assert
+        Assert.All(seen, call =>
+        {
+            Assert.Equal(sessionId, call.SessionId);
+            Assert.Equal(source.Token, call.Token);
+        });
+        Assert.Equal(3, seen.Count);
+        Assert.Equal($"delete {sessionId} refused <redacted>", rpcFailure.Message);
+        Assert.Equal("Session error: <redacted> gho_<redacted>", wrappedFailure.Message);
+        Assert.Equal("pipe broke on <redacted>", ioFailure.Message);
+        var expectedTypes = new[] { typeof(CopilotSignInTests.RpcErrorException), typeof(InvalidOperationException), typeof(IOException) };
+        var failures = new Exception[] { rpcFailure, wrappedFailure, ioFailure };
+        for (var index = 0; index < failures.Length; index++)
+        {
+            var copy = Assert.IsType<CopilotRedactedException>(failures[index].InnerException);
+            Assert.Equal(expectedTypes[index].FullName, copy.OriginalTypeName);
+            for (Exception? current = failures[index]; current is not null; current = current.InnerException)
+            {
+                Assert.Empty(current.Data);
+            }
+
+            SecretAssert.NoSecret(failures[index], secret, tokenShaped);
+        }
+    }
+
+    /// <summary>
+    ///     Proves a deletion canceled without a cause or anything to redact reaches the caller as the
+    ///     same cancellation.
+    /// </summary>
+    [Fact]
+    public async Task CopilotRuntime_DeleteSessionAsync_CleanCancellation_PassesUnchanged()
+    {
+        // Arrange
+        using var directory = new TemporaryDirectory();
+        await using var runtime = new CopilotRuntime(NewClient(directory.Path), directory.Path, signIn: CopilotSignInTests.PlanKnowing("s3cr3t-unused"));
+        var canceled = new OperationCanceledException("canceled");
+
+        // Act
+        var failure = await Assert.ThrowsAsync<OperationCanceledException>(() => runtime.RelayDeleteSessionAsync(
+            (_, _) => Task.FromException(canceled),
+            "session",
+            TestContext.Current.CancellationToken));
+
+        // Assert
+        Assert.Same(canceled, failure);
+    }
+
+    /// <summary>
     ///     Proves the bundled runtime is launched without discovery or a version probe.
     /// </summary>
     [Fact]
@@ -1283,6 +1525,54 @@ public class CopilotRuntimeTests
     }
 
     /// <summary>
+    ///     Proves every launch refusal — a named CLI that does not exist, no CLI found, a CLI too old,
+    ///     and a CLI whose version check failed — is redacted of the host environment's secret values
+    ///     and the host's token, wherever a path or the check's error output quotes them.
+    /// </summary>
+    /// <param name="kind">The refusal: <c>missing</c>, <c>notFound</c>, <c>tooOld</c> or <c>probe</c>.</param>
+    [Theory]
+    [InlineData("missing")]
+    [InlineData("notFound")]
+    [InlineData("tooOld")]
+    [InlineData("probe")]
+    public async Task CopilotRuntime_ResolveLaunch_RefusalQuotingAnEnvironmentSecret_IsRedacted(string kind)
+    {
+        // Arrange: a GitHub Enterprise token, not shaped like a GitHub token, and the host's token,
+        // each also part of the folder a path names
+        const string secret = "s3cr3t-value-xyz";
+        const string hostToken = "s3cr3t-host-token";
+        var folder = $"/opt/{secret}/{hostToken}/bin";
+        var machine = new FakeCopilotCliMachine
+        {
+            Result = kind == "probe"
+                ? new(3, string.Empty, $"cannot run from {folder}", TimedOut: false)
+                : new(0, "GitHub Copilot CLI 1.0.106.\n", string.Empty, TimedOut: false),
+        };
+        if (kind is "tooOld" or "probe")
+        {
+            machine.AddFile(Path.Combine(folder, "copilot"));
+        }
+
+        var named = Path.GetFullPath(Path.Combine(Path.GetTempPath(), $"missing-{secret}-{hostToken}", "copilot"));
+        var options = kind == "missing"
+            ? new CopilotRuntimeOptions("copilot-runtime", gitHubToken: hostToken, cliPath: named)
+            : new CopilotRuntimeOptions("copilot-runtime", gitHubToken: hostToken);
+
+        // Act
+        var failure = await Assert.ThrowsAsync<InvalidOperationException>(() => CopilotRuntime.ResolveLaunchAsync(
+            options,
+            FakeDataDirectory,
+            new Hashtable { ["GH_ENTERPRISE_TOKEN"] = secret },
+            machine.Context(CopilotCliPlatform.Linux, folder),
+            machine.RunAsync,
+            TestContext.Current.CancellationToken));
+
+        // Assert
+        Assert.Contains(kind == "missing" ? "missing-<redacted>-<redacted>" : "/opt/<redacted>/<redacted>/bin", failure.Message, StringComparison.Ordinal);
+        SecretAssert.NoSecret(failure, secret, hostToken);
+    }
+
+    /// <summary>
     ///     Proves a supported CLI is launched with its path and the version it reported.
     /// </summary>
     [Fact]
@@ -1360,8 +1650,8 @@ public class CopilotRuntimeTests
     }
 
     /// <summary>
-    ///     Proves a runtime that started but is not signed in is refused, with the runtime's own status
-    ///     and every way to sign it in, and with the Copilot CLI's own sign-in named as not used.
+    ///     Proves a runtime that started but is not signed in is refused, with the runtime's own status,
+    ///     every sign-in source AgentKit tried with what it found, and every way to sign it in.
     /// </summary>
     [Fact]
     public async Task CopilotRuntime_VerifyStarted_Unauthenticated_IsRefusedWithSignInGuidance()
@@ -1369,20 +1659,30 @@ public class CopilotRuntimeTests
         // Arrange
         var status = new GetStatusResponse { Version = "1.0.113", ProtocolVersion = 4 };
         var authentication = new GetAuthStatusResponse { IsAuthenticated = false, StatusMessage = "Not authenticated" };
+        var plan = new CopilotSignInPlan
+        {
+            EnvironmentFinding = "none set.",
+            CopilotCliFinding = "no Copilot CLI configuration found.",
+            FallbackFinding = "left to the runtime.",
+        };
 
         // Act
         var failure = await Assert.ThrowsAsync<InvalidOperationException>(() => CopilotRuntime.VerifyStartedAsync(
             _ => Task.FromResult(status),
             _ => Task.FromResult(authentication),
+            plan,
             TestContext.Current.CancellationToken));
 
         // Assert
         Assert.Contains("Not authenticated", failure.Message, StringComparison.Ordinal);
-        Assert.Contains("Copilot CLI's own sign-in is not used", failure.Message, StringComparison.Ordinal);
-        Assert.Contains("gitHubToken", failure.Message, StringComparison.Ordinal);
-        Assert.Contains("COPILOT_GITHUB_TOKEN, GH_TOKEN or GITHUB_TOKEN", failure.Message, StringComparison.Ordinal);
+        Assert.Contains("1. gitHubToken / gitHubTokenProvider: not supplied.", failure.Message, StringComparison.Ordinal);
+        Assert.Contains("2. COPILOT_GITHUB_TOKEN, GH_TOKEN, GITHUB_TOKEN: none set.", failure.Message, StringComparison.Ordinal);
+        Assert.Contains("3. Copilot CLI sign-in: no Copilot CLI configuration found.", failure.Message, StringComparison.Ordinal);
+        Assert.Contains("4. Runtime fallbacks", failure.Message, StringComparison.Ordinal);
+        Assert.Contains("copilot login", failure.Message, StringComparison.Ordinal);
         Assert.Contains("gh auth login", failure.Message, StringComparison.Ordinal);
-        Assert.Contains("COPILOT_GH_HOST", failure.Message, StringComparison.Ordinal);
+        Assert.Contains("gitHubHost", failure.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("is not used", failure.Message, StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -1399,10 +1699,94 @@ public class CopilotRuntimeTests
         var verified = await CopilotRuntime.VerifyStartedAsync(
             _ => Task.FromResult(status),
             _ => Task.FromResult(authentication),
+            new CopilotSignInPlan(),
             TestContext.Current.CancellationToken);
 
         // Assert
-        Assert.Same(status, verified);
+        Assert.Same(status, verified.Status);
+        Assert.Same(authentication, verified.Authentication);
+    }
+
+    /// <summary>
+    ///     Proves a status or authentication read that fails quoting a known secret — not shaped like a
+    ///     GitHub token — and a token-shaped value is relayed as a new exception of the kind a host
+    ///     catches, with a redacted message, a redacted copy naming the original type as its cause,
+    ///     and no secret anywhere in its chain.
+    /// </summary>
+    /// <param name="failingRead">Which read fails: <c>status</c> or <c>authentication</c>.</param>
+    /// <param name="kind">The failure the read raises: <c>io</c> or <c>rpc</c>.</param>
+    [Theory]
+    [InlineData("status", "io")]
+    [InlineData("status", "rpc")]
+    [InlineData("authentication", "io")]
+    [InlineData("authentication", "rpc")]
+    public async Task CopilotRuntime_VerifyStarted_ReadFailureQuotingASecret_IsRelayedRedacted(string failingRead, string kind)
+    {
+        // Arrange
+        const string secret = "s3cr3t-value-xyz";
+        const string shaped = "gho_VERIFY0123456789abcdefABCDEF0123456";
+        var plan = CopilotSignInTests.PlanKnowing(secret);
+        Exception NewFailure()
+        {
+            if (kind == "io")
+            {
+                return new IOException($"pipe broke reading {secret} {shaped}");
+            }
+
+            var rpc = new CopilotSignInTests.RpcErrorException($"read refused {secret} {shaped}", new { token = secret });
+            rpc.Data["token"] = secret;
+            return rpc;
+        }
+
+        Func<CancellationToken, Task<GetStatusResponse>> readStatus = _ => failingRead == "status"
+            ? Task.FromException<GetStatusResponse>(NewFailure())
+            : Task.FromResult(new GetStatusResponse { Version = "1.0.114", ProtocolVersion = 4 });
+        Func<CancellationToken, Task<GetAuthStatusResponse>> readAuthentication = _ => failingRead == "authentication"
+            ? Task.FromException<GetAuthStatusResponse>(NewFailure())
+            : Task.FromResult(new GetAuthStatusResponse { IsAuthenticated = true });
+
+        // Act
+        var failure = await Assert.ThrowsAnyAsync<Exception>(() => CopilotRuntime.VerifyStartedAsync(
+            readStatus,
+            readAuthentication,
+            plan,
+            TestContext.Current.CancellationToken));
+
+        // Assert
+        Assert.IsType(kind == "io" ? typeof(IOException) : typeof(InvalidOperationException), failure);
+        Assert.Contains("<redacted> gho_<redacted>", failure.Message, StringComparison.Ordinal);
+        var copy = Assert.IsType<CopilotRedactedException>(failure.InnerException);
+        Assert.Equal(kind == "io" ? typeof(IOException).FullName : typeof(CopilotSignInTests.RpcErrorException).FullName, copy.OriginalTypeName);
+        SecretAssert.NoSecret(failure, secret, shaped);
+    }
+
+    /// <summary>
+    ///     Proves a clean cancellation or disposal of either read — no cause and nothing to redact —
+    ///     reaches the caller as the very same instance.
+    /// </summary>
+    [Fact]
+    public async Task CopilotRuntime_VerifyStarted_CleanCancellation_PassesUnchanged()
+    {
+        // Arrange
+        var canceled = new OperationCanceledException("canceled");
+        var disposed = new ObjectDisposedException("CopilotClient");
+        var status = new GetStatusResponse { Version = "1.0.114", ProtocolVersion = 4 };
+
+        // Act
+        var statusCancellation = await Assert.ThrowsAsync<OperationCanceledException>(() => CopilotRuntime.VerifyStartedAsync(
+            _ => Task.FromException<GetStatusResponse>(canceled),
+            _ => Task.FromResult(new GetAuthStatusResponse { IsAuthenticated = true }),
+            new CopilotSignInPlan(),
+            TestContext.Current.CancellationToken));
+        var authenticationDisposal = await Assert.ThrowsAsync<ObjectDisposedException>(() => CopilotRuntime.VerifyStartedAsync(
+            _ => Task.FromResult(status),
+            _ => Task.FromException<GetAuthStatusResponse>(disposed),
+            new CopilotSignInPlan(),
+            TestContext.Current.CancellationToken));
+
+        // Assert
+        Assert.Same(canceled, statusCancellation);
+        Assert.Same(disposed, authenticationDisposal);
     }
 
     /// <summary>
@@ -1431,12 +1815,284 @@ public class CopilotRuntimeTests
     }
 
     /// <summary>
+    ///     Proves the runtime reports how it signed in — the source classified from the runtime's own
+    ///     report, and the host and login it reported — and that a runtime built without a sign-in
+    ///     reports none.
+    /// </summary>
+    [Fact]
+    public async Task CopilotRuntime_Properties_ReportTheSignIn()
+    {
+        // Arrange
+        using var directory = new TemporaryDirectory();
+        var plan = new CopilotSignInPlan { Source = CopilotSignInSource.CopilotCli, Token = "gho_token", HostName = "example.ghe.com" };
+        var authentication = new GetAuthStatusResponse { IsAuthenticated = true, AuthType = "token", Host = "https://example.ghe.com", Login = "octo_user" };
+
+        // Act
+        await using var signedIn = new CopilotRuntime(NewClient(directory.Path), directory.Path, signIn: plan, authentication: authentication);
+        await using var bare = new CopilotRuntime(NewClient(directory.Path), directory.Path);
+
+        // Assert
+        Assert.Equal(CopilotSignInSource.CopilotCli, signedIn.SignInSource);
+        Assert.Equal("https://example.ghe.com", signedIn.GitHubHost);
+        Assert.Equal("octo_user", signedIn.GitHubLogin);
+        Assert.Equal(CopilotSignInSource.Unknown, bare.SignInSource);
+        Assert.Null(bare.GitHubHost);
+        Assert.Null(bare.GitHubLogin);
+    }
+
+    /// <summary>
+    ///     Proves the client options carry the resolved sign-in: its token, and its host as the
+    ///     runtime's <c>COPILOT_GH_HOST</c>, overriding the host environment's.
+    /// </summary>
+    [Fact]
+    public void CopilotRuntime_BuildClientOptions_SignInPlan_CarriesTheTokenAndHost()
+    {
+        // Arrange
+        using var directory = new TemporaryDirectory();
+        var plan = new CopilotSignInPlan { Source = CopilotSignInSource.CopilotCli, Token = "gho_cli", HostName = "example.ghe.com" };
+        var host = new Hashtable { ["COPILOT_GH_HOST"] = "other.ghe.com", ["PATH"] = "/usr/bin" };
+
+        // Act
+        var clientOptions = CopilotRuntime.BuildClientOptions(new CopilotRuntimeOptions(directory.Path), directory.Path, host, signIn: plan);
+
+        // Assert
+        Assert.Equal("gho_cli", clientOptions.GitHub.Token);
+        var environment = Assert.IsType<SpawnedStdioRuntimeConnection>(clientOptions.Runtime).Environment!;
+        Assert.Equal("example.ghe.com", environment["COPILOT_GH_HOST"]);
+        Assert.Equal(CopilotClientMode.Empty, clientOptions.Mode);
+    }
+
+    /// <summary>
+    ///     Proves a sign-in that hands over no token and names no host leaves the runtime's environment
+    ///     exactly as before and sets no token, so the runtime's own sources decide.
+    /// </summary>
+    [Fact]
+    public void CopilotRuntime_BuildClientOptions_NoTokenOrHost_LeavesTheEnvironmentUnchanged()
+    {
+        // Arrange
+        using var directory = new TemporaryDirectory();
+        var host = new Hashtable { ["COPILOT_GH_HOST"] = "other.ghe.com", ["GH_TOKEN"] = "gh", ["PATH"] = "/usr/bin" };
+
+        // Act
+        var clientOptions = CopilotRuntime.BuildClientOptions(
+            new CopilotRuntimeOptions(directory.Path),
+            directory.Path,
+            host,
+            signIn: new CopilotSignInPlan { Source = CopilotSignInSource.EnvironmentVariable });
+
+        // Assert
+        Assert.Null(clientOptions.GitHub.Token);
+        Assert.Equal(
+            CopilotRuntime.BuildRuntimeEnvironment(host).OrderBy(entry => entry.Key, StringComparer.Ordinal),
+            Assert.IsType<SpawnedStdioRuntimeConnection>(clientOptions.Runtime).Environment!.OrderBy(entry => entry.Key, StringComparer.Ordinal));
+    }
+
+    /// <summary>
+    ///     Proves the options' GitHub host is normalized from each accepted form, and that a blank host
+    ///     means none.
+    /// </summary>
+    /// <param name="host">The host as passed.</param>
+    /// <param name="expected">The normalized host, or <see langword="null"/>.</param>
+    [Theory]
+    [InlineData("example.ghe.com", "https://example.ghe.com")]
+    [InlineData("https://example.ghe.com", "https://example.ghe.com")]
+    [InlineData("https://example.ghe.com/", "https://example.ghe.com")]
+    [InlineData("  ", null)]
+    [InlineData(null, null)]
+    public void CopilotRuntimeOptions_GitHubHost_IsNormalized(string? host, string? expected)
+    {
+        // Act
+        var options = new CopilotRuntimeOptions("copilot-runtime", gitHubHost: host);
+
+        // Assert
+        Assert.Equal(expected, options.GitHubHost);
+    }
+
+    /// <summary>
+    ///     Proves a GitHub host that is not an https host without a path, query, user name or port is
+    ///     refused, naming the parameter.
+    /// </summary>
+    /// <param name="host">The host as passed.</param>
+    [Theory]
+    [InlineData("http://example.ghe.com")]
+    [InlineData("https://example.ghe.com/api")]
+    [InlineData("https://example.ghe.com:8443")]
+    [InlineData("https://user@example.ghe.com")]
+    public void CopilotRuntimeOptions_InvalidGitHubHost_Throws(string host)
+    {
+        // Act
+        var failure = Assert.Throws<ArgumentException>(() => new CopilotRuntimeOptions("copilot-runtime", gitHubHost: host));
+
+        // Assert
+        Assert.Equal("gitHubHost", failure.ParamName);
+    }
+
+    /// <summary>
+    ///     Proves a token and a token provider together are refused, since one of them would be ignored.
+    /// </summary>
+    [Fact]
+    public void CopilotRuntimeOptions_TokenAndProvider_Throws()
+    {
+        // Act
+        var failure = Assert.Throws<ArgumentException>(() => new CopilotRuntimeOptions(
+            "copilot-runtime",
+            gitHubToken: "gho_token",
+            gitHubTokenProvider: (_, _) => Task.FromResult(new CopilotGitHubToken("gho_token"))));
+
+        // Assert
+        Assert.Equal("gitHubTokenProvider", failure.ParamName);
+    }
+
+    /// <summary>
+    ///     Proves the sign-in options default to no host, no provider and the Copilot CLI sign-in
+    ///     allowed, and that each value passed is kept.
+    /// </summary>
+    [Fact]
+    public void CopilotRuntimeOptions_SignInOptions_DefaultAndKeepTheirValues()
+    {
+        // Arrange
+        Func<CopilotGitHubTokenRequest, CancellationToken, Task<CopilotGitHubToken>> provider =
+            (_, _) => Task.FromResult(new CopilotGitHubToken("gho_token"));
+
+        // Act
+        var defaults = new CopilotRuntimeOptions("copilot-runtime");
+        var chosen = new CopilotRuntimeOptions("copilot-runtime", gitHubTokenProvider: provider, useCopilotCliSignIn: false);
+
+        // Assert
+        Assert.Null(defaults.GitHubHost);
+        Assert.Null(defaults.GitHubTokenProvider);
+        Assert.True(defaults.UseCopilotCliSignIn);
+        Assert.Same(provider, chosen.GitHubTokenProvider);
+        Assert.False(chosen.UseCopilotCliSignIn);
+    }
+
+    /// <summary>
+    ///     Proves a session opened on a runtime started with a token provider gets a session provider,
+    ///     and one on a runtime without leaves the session's GitHub options untouched.
+    /// </summary>
+    [Fact]
+    public async Task CopilotRuntime_ApplySessionSignIn_SetsTheProviderOnlyWhenTheRuntimeHasOne()
+    {
+        // Arrange
+        using var directory = new TemporaryDirectory();
+        var plan = new CopilotSignInPlan
+        {
+            Source = CopilotSignInSource.GitHubTokenProvider,
+            Token = "gho_token",
+            Provider = (_, _) => Task.FromResult(new CopilotGitHubToken("gho_token")),
+        };
+        await using var withProvider = new CopilotRuntime(NewClient(directory.Path), directory.Path, signIn: plan);
+        await using var without = new CopilotRuntime(NewClient(directory.Path), directory.Path, signIn: new CopilotSignInPlan());
+        var create = new CreateSessionOptions();
+        var resume = new ResumeSessionOptions();
+        var untouched = new CreateSessionOptions();
+
+        // Act
+        withProvider.ApplySessionSignIn(create);
+        withProvider.ApplySessionSignIn(resume);
+        without.ApplySessionSignIn(untouched);
+
+        // Assert
+        Assert.NotNull(create.GitHub.TokenProvider);
+        Assert.NotNull(resume.GitHub.TokenProvider);
+        Assert.Null(create.GitHub.Token);
+        Assert.Null(untouched.GitHub.TokenProvider);
+        Assert.Null(untouched.GitHub.Token);
+    }
+
+    /// <summary>
+    ///     Proves a start failure that quotes the runtime's start token or a session token the host's
+    ///     provider returned is explained without either, even when neither is shaped like a GitHub
+    ///     token, and that the cause kept is a redacted copy of the failure whose whole chain —
+    ///     including a nested inner exception and every inner exception of an aggregate — carries
+    ///     neither token.
+    /// </summary>
+    [Fact]
+    public async Task CopilotRuntime_StartClient_FailureQuotingASignInToken_IsRedacted()
+    {
+        // Arrange: a runtime started with a token, whose provider has handed a session its token
+        const string startToken = "s3cr3t-start-xyz";
+        const string sessionToken = "s3cr3t-session-xyz";
+        using var directory = new TemporaryDirectory();
+        var plan = new CopilotSignInPlan
+        {
+            Source = CopilotSignInSource.GitHubTokenProvider,
+            Token = startToken,
+            Provider = (_, _) => Task.FromResult(new CopilotGitHubToken(sessionToken)),
+        };
+        await using var runtime = new CopilotRuntime(NewClient(directory.Path), directory.Path, signIn: plan);
+        var session = new CreateSessionOptions();
+        runtime.ApplySessionSignIn(session);
+        await session.GitHub.TokenProvider!(new GitHubTokenProviderArgs { Host = "https://example.ghe.com", Reason = GitHubTokenRequestReason.Initial });
+        var aggregate = new AggregateException(
+            "both failed",
+            new IOException($"pipe broke on {startToken}"),
+            new UnauthorizedAccessException($"refused {sessionToken}"));
+        var cause = new InvalidOperationException(
+            $"connection lost (start {startToken}, session {sessionToken})",
+            new InvalidOperationException($"handshake with {sessionToken}", aggregate));
+
+        // Act
+        var failure = await Assert.ThrowsAsync<InvalidOperationException>(() => CopilotRuntime.StartClientAsync(
+            _ => Task.FromException(cause),
+            launch: null,
+            runtime.SignIn,
+            TestContext.Current.CancellationToken));
+
+        // Assert
+        Assert.False(failure.Message.Contains(startToken, StringComparison.Ordinal), "The explanation carries the start token.");
+        Assert.False(failure.Message.Contains(sessionToken, StringComparison.Ordinal), "The explanation carries the session token.");
+        Assert.Contains("connection lost (start <redacted>, session <redacted>)", failure.Message, StringComparison.Ordinal);
+        var copy = Assert.IsType<CopilotRedactedException>(failure.InnerException);
+        Assert.Equal(typeof(InvalidOperationException).FullName, copy.OriginalTypeName);
+        Assert.Equal("connection lost (start <redacted>, session <redacted>)", copy.Message);
+        Assert.Equal(typeof(AggregateException).FullName, Assert.IsType<CopilotRedactedException>(copy.InnerException?.InnerException).OriginalTypeName);
+        SecretAssert.NoSecret(failure, startToken, sessionToken);
+    }
+
+    /// <summary>
+    ///     Proves a provider's token must not be blank and must report more than one hour of life, and
+    ///     that its string form never carries the token.
+    /// </summary>
+    [Fact]
+    public void CopilotGitHubToken_Constructor_ValidatesAndRedacts()
+    {
+        // Act
+        var token = new CopilotGitHubToken("gho_SECRET_VALUE", TimeSpan.FromHours(2));
+        var unknown = new CopilotGitHubToken("gho_SECRET_VALUE");
+
+        // Assert
+        Assert.Throws<ArgumentException>(() => new CopilotGitHubToken("  "));
+        Assert.Throws<ArgumentNullException>(() => new CopilotGitHubToken(null!));
+        Assert.Throws<ArgumentOutOfRangeException>(() => new CopilotGitHubToken("gho_x", TimeSpan.FromHours(1)));
+        Assert.Equal("gho_SECRET_VALUE", token.Token);
+        Assert.Equal(TimeSpan.FromHours(2), token.ExpiresIn);
+        Assert.Null(unknown.ExpiresIn);
+        Assert.DoesNotContain("SECRET_VALUE", token.ToString(), StringComparison.Ordinal);
+        Assert.DoesNotContain("SECRET_VALUE", unknown.ToString(), StringComparison.Ordinal);
+    }
+
+    /// <summary>
     ///     Builds a client that is never started, so it spawns nothing.
     /// </summary>
     /// <param name="dataDirectory">The data directory.</param>
     /// <returns>The client.</returns>
     private static CopilotClient NewClient(string dataDirectory) =>
         new(CopilotRuntime.BuildClientOptions(new CopilotRuntimeOptions(dataDirectory), dataDirectory, new Hashtable()));
+
+    /// <summary>
+    ///     Asserts that an inner exception is the redacted copy of a cause, not the cause itself: its
+    ///     original type name and its message, which held no secret, are kept.
+    /// </summary>
+    /// <param name="cause">The failure the start raised.</param>
+    /// <param name="inner">The inner exception the explanation carries.</param>
+    private static void AssertRedactedCopyOf(Exception cause, Exception? inner)
+    {
+        var copy = Assert.IsType<CopilotRedactedException>(inner);
+        Assert.NotSame(cause, inner);
+        Assert.Equal(cause.GetType().FullName, copy.OriginalTypeName);
+        Assert.Equal(cause.Message ?? string.Empty, copy.Message);
+    }
 
     /// <summary>
     ///     A fake data directory for launch resolution, which never touches it.

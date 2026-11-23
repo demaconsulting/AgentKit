@@ -163,7 +163,9 @@ client the host built, because none of the runtime's guarantees could hold on on
    see *CopilotTurnChannel Unit Design*. The channels are handed the runtime, not its client, and
    each open, resume and release reads the client: the SDK restarts a disposed client on demand, so
    an agent that held the client would bring a runtime the host had disposed back to life. Once the
-   runtime is disposed, every run fails with `ObjectDisposedException` and nothing is started.
+   runtime is disposed, every run fails with `ObjectDisposedException` and nothing is started. The
+   runtime's sign-in (`runtime.SignIn`) is passed too, so a session error's text is redacted of
+   every token the runtime knows.
 3. Return the agent as an `AIAgent`.
 
 **Throws:** `ArgumentNullException` when `runtime` or `tools` is null, or a tool is null;
@@ -190,7 +192,7 @@ which would forfeit the confinement. It is not validated here: the runtime resol
 session is created. It grants nothing: what the agent may read or write is decided by the tools' own
 path policy.
 
-#### CreateAgent(tools, instructions, onPermissionRequest, name, model, workingDirectory, opener, resumer, ephemeralOpener, selection)
+#### CreateAgent(tools, instructions, onPermissionRequest, name, model, workingDirectory, opener, resumer, ephemeralOpener, selection, signIn)
 
 Internal seam behind `Create`: production passes channels over the runtime, a test passes a
 scripted runtime, and everything else is shared.
@@ -204,7 +206,7 @@ scripted runtime, and everything else is shared.
 3. Construct a `CopilotAgent` with two builder delegates — one calling `BuildSessionConfig`, one
    calling `BuildResumeSessionConfig`, both over the snapshot and the host's settings — together with
    the opener, the ephemeral opener (the opener itself when none is supplied, as a test may), the
-   resumer and the name.
+   resumer, the name and the optional sign-in, whose tokens a session error is redacted of.
 
 The agent calls a builder on every run, so each run receives a **fresh** options object. The SDK
 mutates the options it is handed when it applies its mode defaults, and its clone is shallow, so an
@@ -507,7 +509,10 @@ incentive to bypass it.
 - **CopilotModelCatalog** — supplies `ProviderId`, which `ValidateSelection` checks; see
   *CopilotModelCatalog Unit Design*.
 - **CopilotRuntime** — the runtime `Create` takes, whose client the channels read at every open,
-  resume and release; see *CopilotRuntime Unit Design*.
+  resume and release, and whose sign-in the agent redacts a session error with; see *CopilotRuntime
+  Unit Design*.
+- **CopilotSignIn** — the sign-in plan type `CreateAgent` hands the agent; see *CopilotSignIn Unit
+  Design*.
 - **CopilotTurnChannel** — supplies the keeping opener, the resumer and the deleting opener (for a run
   made without a conversation) that `Create` hands the agent; see *CopilotTurnChannel Unit Design*.
 - **Microsoft.Copilot.SDK** — supplies `CopilotClient`, `CreateSessionOptions`, `ResumeSessionOptions`

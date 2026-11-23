@@ -67,6 +67,12 @@ public sealed class CopilotSummarizer : ISummarizer
     private readonly ModelSelection? _selection;
 
     /// <summary>
+    ///     The sign-in of the runtime the consolidations run on, whose tokens a relayed failure is
+    ///     redacted of, or <see langword="null"/> to redact the process environment's secrets and token-shaped text only.
+    /// </summary>
+    private readonly CopilotSignInPlan? _signIn;
+
+    /// <summary>
     ///     Initializes a new instance of the <see cref="CopilotSummarizer"/> class.
     /// </summary>
     /// <param name="runtime">
@@ -106,6 +112,7 @@ public sealed class CopilotSummarizer : ISummarizer
         _opener = CopilotSessionChannel.Open(runtime);
         _model = model;
         _selection = selection;
+        _signIn = runtime.SignIn;
     }
 
     /// <summary>
@@ -120,11 +127,19 @@ public sealed class CopilotSummarizer : ISummarizer
     /// <param name="opener">Opens one short-lived runtime session per consolidation.</param>
     /// <param name="model">The model to name, or <see langword="null"/> for the runtime's default.</param>
     /// <param name="selection">A validated model selection, or <see langword="null"/>; see the public constructor.</param>
+    /// <param name="signIn">
+    ///     The sign-in whose tokens a relayed failure is redacted of, or <see langword="null"/> to
+    ///     redact the process environment's secrets and token-shaped text only.
+    /// </param>
     /// <exception cref="ArgumentNullException"><paramref name="opener"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException">
     ///     The model is named twice, or the selection carries a context window or an output limit.
     /// </exception>
-    internal CopilotSummarizer(CopilotChannelOpener opener, string? model, ModelSelection? selection = null)
+    internal CopilotSummarizer(
+        CopilotChannelOpener opener,
+        string? model,
+        ModelSelection? selection = null,
+        CopilotSignInPlan? signIn = null)
     {
         ArgumentNullException.ThrowIfNull(opener);
         CopilotAgentFactory.ValidateSelection(model, selection, windowAccounted: false);
@@ -132,6 +147,7 @@ public sealed class CopilotSummarizer : ISummarizer
         _opener = opener;
         _model = model;
         _selection = selection;
+        _signIn = signIn;
     }
 
     /// <inheritdoc/>
@@ -148,8 +164,20 @@ public sealed class CopilotSummarizer : ISummarizer
     ///     a consolidation it could not obtain as material to keep rather than material to lose, and
     ///     a model declining to answer is a thing that happens rather than a defect to escalate.
     ///     </para>
+    ///     <para>
+    ///     A consolidation the runtime or the SDK fails — opening its session or taking its turn — is
+    ///     raised as a redacted copy of the same kind
+    ///     — its message, and every exception in its chain, with every token the runtime's sign-in
+    ///     knows and any text shaped like a GitHub token removed — never as the SDK's own exception.
+    ///     A cancellation carrying nothing to redact passes unchanged.
+    ///     </para>
     /// </remarks>
-    /// <exception cref="InvalidOperationException">The channel opener returned <see langword="null"/>.</exception>
+    /// <exception cref="InvalidOperationException">
+    ///     The channel opener returned <see langword="null"/>, or the runtime or the SDK failed the
+    ///     consolidation, raised as a redacted copy.
+    /// </exception>
+    /// <exception cref="IOException">The connection to the runtime failed, raised as a redacted copy.</exception>
+    /// <exception cref="TimeoutException">The consolidation timed out in the SDK, raised as a redacted copy.</exception>
     public async Task<string> ConsolidateAsync(
         ConsolidationRequest request,
         CancellationToken cancellationToken = default)
@@ -163,7 +191,7 @@ public sealed class CopilotSummarizer : ISummarizer
             _model,
             selection: _selection);
 
-        var channel = await _opener(config, cancellationToken).ConfigureAwait(false)
+        var channel = await CopilotSignIn.RelayAsync(() => _opener(config, cancellationToken), _signIn).ConfigureAwait(false)
             ?? throw new InvalidOperationException("The Copilot channel opener returned null.");
 
         try
@@ -173,6 +201,18 @@ public sealed class CopilotSummarizer : ISummarizer
                 .ConfigureAwait(false);
 
             return answer?.Data?.Content ?? string.Empty;
+        }
+        catch (Exception failure)
+        {
+            // The runtime's or the SDK's failure is relayed as a redacted copy of the same kind,
+            // never as the original; a cancellation carrying nothing to redact passes unchanged.
+            var relayed = CopilotSignIn.RedactRelayed(failure, _signIn);
+            if (ReferenceEquals(relayed, failure))
+            {
+                throw;
+            }
+
+            throw relayed;
         }
         finally
         {

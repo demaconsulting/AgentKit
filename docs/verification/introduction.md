@@ -219,6 +219,10 @@ constituent software items, specifically:
   `COPILOT_`/`GITHUB_COPILOT_` variables withheld apart from an allow-listed credential, network and
   telemetry-off set, a data directory AgentKit owns — refuses an unsupported CLI or an
   unauthenticated runtime, and explains a runtime that cannot start
+- **CopilotSignIn (Unit)** — Signs the runtime in from the host's token or token provider, the
+  environment, the user's Copilot CLI sign-in or the runtime's own fallbacks, in that order and with
+  the source's host, sharing only the Copilot CLI account's host and login, and explains a runtime no
+  source signed in
 - **CopilotCli (Unit)** — Finds the installed Copilot CLI, passing over editor launchers, reads the
   version it runs under the SDK, enforces the minimum version, and explains each refusal
 - **CopilotProviderSession (Unit)** — One Core session over one Copilot session: sends a turn,

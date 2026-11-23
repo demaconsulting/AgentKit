@@ -290,6 +290,37 @@ public class CopilotTurnChannelTests
     }
 
     /// <summary>
+    ///     Proves the seal's refusal, which names the servers the runtime kept enabled, reaches a host
+    ///     redacted when relayed as every opener relays it: a server name quoting a known secret is
+    ///     replaced, and nothing in the relayed chain carries the secret.
+    /// </summary>
+    [Fact]
+    public async Task CopilotSessionChannel_Seal_RefusalNamingASecret_IsRedactedWhenRelayed()
+    {
+        // Arrange: the runtime keeps a server enabled whose name quotes a known secret
+        const string secret = "s3cr3t-value-xyz";
+        IList<McpConfiguredServer> listing = [Server($"docs-{secret}", enabled: true)];
+
+        // Act
+        var failure = await Assert.ThrowsAsync<InvalidOperationException>(() => CopilotSignIn.RelayAsync(
+            async () =>
+            {
+                await CopilotSessionChannel.SealAsync(
+                    _ => Task.CompletedTask,
+                    _ => Task.FromResult(listing),
+                    (_, _) => Task.CompletedTask,
+                    TestContext.Current.CancellationToken);
+                return true;
+            },
+            CopilotSignInTests.PlanKnowing(secret)));
+
+        // Assert
+        Assert.Contains("'docs-<redacted>'", failure.Message, StringComparison.Ordinal);
+        Assert.IsType<CopilotRedactedException>(failure.InnerException);
+        SecretAssert.NoSecret(failure, secret);
+    }
+
+    /// <summary>
     ///     Proves the plugins patch replaces the session's installed plugins with an empty list rather
     ///     than leaving the list unset, which the runtime would read as "no change".
     /// </summary>
@@ -344,11 +375,55 @@ public class CopilotTurnChannelTests
     }
 
     /// <summary>
+    ///     Proves a session created or resumed on a runtime started with the host's token provider is
+    ///     given a session token provider before anything else happens — one that asks the host's
+    ///     provider with the session's host and whether it is a refresh — and that one on a runtime
+    ///     without a provider is left without one.
+    /// </summary>
+    [Fact]
+    public async Task CopilotSessionChannel_Open_RuntimeWithTokenProvider_AppliesItToTheSession()
+    {
+        // Arrange: a runtime that cannot start, so opening fails after the sign-in is applied
+        var requests = new List<CopilotGitHubTokenRequest>();
+        var plan = new CopilotSignInPlan
+        {
+            Source = CopilotSignInSource.GitHubTokenProvider,
+            Token = "gho_start",
+            Provider = (request, _) =>
+            {
+                requests.Add(request);
+                return Task.FromResult(new CopilotGitHubToken("gho_session"));
+            },
+        };
+        await using var withProvider = RuntimeThatCannotStart(plan);
+        await using var without = RuntimeThatCannotStart();
+        var create = new CreateSessionOptions();
+        var resume = new ResumeSessionOptions();
+        var plain = new CreateSessionOptions();
+        var token = TestContext.Current.CancellationToken;
+
+        // Act
+        await Assert.ThrowsAsync<InvalidOperationException>(() => CopilotSessionChannel.CreateConfinedSessionAsync(withProvider, create, token));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => CopilotSessionChannel.ResumeConfinedSessionAsync(withProvider, "session-1", resume, token));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => CopilotSessionChannel.CreateConfinedSessionAsync(without, plain, token));
+        var issued = await create.GitHub.TokenProvider!(new GitHubTokenProviderArgs { Host = "https://example.ghe.com", Reason = GitHubTokenRequestReason.Refresh });
+
+        // Assert
+        Assert.NotNull(resume.GitHub.TokenProvider);
+        Assert.Null(plain.GitHub.TokenProvider);
+        var request = Assert.Single(requests);
+        Assert.Equal("https://example.ghe.com", request.Host);
+        Assert.True(request.IsRefresh);
+        Assert.Equal("gho_session", issued.Token!.AccessToken);
+    }
+
+    /// <summary>
     ///     Builds a runtime over a client that can never start: its runtime path names no file, so
     ///     an attempt to start it fails, spawning nothing, rather than succeeding unseen.
     /// </summary>
+    /// <param name="signIn">The sign-in plan the runtime reports it started with, or <see langword="null"/>.</param>
     /// <returns>The runtime. Nothing has been started.</returns>
-    private static CopilotRuntime RuntimeThatCannotStart()
+    private static CopilotRuntime RuntimeThatCannotStart(CopilotSignInPlan? signIn = null)
     {
         var temporary = Path.GetTempPath();
         var unique = Guid.NewGuid().ToString("N");
@@ -360,7 +435,8 @@ public class CopilotTurnChannelTests
                     path: Path.Combine(temporary, "agentkit-no-such-runtime-" + unique),
                     baseDirectory: Path.Combine(temporary, unique)),
             }),
-            Path.Combine(temporary, unique));
+            Path.Combine(temporary, unique),
+            signIn: signIn);
     }
 
     /// <summary>

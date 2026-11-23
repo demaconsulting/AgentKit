@@ -37,8 +37,10 @@ namespace DemaConsulting.AgentKit.Agents.Copilot;
 ///     assistant message is carried as raw content only, so its text is not duplicated, unless no
 ///     delta arrived for it. Tool starts and completions become <see cref="FunctionCallContent"/> and
 ///     <see cref="FunctionResultContent"/>; the runtime's per-request usage becomes
-///     <see cref="UsageContent"/>; a session error fails the run. Events a sub-agent produced, and
-///     every other kind of event, are not streamed.
+///     <see cref="UsageContent"/>; a session error fails the run, its text redacted of every token
+///     the runtime's sign-in knows. Events a sub-agent produced, and every other kind of event, are
+///     not streamed. Tool results and the SDK's own exceptions are passed on as the runtime
+///     produced them: the model already received the former, and AgentKit wraps neither.
 ///     </para>
 ///     <para>
 ///     <b>Input.</b> The text of every input message is joined with a newline into one prompt, and
@@ -102,6 +104,12 @@ internal sealed class CopilotAgent : AIAgent
     private readonly string? _name;
 
     /// <summary>
+    ///     The sign-in of the runtime the agent's sessions run on, whose tokens are redacted from a
+    ///     session error, or <see langword="null"/> to redact the process environment's secrets and token-shaped text only.
+    /// </summary>
+    private readonly CopilotSignInPlan? _signIn;
+
+    /// <summary>
     ///     Initializes a new instance of the <see cref="CopilotAgent"/> class.
     /// </summary>
     /// <remarks>
@@ -118,6 +126,10 @@ internal sealed class CopilotAgent : AIAgent
     /// </param>
     /// <param name="resumer">Resumes a recorded runtime session.</param>
     /// <param name="name">The agent's name, or <see langword="null"/>/blank for <see cref="DefaultName"/>.</param>
+    /// <param name="signIn">
+    ///     The sign-in of the runtime the sessions run on, whose tokens are redacted from a session
+    ///     error, or <see langword="null"/> to redact the process environment's secrets and token-shaped text only.
+    /// </param>
     /// <exception cref="ArgumentNullException">Any delegate is <see langword="null"/>.</exception>
     internal CopilotAgent(
         Func<CreateSessionOptions> createOptions,
@@ -125,7 +137,8 @@ internal sealed class CopilotAgent : AIAgent
         CopilotChannelOpener opener,
         CopilotChannelOpener ephemeralOpener,
         CopilotChannelResumer resumer,
-        string? name)
+        string? name,
+        CopilotSignInPlan? signIn = null)
     {
         ArgumentNullException.ThrowIfNull(createOptions);
         ArgumentNullException.ThrowIfNull(resumeOptions);
@@ -139,6 +152,7 @@ internal sealed class CopilotAgent : AIAgent
         _ephemeralOpener = ephemeralOpener;
         _resumer = resumer;
         _name = string.IsNullOrWhiteSpace(name) ? null : name;
+        _signIn = signIn;
     }
 
     /// <inheritdoc/>
@@ -193,8 +207,9 @@ internal sealed class CopilotAgent : AIAgent
 
     /// <inheritdoc/>
     /// <exception cref="InvalidOperationException">
-    ///     <paramref name="session"/> was not created by an agent of this kind, or the runtime
-    ///     reported a session error.
+    ///     <paramref name="session"/> was not created by an agent of this kind, the runtime reported a
+    ///     session error, or the runtime or the SDK failed the turn — raised as a redacted copy, never
+    ///     the SDK's own exception.
     /// </exception>
     protected override IAsyncEnumerable<AgentResponseUpdate> RunCoreStreamingAsync(
         IEnumerable<ChatMessage> messages,
@@ -223,7 +238,11 @@ internal sealed class CopilotAgent : AIAgent
     /// <param name="message">The composed message to send.</param>
     /// <param name="cancellationToken">The run's deadline.</param>
     /// <returns>The run's updates, in the order the runtime produced them.</returns>
-    /// <exception cref="InvalidOperationException">The runtime reported a session error.</exception>
+    /// <exception cref="InvalidOperationException">
+    ///     The runtime reported a session error, or the runtime or the SDK failed the turn, raised as
+    ///     a redacted copy.
+    /// </exception>
+    /// <exception cref="IOException">The connection to the runtime failed during the turn, raised as a redacted copy.</exception>
     private async IAsyncEnumerable<AgentResponseUpdate> RunTurnAsync(
         CopilotAgentSession conversation,
         bool ephemeral,
@@ -237,13 +256,13 @@ internal sealed class CopilotAgent : AIAgent
             using var runCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             var updates = Channel.CreateUnbounded<AgentResponseUpdate>(
                 new UnboundedChannelOptions { SingleReader = true });
-            var mapper = new UpdateMapper(Id, Name, updates.Writer);
+            var mapper = new UpdateMapper(Id, Name, updates.Writer, _signIn);
 
             var channel = await OpenAsync(conversation, ephemeral, mapper.OnEvent, runCancellation.Token).ConfigureAwait(false);
             Task? send = null;
             try
             {
-                send = SendAsync(channel, message, updates.Writer, runCancellation.Token);
+                send = SendAsync(channel, message, updates.Writer, _signIn, runCancellation.Token);
 
                 await foreach (var update in updates.Reader.ReadAllAsync(runCancellation.Token).ConfigureAwait(false))
                 {
@@ -285,7 +304,11 @@ internal sealed class CopilotAgent : AIAgent
     /// <param name="onEvent">The run's event handler.</param>
     /// <param name="cancellationToken">Cancels the open.</param>
     /// <returns>The opened channel. Ownership passes to the caller.</returns>
-    /// <exception cref="InvalidOperationException">The opener or resumer returned <see langword="null"/>.</exception>
+    /// <exception cref="InvalidOperationException">
+    ///     The opener or resumer returned <see langword="null"/>, or the runtime or the SDK failed to
+    ///     open the session, raised as a redacted copy.
+    /// </exception>
+    /// <exception cref="IOException">The connection to the runtime failed while opening the session, raised as a redacted copy.</exception>
     private async Task<ICopilotTurnChannel> OpenAsync(
         CopilotAgentSession conversation,
         bool ephemeral,
@@ -296,14 +319,14 @@ internal sealed class CopilotAgent : AIAgent
         {
             var resume = _resumeOptions();
             resume.Events.OnEvent = onEvent;
-            return await _resumer(sessionId, resume, cancellationToken).ConfigureAwait(false)
+            return await CopilotSignIn.RelayAsync(() => _resumer(sessionId, resume, cancellationToken), _signIn).ConfigureAwait(false)
                 ?? throw new InvalidOperationException("The Copilot channel resumer returned null.");
         }
 
         var create = _createOptions();
         create.Events.OnEvent = onEvent;
         var opener = ephemeral ? _ephemeralOpener : _opener;
-        var channel = await opener(create, cancellationToken).ConfigureAwait(false)
+        var channel = await CopilotSignIn.RelayAsync(() => opener(create, cancellationToken), _signIn).ConfigureAwait(false)
             ?? throw new InvalidOperationException("The Copilot channel opener returned null.");
 
         conversation.SessionId = channel.SessionId;
@@ -316,12 +339,14 @@ internal sealed class CopilotAgent : AIAgent
     /// <param name="channel">The channel to take the turn on.</param>
     /// <param name="message">The message to send.</param>
     /// <param name="writer">The update stream to complete.</param>
+    /// <param name="signIn">The runtime's sign-in, whose tokens a relayed failure is redacted of.</param>
     /// <param name="cancellationToken">The run's only deadline.</param>
     /// <returns>A task that completes with the turn.</returns>
     private static async Task SendAsync(
         ICopilotTurnChannel channel,
         MessageOptions message,
         ChannelWriter<AgentResponseUpdate> writer,
+        CopilotSignInPlan? signIn,
         CancellationToken cancellationToken)
     {
         try
@@ -332,9 +357,17 @@ internal sealed class CopilotAgent : AIAgent
         catch (Exception failure)
         {
             // Completing the stream with the failure is what surfaces it to the reader; the task's
-            // own exception is observed by FinishAsync.
-            writer.TryComplete(failure);
-            throw;
+            // own exception is observed by FinishAsync. The runtime's or the SDK's failure is
+            // relayed as a redacted copy of the same kind, never as the original; a cancellation
+            // carrying nothing to redact passes unchanged.
+            var relayed = CopilotSignIn.RedactRelayed(failure, signIn);
+            writer.TryComplete(relayed);
+            if (ReferenceEquals(relayed, failure))
+            {
+                throw;
+            }
+
+            throw relayed;
         }
     }
 
@@ -472,16 +505,24 @@ internal sealed class CopilotAgent : AIAgent
         private readonly HashSet<string> _streamed = new(StringComparer.Ordinal);
 
         /// <summary>
+        ///     The runtime's sign-in, whose tokens are redacted from a session error, or
+        ///     <see langword="null"/> to redact the process environment's secrets and token-shaped text only.
+        /// </summary>
+        private readonly CopilotSignInPlan? _signIn;
+
+        /// <summary>
         ///     Initializes a new instance of the <see cref="UpdateMapper"/> class.
         /// </summary>
         /// <param name="agentId">The agent's identifier.</param>
         /// <param name="authorName">The agent's name.</param>
         /// <param name="writer">The run's update stream.</param>
-        internal UpdateMapper(string agentId, string? authorName, ChannelWriter<AgentResponseUpdate> writer)
+        /// <param name="signIn">The runtime's sign-in, or <see langword="null"/>.</param>
+        internal UpdateMapper(string agentId, string? authorName, ChannelWriter<AgentResponseUpdate> writer, CopilotSignInPlan? signIn)
         {
             _agentId = agentId;
             _authorName = authorName;
             _writer = writer;
+            _signIn = signIn;
         }
 
         /// <summary>
@@ -489,8 +530,10 @@ internal sealed class CopilotAgent : AIAgent
         /// </summary>
         /// <remarks>
         ///     A root-agent session error ends the stream with that error, so the run fails naming
-        ///     it rather than ending as though the turn had succeeded. Events a sub-agent produced
-        ///     are skipped: they were never part of this conversation.
+        ///     it rather than ending as though the turn had succeeded. The runtime's error text is
+        ///     quoted redacted: every token the runtime's sign-in knows, and any text shaped like a
+        ///     GitHub token, is removed, and no cause is attached. Events a sub-agent produced are
+        ///     skipped: they were never part of this conversation.
         /// </remarks>
         /// <param name="sessionEvent">The event the runtime dispatched.</param>
         internal void OnEvent(SessionEvent sessionEvent)
@@ -502,7 +545,7 @@ internal sealed class CopilotAgent : AIAgent
 
             if (sessionEvent is SessionErrorEvent { Data: { } error })
             {
-                _writer.TryComplete(new InvalidOperationException($"Session error: {error.Message}"));
+                _writer.TryComplete(new InvalidOperationException($"Session error: {CopilotSignIn.Redact(_signIn, error.Message)}"));
                 return;
             }
 
@@ -515,6 +558,12 @@ internal sealed class CopilotAgent : AIAgent
         /// <summary>
         ///     Maps one root-agent event onto an update, or nothing.
         /// </summary>
+        /// <remarks>
+        ///     Not redacted, by design: assistant text, tool calls and results and the raw event are
+        ///     conversation content the model already saw and the host subscribed to; rewriting them
+        ///     would make the transcript disagree with the runtime's conversation. See the sink rule on
+        ///     <see cref="CopilotSignIn"/>.
+        /// </remarks>
         /// <param name="sessionEvent">The event.</param>
         /// <returns>The update, or <see langword="null"/> for an event with no agent-visible content.</returns>
         private AgentResponseUpdate? ToUpdate(SessionEvent sessionEvent)

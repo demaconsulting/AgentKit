@@ -18,7 +18,9 @@ sections:
               Empty mode is the SDK's defaulting strategy that supplies none of the coding-agent
               defaults, keeps credentials in the data directory rather than the system keychain and
               removes the host environment context. A host cannot select another mode, because no
-              option that selects a mode is expressible.
+              option that selects a mode is expressible. The user's Copilot CLI sign-in, whose token
+              lives in the system keychain, is obtained by a separate short-lived helper runtime
+              rather than by relaxing this mode, which the SDK does not allow.
             tests:
               - CopilotRuntime_BuildClientOptions_ForcesEmptyMode
 
@@ -88,15 +90,52 @@ sections:
           - id: AgentKitAgentsCopilot-CopilotRuntime-RefusesAnUnauthenticatedRuntime
             title: >-
               The runtime shall refuse a runtime that started but is not signed in to GitHub, reporting
-              the runtime's own status, that the Copilot CLI's own sign-in is not used, and every way to
-              sign the runtime in.
+              the runtime's own status, what each sign-in source found, in order, and every way to sign
+              the runtime in.
             justification: |
-              The runtime keeps its credentials in the library's data directory with the system keychain
-              off, so a user signed in to the Copilot CLI is still not signed in for the library, and
-              would otherwise discover it only when the first turn fails. Refusing at start, with the
-              token, environment and GitHub CLI options named, makes the remedy immediate.
+              A runtime that is not signed in would otherwise be discovered only when the first turn
+              fails. Refusing at start, with each source's finding listed, shows which source was
+              expected to apply and why it did not, and the remedies make the fix immediate.
             tests:
               - CopilotRuntime_VerifyStarted_Unauthenticated_IsRefusedWithSignInGuidance
+
+          - id: AgentKitAgentsCopilot-CopilotRuntime-UsesTheResolvedSignIn
+            title: >-
+              The runtime shall start the Copilot runtime with the token and GitHub host the sign-in
+              resolution chose — a host the host's environment chose given as the normalized bare
+              host name — and with neither changed from the host's environment when the resolution
+              chose no host and leaves the sign-in to the runtime.
+            tags: [security]
+            justification: |
+              The token reaches the runtime only through the SDK's own token option, which keeps it
+              out of the data directory and makes the runtime ignore ambient sign-ins, and the host
+              only through COPILOT_GH_HOST, one of the pass-through variables, so the runtime's
+              confinement is the same whichever source signs it in.
+            tests:
+              - CopilotRuntime_BuildClientOptions_SignInPlan_CarriesTheTokenAndHost
+              - CopilotRuntime_BuildClientOptions_NoTokenOrHost_LeavesTheEnvironmentUnchanged
+
+          - id: AgentKitAgentsCopilot-CopilotRuntime-ReportsHowItSignedIn
+            title: >-
+              The runtime shall report the sign-in source the started runtime used, classified from the
+              runtime's own report, and the GitHub host and login it signed in as.
+            justification: |
+              Several sources can sign the runtime in, on different hosts, and the account decides which
+              models and policies apply, so a host needs to log or show which one was used.
+            tests:
+              - CopilotRuntime_Properties_ReportTheSignIn
+
+          - id: AgentKitAgentsCopilot-CopilotRuntime-SuppliesTheSessionSignIn
+            title: >-
+              The runtime shall give a session it is about to open a token provider that asks the
+              host's token provider when the runtime was started with one, and shall leave the session's
+              GitHub options untouched otherwise.
+            justification: |
+              A session asks the provider for its own token so the runtime can refresh it before it
+              expires; the SDK refuses a session whose provider fails rather than signing it in another
+              way, so a provider failure is never hidden.
+            tests:
+              - CopilotRuntime_ApplySessionSignIn_SetsTheProviderOnlyWhenTheRuntimeHasOne
 
           - id: AgentKitAgentsCopilot-CopilotRuntime-WithholdsCopilotEnvironment
             title: >-
@@ -165,7 +204,8 @@ sections:
 
           - id: AgentKitAgentsCopilot-CopilotRuntime-OffersOnlyNeutralOptions
             title: >-
-              The runtime shall accept from the host only a data directory, a GitHub token, a log
+              The runtime shall accept from the host only a data directory, a GitHub token or a GitHub
+              token provider, a GitHub host, whether the user's Copilot CLI sign-in may be used, a log
               level, a logger, a runtime source and a fully qualified installed CLI path, and shall
               leave every client-level channel of injected capability unset.
             tags: [security]
@@ -175,11 +215,17 @@ sections:
               reviewed, or move state out of the data directory the library owns. Authentication and
               host-side diagnostics cannot widen what reaches the model, so they remain the host's to
               set, and so does the choice of runtime executable, which runs under the same confinement
-              either way. A blank token is treated as none, so the signed-in user is used, and a blank
-              CLI path as none, so discovery chooses.
+              either way. A blank token is treated as none, so the signed-in user is used, a blank
+              host as none, so the sign-in source decides it, and a blank CLI path as none, so
+              discovery chooses. A GitHub token provider lets a host that refreshes its tokens never
+              hand the runtime an expired one; it supplies tokens only, so it cannot widen what reaches
+              the model either.
             tests:
               - CopilotRuntime_BuildClientOptions_LeavesEveryCapabilityChannelUnset
               - CopilotRuntime_BuildClientOptions_CarriesTokenLogLevelAndLogger
+              - CopilotRuntimeOptions_GitHubHost_IsNormalized
+              - CopilotRuntimeOptions_SignInOptions_DefaultAndKeepTheirValues
+              - CopilotGitHubToken_Constructor_ValidatesAndRedacts
               - CopilotRuntimeOptions_Constructor_BlankToken_IsNull
               - CopilotRuntimeOptions_Constructor_BlankCliPath_IsNull
               - CopilotRuntimeOptions_Constructor_FullyQualifiedCliPath_IsKept
@@ -191,29 +237,43 @@ sections:
               error and the cause that fits what it launched — for the bundled runtime, that if it was
               not found the host application must reference the Copilot SDK directly so it is
               provisioned; for an installed CLI, the CLI and its version and no package-reference
-              advice — and the sources the runtime authenticates from, keeping the original failure as
-              the cause.
+              advice — and the sources the runtime authenticates from, keeping a redacted copy of the
+              original failure, its type name, message and stack trace, as the cause, so no exception
+              in the chain carries a token the sign-in knows, and shall redact the whole explanation —
+              the runtime's error and the CLI's path alike — of every token the sign-in knows and any
+              text shaped like a GitHub token.
             justification: |
               The SDK provisions its runtime only into a project that references it directly, and the
               AgentKit library deliberately ships none, so a host that opted into the bundled runtime
               but relies on the library's reference alone has no runtime to start. The runtime's own
               error names a missing file and not the remedy. For an installed CLI that advice would
               mislead, so the CLI that failed is named instead. Because the host's COPILOT_ variables
-              are withheld, the explanation says which credential sources still apply, so an
-              authentication failure can be traced.
+              are withheld, the explanation says which sign-in sources apply, in order, so an
+              authentication failure can be traced. The runtime's error may quote a token it was
+              given, which must not reach a message built to be shown or logged, nor an inner
+              exception a log or crash report prints whole.
             tests:
               - CopilotRuntime_StartClient_FailedStart_ExplainsTheMissingRuntimeAndKeepsTheCause
               - CopilotRuntime_StartClient_InstalledCliFailure_DoesNotBlameTheSdkReference
               - CopilotRuntime_StartClient_Succeeds_DoesNotThrow
+              - CopilotRuntime_StartClient_FailureQuotingASignInToken_IsRedacted
+              - CopilotRuntime_StartClient_InstalledCliPathQuotingASecret_IsRedacted
 
           - id: AgentKitAgentsCopilot-CopilotRuntime-PassesCancellationThrough
             title: >-
-              The runtime shall propagate a canceled start unchanged.
+              The runtime shall propagate a canceled start that carries no cause and nothing to redact
+              unchanged, and shall rebuild any other canceled start as a cancellation of the same kind
+              where the base class library allows, keeping its token, with a redacted message and the
+              redacted copy as its cause.
+            tags: [security]
             justification: |
               A cancellation is the caller's own decision, not a fault to explain; wrapping it would
-              defeat the caller's handling of cancellation.
+              defeat the caller's handling of cancellation. A cancellation can still carry the
+              runtime's text in its message or cause, so one that does is rebuilt like any relayed
+              failure, keeping its kind and token so the caller's handling is unchanged.
             tests:
               - CopilotRuntime_StartClient_Canceled_PropagatesUnchanged
+              - CopilotRuntime_StartClient_CanceledCarryingASecret_IsRebuiltRedacted
 
           - id: AgentKitAgentsCopilot-CopilotRuntime-LeavesNoRuntimeBehind
             title: >-
@@ -254,17 +314,87 @@ sections:
               - CopilotRuntime_DeleteSessionAsync_BlankSessionId_Throws
               - CopilotRuntime_DeleteSessionAsync_AfterDisposal_Throws
 
+          - id: AgentKitAgentsCopilot-CopilotRuntime-RelaysDeletionFailuresRedacted
+            title: >-
+              The runtime shall relay a failure the runtime or SDK raises while deleting a session as a
+              new exception of the same kind with a redacted message and the redacted copy as its
+              cause, and a clean cancellation unchanged.
+            tags: [security]
+            justification: |
+              The runtime reports a session it does not hold, or a deletion it fails, through the SDK's
+              own exception, whose message and RPC error data AgentKit cannot vouch for and whose type
+              a host does not reference. Relaying it as a new exception of a base class library type,
+              redacted and with only a redacted copy as its cause, keeps tokens out of the host's
+              hands on this path as on every other relayed path.
+            tests:
+              - CopilotRuntime_DeleteSessionAsync_RuntimeFailureQuotingASecret_IsRelayedRedacted
+              - CopilotRuntime_DeleteSessionAsync_CleanCancellation_PassesUnchanged
+
+          - id: AgentKitAgentsCopilot-CopilotRuntime-RelaysStatusReadFailuresRedacted
+            title: >-
+              The runtime shall relay a failure the runtime or the SDK raises while it reads a started
+              runtime's status or authentication status as a new exception of the same kind with a
+              redacted message and the redacted copy as its cause, and a clean cancellation or
+              disposal unchanged.
+            tags: [security]
+            justification: |
+              The status reads are the last step of a start, and a read that fails raises the SDK's
+              own exception, whose message and RPC error data AgentKit cannot vouch for and whose
+              type a host does not reference. Relaying it as on every other relayed path keeps tokens
+              out of the exception StartAsync throws; a clean cancellation or disposal keeps its token
+              and object name.
+            tests:
+              - CopilotRuntime_VerifyStarted_ReadFailureQuotingASecret_IsRelayedRedacted
+              - CopilotRuntime_VerifyStarted_CleanCancellation_PassesUnchanged
+
+          - id: AgentKitAgentsCopilot-CopilotRuntime-RedactsTheSdksDiagnostics
+            title: >-
+              The runtime shall give the SDK the host's logger only wrapped in the sign-in's redacting
+              logger, so every entry the SDK writes reaches the host redacted of every secret the
+              sign-in knows at the time it is written, including a session token learned after the
+              runtime started, and of any text shaped like a GitHub token, and shall give the SDK no
+              logger when the host gave none.
+            tags: [security]
+            justification: |
+              The SDK logs the runtime's error output, RPC errors, the CLI's path and the exceptions it
+              catches, with their whole chains, to the logger it is given; none of that text is
+              AgentKit's to vouch for. Only a logger between the SDK and the host's can redact it, and
+              reading the sign-in's live secrets keeps a session token the host's provider returns
+              later out of later entries.
+            tests:
+              - CopilotRuntime_BuildClientOptions_CarriesTokenLogLevelAndLogger
+              - CopilotRuntime_BuildClientOptions_Logger_RedactsTheSdksEntries
+
+          - id: AgentKitAgentsCopilot-CopilotRuntime-RedactsLaunchRefusals
+            title: >-
+              The runtime shall redact every refusal to launch an installed CLI — a named CLI that does
+              not exist, none found, one too old, or a CLI whose version check failed — of the host
+              environment's secret values, the host's token and any text shaped like a GitHub token,
+              giving the version check the host's token to redact.
+            tags: [security]
+            justification: |
+              These refusals quote paths from the host's options, PATH and discovery, which the host's
+              environment shapes, before any sign-in exists. Redacting them with the environment's
+              secrets and the host's token applies the same rule as every later refusal.
+            tests:
+              - CopilotRuntime_ResolveLaunch_RefusalQuotingAnEnvironmentSecret_IsRedacted
+
           - id: AgentKitAgentsCopilot-CopilotRuntime-RejectsInvalidOptions
             title: >-
               The runtime shall reject missing options, a missing, blank or invalid data directory, an
-              undefined runtime source, and an installed CLI path that is not fully qualified, names a
-              batch file (.cmd or .bat), or is given with the bundled runtime, as programming errors.
+              undefined runtime source, an installed CLI path that is not fully qualified, names a
+              batch file (.cmd or .bat), or is given with the bundled runtime, a GitHub host that is not
+              an https host without a path, query, user name or port, without quoting the value, and a
+              GitHub token given together with a GitHub token provider, as programming errors.
             justification: |
               A runtime with no data directory could not be confined to one the library owns; a
               relative CLI path would make the executable depend on the current directory at start;
               Windows runs a batch file through cmd.exe, so the CLI, probed and spawned without a
               shell, would run under one; a CLI path for the bundled runtime is a contradiction the
-              host must resolve. Each defect is surfaced where the composing application wrote it.
+              host must resolve; a host with a path or port is not a GitHub host, and a rejected URL
+              may carry a user name and password, so it is not quoted; and with both a token and a
+              token provider one of them would be silently ignored. Each defect is surfaced where the
+              composing application wrote it.
             tests:
               - CopilotRuntime_StartAsync_NullOptions_Throws
               - CopilotRuntimeOptions_Constructor_BlankDataDirectory_Throws
@@ -273,3 +403,5 @@ sections:
               - CopilotRuntimeOptions_Constructor_RelativeCliPath_Throws
               - CopilotRuntimeOptions_Constructor_BatchFileCliPath_Throws
               - CopilotRuntimeOptions_Constructor_CliPathWithBundled_Throws
+              - CopilotRuntimeOptions_InvalidGitHubHost_Throws
+              - CopilotRuntimeOptions_TokenAndProvider_Throws

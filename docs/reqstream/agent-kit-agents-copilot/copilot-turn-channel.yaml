@@ -118,7 +118,8 @@ sections:
               server the runtime discovers; after creating or resuming it, shall clear the session's
               installed plugins and disable every MCP server still enabled; and shall refuse and
               release the session, deleting a created one and keeping a resumed one, if any MCP server
-              remains enabled.
+              remains enabled, with a refusal that names each such server and reaches a host redacted,
+              as every opener relays it.
             tags: [security]
             justification: |
               The runtime starts MCP servers from ambient configuration — the data directory's
@@ -157,4 +158,19 @@ sections:
               - CopilotSessionChannel_Seal_ClearsInstalledPluginsFirst
               - CopilotSessionChannel_Seal_ServerStillEnabledAfterCreation_IsDisabledThenVerified
               - CopilotSessionChannel_Seal_ServerThatStaysEnabled_RefusesNamingIt
+              - CopilotSessionChannel_Seal_RefusalNamingASecret_IsRedactedWhenRelayed
               - CopilotSessionChannel_NoInstalledPluginsPatch_ReplacesTheListWithAnEmptyOne
+
+          - id: AgentKitAgentsCopilot-CopilotTurnChannel-AppliesTheHostsTokenProvider
+            title: >-
+              The production channel shall, before creating or resuming a session, apply the runtime's
+              session-level sign-in, so a session on a runtime started with the host's GitHub token
+              provider asks that provider for its tokens, with the session's GitHub host and whether
+              the token is a refresh.
+            justification: |
+              A runtime started with a token provider holds only the token the provider gave at start;
+              a session that asks the provider for its own token lets the runtime refresh it before it
+              expires, without the host restarting the runtime. Applying it on the one path every
+              opener and resumer shares means no session can miss it.
+            tests:
+              - CopilotSessionChannel_Open_RuntimeWithTokenProvider_AppliesItToTheSession

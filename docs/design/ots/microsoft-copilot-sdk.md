@@ -21,7 +21,15 @@ runtime NuGet dependency of the AgentKitAgentsCopilot package only, deliberately
 - `CopilotClient.GetStatusAsync` and `GetAuthStatusAsync` — read once the runtime has started:
   `GetStatusResponse.Version` and `ProtocolVersion` are kept on the runtime, and
   `GetAuthStatusResponse.IsAuthenticated` and `StatusMessage` decide whether the started runtime is
-  refused as not signed in
+  refused as not signed in; its `AuthType`, `Host` and `Login` say how it signed in
+- **GitHub authentication** — `ClientGitHubOptions.Token`, the client-level token the confined runtime
+  starts with (the SDK passes it in a variable of its own and turns off the runtime's own sign-ins);
+  a second, short-lived `CopilotClient` in `CopilotClientMode.CodingAgent` on a supplied base
+  directory, the only mode whose spawned runtime reads the system credential store, whose
+  `GetAuthStatusAsync` and `Rpc.Account.GetAllUsersAsync` report the stored account and its token; and
+  `SessionGitHubOptions.TokenProvider`, with `GitHubTokenProviderArgs` (host and `Initial` or
+  `Refresh`), `GitHubTokenProviderResult` and `GitHubToken`, which asks the host's token provider for
+  each session's token. See *CopilotSignIn Unit Design*
 - **The protocol handshake** — `CopilotClient.StartAsync` refuses a runtime whose protocol version the
   SDK does not support with an `InvalidOperationException` reporting a protocol version mismatch and
   the version the server reports; AgentKit recognizes that error and explains it
@@ -133,7 +141,30 @@ level and the logger:
 
 `ClientGitHubOptions` names the identity: the logged-in user, for which the runtime also honors the
 `COPILOT_GITHUB_TOKEN`, `GH_TOKEN` and `GITHUB_TOKEN` environment variables, or an explicit token.
-There is no client-level working directory; AgentKit's factories carry one per session.
+AgentKit sets an explicit token when the host, its token provider or the user's Copilot CLI sign-in
+supplies one, and the GitHub host through `COPILOT_GH_HOST` in the replacement environment, as a bare
+host name, the form the runtime reads. There is no client-level working directory; AgentKit's
+factories carry one per session.
+
+**The keychain switch cannot be turned back on in Empty mode.** For every runtime the SDK spawns in
+Empty mode it sets the variable that disables the system keychain after the caller's replacement environment; no client,
+GitHub or connection option controls it. Measured live: an Empty-mode runtime on a home holding only
+the Copilot CLI's account entry, with that variable set to `0` in the replacement environment and the GitHub CLI hidden,
+reports `Not authenticated`, while the same home in CodingAgent mode reports the account signed in.
+That is why AgentKit reads the Copilot CLI's token through a separate CodingAgent-mode helper client
+rather than through the confined runtime; see *CopilotSignIn Unit Design*.
+
+**Known defect: the account list fails for any account but a stored sign-in.** `Rpc.Account
+.GetCurrentAuthAsync` and `GetAllUsersAsync` throw a `JsonException` ("JSON deserialization for type
+'Microsoft.Copilot.Rpc.AuthInfoGhCli' was missing required properties including: 'token'") whenever
+the runtime holds a GitHub CLI, explicit-token or environment account: the runtime omits the token for
+those variants, but the SDK's generated types mark it required. Only the stored-sign-in (`user`)
+variant deserializes. AgentKit therefore never calls `GetCurrentAuthAsync`, uses `GetAuthStatusAsync`
+for status everywhere, calls `GetAllUsersAsync` only in the helper, only after the status reports a
+stored sign-in as the expected account, with every token variable withheld and the GitHub CLI hidden
+from the helper's `PATH` (an empty `GH_CONFIG_DIR` alone does not hide a GitHub CLI that keeps its
+token in the system credential store), and treats a failure as a finding.
+
 **Session options are built fresh for every session.** The SDK mutates the options object it is
 handed when it applies its mode defaults, and `Clone()` is shallow — it shares the infinite-session
 configuration, the hooks and the delegates — so AgentKit never reuses or clones an options object; it

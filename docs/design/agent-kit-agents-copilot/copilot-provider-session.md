@@ -61,7 +61,11 @@ session's event handler would answer turns and report no occupancy at all. See
   it exactly once. Held rather than configured because a record charged to the engine's overhead
   makes its accounting drift; see *CopilotProviderSessionFactory Unit Design*.
 - **`_unusableReason`** (`string?`) — Why this session may no longer be used, or null while it may.
-  Invariant: it latches — once set, never cleared.
+  Invariant: it latches — once set, never cleared. The failure's text it quotes is redacted.
+- **`_signIn`** (`CopilotSignInPlan?`) — The sign-in of the runtime the session runs on, whose tokens
+  are redacted from the runtime text a refusal quotes and from a turn's relayed failure, or null to
+  redact token-shaped text only.
+  Supplied by `CopilotProviderSessionFactory` (`runtime.SignIn` in production).
 - **`IsReleased`** (`bool`) — Whether this session has been released. Invariant: once true, never
   false again.
 - **`ProvisionalWindowTokens`** (`const int`, one) — The window reported before the runtime has
@@ -69,13 +73,14 @@ session's event handler would answer turns and report no occupancy at all. See
 
 ### Key Methods
 
-#### The CopilotProviderSession Constructor (ICopilotTurnChannel, CopilotSessionObserver, int?, string?)
+#### The CopilotProviderSession Constructor (ICopilotTurnChannel, CopilotSessionObserver, int?, string?, CopilotSignInPlan?)
 
 **Purpose:** Take ownership of one runtime session and the observer watching it, and hold what the
 seed produced until the first turn carries it.
 
 **Algorithm:** Reject a null channel and a null observer, and record both, along with the window
-ceiling where the host stated one and the composed history preamble where the seed carried history.
+ceiling where the host stated one, the composed history preamble where the seed carried history, and
+the runtime's sign-in, whose tokens the session's refusals redact.
 There is nothing else to do: the confinement and the instructions were settled when the session was
 created, so a constructed session is ready to take its first turn.
 
@@ -129,13 +134,17 @@ exactly what it is. Reading it contacts nothing and cannot fail.
 
 **Algorithm:** Reject a null message, a released session, a session already found unusable, and a
 canceled token. Tell the observer a turn is starting, which discards anything the last one left
-behind. Then, under one guard: take the text to send — the caller's message, preceded by the seeded
+behind. Then, under a guard: take the text to send — the caller's message, preceded by the seeded
 record where one is still pending — send it through the channel as the prompt of a `MessageOptions`
-carrying no attachments, wait for the session to become idle, and hand what came back to
-`CompleteTurn`, which in order refuses three conditions and, only if none holds, builds the turn from
-the runtime's answer and the entries the observer collected. Any failure out of that guard — the
-send's own, or `CompleteTurn`'s — is recorded as the reason this session may no longer be used, and
-then rethrown.
+carrying no attachments, and wait for the session to become idle. A failure of the send is relayed
+through `CopilotSignIn.RedactRelayed(failure, signIn)`: a new exception of the same kind with a
+redacted message and the failure's redacted copy as its cause, never the SDK's own exception, whose
+message, chain or RPC data can quote a token; a cancellation carrying nothing to redact passes
+unchanged. Then, under a second guard, hand what came back to `CompleteTurn`, which in order refuses
+three conditions and, only if none holds, builds the turn from the runtime's answer and the entries
+the observer collected; its refusals are composed from text already redacted and are rethrown
+unchanged. A failure out of either guard is recorded through `MarkUnusable` as the reason this
+session may no longer be used, its message redacted with `CopilotSignIn.Redact(signIn, text)`.
 
 The three refusals are ordered because the first invalidates the others:
 
@@ -147,8 +156,9 @@ The three refusals are ordered because the first invalidates the others:
    Own Compaction Is Held Clear of Rotation* in *AgentKitAgentsCopilot System Design*.
 2. **The session went idle without producing an assistant message.** The runtime's wait returns
    nothing in that case, which means the turn failed rather than that the model had nothing to say.
-   The message names the runtime's own error where one was reported, because a refusal an
-   application cannot act on is little better than a silent empty answer.
+   The message names the runtime's own error where one was reported, redacted of every token the
+   runtime's sign-in knows, because a refusal an application cannot act on is little better than a
+   silent empty answer.
 3. **The runtime answered without reporting its occupancy.** Knowing when the window is filling is
    the one thing the engine needs a token count for, and Copilot reports both figures itself — so an
    absent reading means something an application can see and fix.
@@ -187,8 +197,9 @@ was. On a failure of the send or of anything after it, the session is finished a
 the `ProviderTurn`.
 
 Separated from the send so that everything the runtime has already answered sits in one place and
-reads as the three refusals it is. Both are inside the same guard, because both are past the point
-at which this session can still know what the runtime holds.
+reads as the three refusals it is. Both are guarded, because both are past the point at which this
+session can still know what the runtime holds; the guards are separate so only the send's failure,
+the SDK's, is relayed redacted, and AgentKit's own refusals pass unchanged.
 
 **Preconditions:** The runtime has processed the turn.
 
@@ -226,6 +237,18 @@ transcript, which is the state known to be good.
 **Preconditions:** None.
 
 **Postconditions:** Returns, or throws `InvalidOperationException` naming the cause.
+
+#### MarkUnusable(string reason)
+
+**Purpose:** Latch the reason this session may no longer be used after a turn it could not record.
+
+**Algorithm:** Set `_unusableReason` to a message saying the runtime may hold a turn the transcript
+does not, ending with the reason redacted with `CopilotSignIn.Redact(signIn, reason)`. Called from
+both guards in `SendAsync`, so the wording is stated once.
+
+**Preconditions:** None.
+
+**Postconditions:** `_unusableReason` is set; every later send is refused by `ThrowIfUnusable`.
 
 #### DisposeAsync()
 
@@ -266,7 +289,8 @@ sight that it is a clamp.
 | Session idle with no assistant message | `InvalidOperationException` propagates |
 | No usage reported for the turn | `InvalidOperationException` propagates |
 | Turn on a session finished by an earlier one | `InvalidOperationException` naming that failure |
-| Failure at or after the send | Session finished naming it; propagates |
+| Failure of the send | Session finished naming it; relayed as a redacted copy of the same kind (`RedactRelayed`) |
+| Refusal after the send | Session finished naming it; propagates |
 
 None of the last five is a programming error, and none is softened. Each names a fact the engine
 cannot proceed without, and each is something an application can see and act on. The first of them
@@ -280,7 +304,9 @@ on the next attempt. Each is detected at or after the point where the prompt was
 runtime, so each may leave the runtime holding a turn the transcript does not; the session therefore
 latches unusable and names the original failure rather than reporting a fresh one. The failure
 surfaces twice — once where it happened, once on every later attempt — because a host that retries
-must be refused as clearly as the turn that failed.
+must be refused as clearly as the turn that failed. Where it happened it is the original exception,
+unchanged; on every later attempt it is quoted with every token the runtime's sign-in knows, and any
+text shaped like a GitHub token, redacted.
 
 ### Dependencies
 
@@ -288,6 +314,9 @@ must be refused as clearly as the turn that failed.
   `ContextUsage`; see *ProviderSession Unit Design* and *ContextUsage Unit Design*.
 - **CopilotSessionObserver** — holds the occupancy reading and the turn's entries; see
   *CopilotSessionObserver Unit Design*.
+- **CopilotSignIn** — redacts the runtime text a refusal quotes with the runtime's sign-in
+  (`Redact(plan, text)`), and relays a turn's runtime or SDK failure redacted
+  (`RedactRelayed(failure, plan)`); see *CopilotSignIn Unit Design*.
 - **CopilotTurnChannel** — carries the turn and owns the runtime session; see *CopilotTurnChannel
   Unit Design*.
 - **Microsoft.Copilot.SDK** — supplies `MessageOptions` and the assistant-message event a turn

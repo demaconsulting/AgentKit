@@ -61,10 +61,14 @@ namespace DemaConsulting.AgentKit.Agents.Copilot;
 ///     </para>
 ///     <para>
 ///     <b>Failures.</b> A client that cannot list models, for example because it is not connected,
-///     fails with an <see cref="InvalidOperationException"/> that carries the sign-in message, with the
-///     SDK's exception as the inner exception. A runtime disposed by its host fails with
-///     <see cref="ObjectDisposedException"/>. Any other failure, including a cancellation no caller
-///     requested, propagates unchanged. Nothing is cached.
+///     fails with an <see cref="InvalidOperationException"/> that carries the sign-in message, with a
+///     redacted copy of the SDK's exception — its type name, message and stack trace, with every
+///     token the runtime's sign-in knows removed — as the inner exception. A runtime disposed by its
+///     host fails with <see cref="ObjectDisposedException"/>. Any other failure — a lost connection
+///     quoting the runtime's standard error, say, or an RPC error — is raised as a redacted copy of
+///     the same kind (an <see cref="IOException"/> or a <see cref="TimeoutException"/> keeps its type;
+///     any other type becomes an <see cref="InvalidOperationException"/>), never the SDK's own
+///     exception. A cancellation carrying nothing to redact passes unchanged. Nothing is cached.
 ///     </para>
 ///     <para>
 ///     Cached, single-flight and safe for concurrent use; see <see cref="CachingModelCatalog"/>.
@@ -115,8 +119,9 @@ public sealed class CopilotModelCatalog : CachingModelCatalog
     /// </summary>
     internal const string SignInMessage =
         "The Copilot runtime could not list models: it is not connected or not signed in to GitHub. "
-        + "Sign it in with a GitHub token (CopilotRuntimeOptions' gitHubToken, COPILOT_GITHUB_TOKEN, GH_TOKEN "
-        + "or GITHUB_TOKEN) or 'gh auth login'; the Copilot CLI's own sign-in is not used.";
+        + "Sign it in with a GitHub token (CopilotRuntimeOptions' gitHubToken or gitHubTokenProvider, "
+        + "COPILOT_GITHUB_TOKEN, GH_TOKEN or GITHUB_TOKEN), 'copilot login' or 'gh auth login', with "
+        + "CopilotRuntimeOptions' gitHubHost for a GitHub Enterprise Cloud account.";
 
     /// <summary>
     ///     Reads the service's listing.
@@ -280,12 +285,57 @@ public sealed class CopilotModelCatalog : CachingModelCatalog
                 var list = await client.Rpc.Models.ListAsync(cancellationToken).ConfigureAwait(false);
                 return list?.Models ?? [];
             }
-            catch (InvalidOperationException exception) when (exception is not ObjectDisposedException)
+            catch (Exception exception)
             {
-                throw new InvalidOperationException(SignInMessage, exception);
+                var explained = ExplainReadFailure(exception, runtime.SignIn);
+                if (ReferenceEquals(explained, exception))
+                {
+                    throw;
+                }
+
+                throw explained;
             }
         };
     }
+
+    /// <summary>
+    ///     Builds the failure a read fails with in place of the client's own.
+    /// </summary>
+    /// <remarks>
+    ///     A connection that was lost or never signed in — an <see cref="InvalidOperationException"/>
+    ///     other than a disposal — is explained with the sign-in message (<see cref="ExplainListFailure"/>).
+    ///     Any other failure, such as a lost connection quoting the runtime's standard error or an RPC
+    ///     error carrying the service's data, is relayed as a redacted copy of the same kind
+    ///     (<see cref="CopilotSignIn.RedactRelayed"/>). A cancellation or disposal carrying nothing to
+    ///     redact is returned unchanged. The client's own exception is never kept.
+    /// </remarks>
+    /// <param name="failure">The client's failure.</param>
+    /// <param name="signIn">
+    ///     The runtime's sign-in, whose tokens are redacted, or <see langword="null"/> to redact
+    ///     the process environment's secrets and token-shaped text only.
+    /// </param>
+    /// <returns>The failure to throw: <paramref name="failure"/> itself when it passes unchanged.</returns>
+    internal static Exception ExplainReadFailure(Exception failure, CopilotSignInPlan? signIn) =>
+        failure is InvalidOperationException invalid and not ObjectDisposedException
+            ? ExplainListFailure(invalid, signIn)
+            : CopilotSignIn.RedactRelayed(failure, signIn);
+
+    /// <summary>
+    ///     Builds the failure a read that could not reach the service fails with.
+    /// </summary>
+    /// <remarks>
+    ///     The sign-in message, with a redacted copy of the client's failure as the inner exception:
+    ///     its type name, message and stack trace, with every token the runtime's sign-in knows and
+    ///     any text shaped like a GitHub token removed. The original is never kept.
+    /// </remarks>
+    /// <param name="failure">The client's failure.</param>
+    /// <param name="signIn">
+    ///     The runtime's sign-in, whose tokens are redacted, or <see langword="null"/> to redact
+    ///     the process environment's secrets and token-shaped text only.
+    /// </param>
+    /// <returns>The failure to throw.</returns>
+    internal static InvalidOperationException ExplainListFailure(InvalidOperationException failure, CopilotSignInPlan? signIn) =>
+        new(SignInMessage, CopilotSignIn.RedactFailure(failure, signIn));
 
     /// <summary>
     ///     Builds the efforts from the service's identifiers, in its order.

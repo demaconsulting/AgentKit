@@ -12,4 +12,9 @@ package AgentKitAgentsCopilot_CopilotProviderSession {
             requirementFiles = ("docs/reqstream/agent-kit-agents-copilot/copilot-provider-session.yaml");
         }
     }
+
+    // The refusals a session gives quote the runtime's error redacted with the runtime's sign-in, and
+    // a turn's runtime or SDK failure is relayed as a redacted copy, so no token it knows reaches the
+    // exception.
+    dependency CopilotProviderSession to AgentKitAgentsCopilot_CopilotSignIn::CopilotSignIn;
 }

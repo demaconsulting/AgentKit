@@ -409,9 +409,12 @@ Facts of running the installed CLI that a host should know, measured against the
   start of a CLI version takes several seconds for that; later starts take a second or two, against a
   fraction of a second for the bundled runtime. Organization policy in the cache's managed-settings
   folder is read from there as well; it can only restrict.
-- **The CLI's own configuration and sign-in are not used.** `COPILOT_HOME` is AgentKit's data
-  directory, so the user's Copilot home — configuration, MCP servers, installed plugins, trusted
-  folders and stored credentials — is never read, and the system keychain is off in Empty mode.
+- **The CLI's own configuration is not used; only its sign-in's account entry is.** `COPILOT_HOME` is
+  AgentKit's data directory, so the user's Copilot home — configuration, MCP servers, installed
+  plugins, trusted folders, history and settings — is never the runtime's, and the system keychain is
+  off in Empty mode. When no token is supplied, AgentKit reads only the signed-in account's host and
+  login from the user's `config.json` and obtains that account's token through the Copilot CLI itself;
+  see *Identity* and *CopilotSignIn Unit Design*.
 
 **The bundled runtime is the opt-in.** A host that passes `CopilotRuntimeSource.Bundled` runs the
 runtime the SDK provisions, and must provision it. The SDK's build targets download the runtime
@@ -498,8 +501,13 @@ runtime, and the model catalog.
   package runs on — Empty mode, that executable spawned as a child process with the host's
   `COPILOT_`/`GITHUB_COPILOT_` variables withheld apart from an allow-listed credential, network and
   telemetry-off set, a data directory it owns — exposes only neutral options, reports the started
-  runtime's version, refuses one that is not signed in, explains a runtime that cannot start, and is
-  disposed by whoever started it.
+  runtime's version and how it signed in, refuses one that is not signed in, explains a runtime that
+  cannot start, and is disposed by whoever started it.
+- **CopilotSignIn (Unit)** — how the runtime signs in: the host's token or token provider, a token in
+  the environment, the user's Copilot CLI sign-in (its token obtained through a short-lived helper
+  runtime on a temporary home holding only the account's host and login) or the runtime's own
+  fallbacks, in that order and with the host that belongs to the source; explains a runtime no source
+  signed in.
 - **CopilotCli (Unit)** — the installed Copilot CLI: finds it on `PATH` and in the platform's
   well-known installation locations, passing over editor launchers; reads the version it runs under
   the SDK, without a shell and under the runtime's environment; holds the minimum version; and
@@ -534,8 +542,10 @@ reads occupancy through the observer and deletes each rotated session.
 
 ## External Interfaces
 
-The system's public API is eleven types. `CopilotRuntime`, `CopilotRuntimeOptions` and
-`CopilotRuntimeSource` start the runtime, and `CopilotCli` with `CopilotCliSearchResult` reports which
+The system's public API is fourteen types. `CopilotRuntime`, `CopilotRuntimeOptions` and
+`CopilotRuntimeSource` start the runtime, with `CopilotGitHubTokenRequest` and `CopilotGitHubToken`
+for a host's token provider and `CopilotSignInSource` reporting how it signed in, and `CopilotCli`
+with `CopilotCliSearchResult` reports which
 installed CLI it would run and the minimum version; the factory, the provider-session factory, the
 summarizer and `CopilotModelCatalog` take that runtime, which the host started and will dispose;
 `CopilotAgentSession` is what the agent hands back for a conversation; and `CopilotProviderSession`
@@ -553,6 +563,10 @@ package is internal, including the runtime's client.
 | `CopilotRuntime` | Inbound | Started runtime | Host-owned; never disposed by what uses it |
 | Runtime process | Outbound | Copilot SDK, stdio | Empty mode; Copilot variables withheld |
 | CLI version probe | Outbound | `--no-auto-update --version` | No shell; withheld environment; bounded time |
+| Copilot CLI `config.json` | Inbound | JSON, read-only | Account host and login only; at most 1 MiB |
+| Sign-in helper runtime | Outbound | Copilot SDK, CodingAgent mode | Same executable; temporary home; no session |
+| System credential store | Inbound, via the helper | Copilot CLI's own read | Never read by AgentKit itself |
+| Token provider | Inbound | Request → `CopilotGitHubToken` | At start and per session; concurrent |
 | Session event stream | Inbound | Copilot SDK events | Registered before session creation |
 | `CopilotModelCatalog` | Outbound | Core `IModelCatalog` | Started runtime; read per fetch; 5-minute cache |
 | Model listing | Outbound | Copilot SDK `Rpc.Models.ListAsync` | Uncached query on the started client |
@@ -638,12 +652,20 @@ plugin, skill, instruction source or agent, and the system prompt is smaller tha
 that keeps the host environment context (L15). Hooks have no listing; they are covered by repository
 hooks being off, no installed plugin, and a fresh data directory, which holds no user hook.
 
-**Identity.** The runtime authenticates with the token in `CopilotRuntimeOptions` when one is given;
-otherwise as the signed-in user, from `COPILOT_GITHUB_TOKEN`, `GH_TOKEN` or `GITHUB_TOKEN`, from
-credentials stored in its data directory, or from the GitHub CLI. The same holds for either runtime
-source: the Copilot CLI's own sign-in, kept in the user's Copilot home and the system keychain, is
-not used. A runtime that started but is not signed in is refused at start, with every way to sign it
-in, rather than failing on its first turn.
+**Identity.** The runtime signs in from the first source that applies: the host's `gitHubToken` or
+`gitHubTokenProvider`; a token in `COPILOT_GITHUB_TOKEN`, `GH_TOKEN` or `GITHUB_TOKEN`; the user's
+Copilot CLI sign-in, unless the host turns it off; and the runtime's own fallbacks, a sign-in stored in
+its data directory and the GitHub CLI. Each source is used with its own GitHub host: a token with the
+host the host chose (`gitHubHost`, else `COPILOT_GH_HOST`, else `github.com`), the Copilot CLI sign-in
+with its account's host (and not at all when another host was chosen). The order follows the Copilot
+CLI's own, so the runtime signs in as `copilot` would in the same shell. The Copilot CLI's token lives
+in the system credential store, which the SDK keeps off for the confined runtime, so a short-lived
+helper runtime of the same executable reads it on a temporary home holding only the account's host
+and login, and the confined runtime receives only that token and host — its mode, environment and
+data directory are unchanged, and nothing else of the user's Copilot home reaches it; see *CopilotSignIn
+Unit Design*. The same holds for either runtime source. The runtime reports the source, host and login
+it signed in with. A runtime that started but is not signed in is refused at start, listing what each
+source found, rather than failing on its first turn.
 
 **There is no client-level working directory.** The runtime takes a working directory per session,
 and only this system builds a session's options, so the working directory is a parameter of
@@ -659,7 +681,7 @@ The runtime start:
 
 ```text
 Application
-        │  CopilotRuntimeOptions (data directory, token, runtime source, CLI path)
+        │  CopilotRuntimeOptions (data directory, token or token provider, host, runtime source, CLI path)
         ▼
 CopilotRuntime.StartAsync ──► PrepareDataDirectory (marked, AgentKit's own)
         │
@@ -667,10 +689,15 @@ CopilotRuntime.StartAsync ──► PrepareDataDirectory (marked, AgentKit's own
         │                       (PATH, well-known locations)            (--no-auto-update --version)
         ├─ bundled ──────► the runtime the SDK provisioned (no search, no probe)
         ▼
+CopilotSignIn.ResolveAsync ──► host's token / provider │ environment token │ Copilot CLI sign-in │ fallbacks
+        │                                                                     │
+        │                     config.json (host, login) ──► helper runtime (CodingAgent, temporary home) ──► token
+        │  token + host (or neither)
+        ▼
 CopilotClient (Empty mode, spawned over stdio, withheld environment) ──► protocol handshake
         │  status (version, protocol), authentication
         ▼
-CopilotRuntime (CliPath, RuntimeVersion, ProtocolVersion) ──► Application
+CopilotRuntime (CliPath, RuntimeVersion, ProtocolVersion, SignInSource, GitHubHost, GitHubLogin) ──► Application
 ```
 
 The agent path:
@@ -721,6 +748,8 @@ src/DemaConsulting.AgentKit.Agents.Copilot/
 ├── CopilotCli.cs                     — finds the installed Copilot CLI and checks its version
 ├── CopilotCliProcessTree.cs          — stops what a timed-out or canceled version probe started
 ├── CopilotCliSearchResult.cs         — what discovery found, searched and passed over
+├── CopilotGitHubToken.cs             — a token a host's token provider returns
+├── CopilotGitHubTokenRequest.cs      — what AgentKit asks a host's token provider for
 ├── CopilotModelCatalog.cs            — describes the service's models for the signed-in user
 ├── CopilotProviderSession.cs         — an AgentKit session over one Copilot session
 ├── CopilotProviderSessionFactory.cs  — creates one seeded Copilot session per rotation
@@ -728,13 +757,17 @@ src/DemaConsulting.AgentKit.Agents.Copilot/
 ├── CopilotRuntimeOptions.cs          — the neutral options a host may give the runtime
 ├── CopilotRuntimeSource.cs           — the installed CLI or the bundled runtime
 ├── CopilotSessionObserver.cs         — watches the runtime's event stream
+├── CopilotSignIn.cs                  — how the runtime signs in, and the Copilot CLI token helper
+├── CopilotSignInSource.cs            — the sign-in source a started runtime reports
 ├── CopilotSummarizer.cs              — consolidates on a separate tool-free session
 └── CopilotTurnChannel.cs             — the seam over the sealed SDK session types
 ```
 
 `CopilotAgent.cs` and `CopilotAgentSession.cs` together form the `CopilotAgent` unit;
-`CopilotRuntime.cs`, `CopilotRuntimeOptions.cs` and `CopilotRuntimeSource.cs` together form the
-`CopilotRuntime` unit; `CopilotCli.cs` and `CopilotCliSearchResult.cs` form the `CopilotCli` unit.
+`CopilotRuntime.cs`, `CopilotRuntimeOptions.cs`, `CopilotRuntimeSource.cs`, `CopilotGitHubToken.cs`
+and `CopilotGitHubTokenRequest.cs` together form the `CopilotRuntime` unit; `CopilotSignIn.cs` and
+`CopilotSignInSource.cs` the `CopilotSignIn` unit; `CopilotCli.cs` and `CopilotCliSearchResult.cs`
+form the `CopilotCli` unit.
 
 ## Dependencies
 
@@ -810,6 +843,40 @@ so no path can acquire capability another path withholds.
   is turned into a path the confined agent cannot read; see *Tool Results Are Delivered Inline*.
   Where the application opts in, a large result is kept by Core's retention inside the tools, never
   by the runtime.
+- **Only the login is shared, and no token is kept.** Reusing the user's Copilot CLI sign-in reads
+  only the account's host and login from the user's configuration; the helper runtime that obtains the
+  token opens no session, runs on a new temporary home holding only that entry, and is stopped and its
+  home deleted whatever happens; the confined runtime receives only the token and the host. The token
+  stays in memory and in the runtime's environment: AgentKit never writes it, logs it or puts it in an
+  exception message, and every string form of a sign-in plan or token redacts it.
+- **No token in any exception AgentKit raises or keeps as a cause.** Every place AgentKit composes
+  runtime or SDK text into its own exception — a start failure, a session error that fails an agent's
+  run, a provider session's refusals — redacts every token the runtime's sign-in knows and any text
+  shaped like a GitHub token, and a runtime or SDK failure kept as a cause (a start failure's, a model
+  listing failure's) is a redacted copy carrying the original's type name, message and stack trace,
+  never the original. A runtime or SDK failure AgentKit relays to a host — a turn that fails on an
+  agent, a provider session or a consolidation, a session the runtime fails to create or resume for
+  any of them, a session the host asks the runtime to delete that it refuses or fails, a started
+  runtime's status read that fails, a start cancellation carrying a cause or a token, or a model
+  listing failure other than a lost or unsigned connection — is a new
+  exception of the same base class library type with a redacted message and a redacted copy as its
+  cause (`CopilotSignIn.RedactRelayed`); only a cancellation or disposal carrying nothing to redact
+  passes unchanged, and a type outside the base class library arrives as `InvalidOperationException`.
+  The boundary is deliberate: conversation content the model already received — tool results and the
+  event objects carried as raw representations — is not rewritten, because the transcript must agree
+  with the runtime's conversation.
+- **One sink rule, and one choke point for logs.** Text from the runtime, the SDK, the sign-in
+  helper, the environment or the Copilot CLI's configuration is redacted where it enters a finding, a
+  log entry, an exception message or a cause, and no sink relies on another having redacted it. Every
+  entry AgentKit writes and every entry the SDK writes reaches the host's logger through one
+  redacting logger, which redacts the message, the structured values that can hold text, the scopes
+  and a logged exception (passed on as its redacted copy). Text quoted before a sign-in exists — a
+  launch refusal, a version probe's error — is redacted with the secrets of the environment in hand and
+  the host's token;
+  a client built without a sign-in falls back to the process environment's. The exclusions are few
+  and stated: a value the host passed, reflected in its own argument validation; the host's own token
+  provider's exception; conversation content; typed values the host asked for; and exception type
+  names.
 
 Two further measures protect the conversation rather than the machine: the runtime's own compaction
 threshold is held clear of the engine's rotation point, with every runtime rewrite of the

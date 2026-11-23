@@ -77,8 +77,9 @@ any seeded record rendered in the wrong order or with an entry lost, any record 
 empty history, any session created without the event handler registered, any session opened for a
 creation that was already canceled, any opened session left unreleased when the creation failed,
 any session created without a selection's model, effort or tier, any window not capped at the
-selection's ceiling, or any model named twice, ceiling stated twice or selection carrying an output
-limit that is accepted constitutes a failure.
+selection's ceiling, any model named twice, ceiling stated twice or selection carrying an output
+limit that is accepted, or any failure to open a session reaching the caller as the SDK's own
+exception or carrying a token anywhere in its chain constitutes a failure.
 
 ### Test Scenarios
 
@@ -227,3 +228,15 @@ Error path. A selection of a hand-built Copilot model description carrying an ou
 the Copilot catalog never grants — is refused with `ArgumentException` naming `selection`, whose
 message says `MaxOutputTokens` cannot be applied on Copilot. A selection's window is still accepted
 here, as the ceiling; see the scenario above.
+
+#### AgentKitAgentsCopilot-CopilotProviderSessionFactory-KeepsTokensOutOfOpenFailures: A Failed Open Carries No Token
+
+**Test**: `CopilotProviderSessionFactory_Create_OpenFailureQuotingAToken_IsRelayedRedacted`
+
+Error path. A factory built with a sign-in that knows a secret of no GitHub token shape, over an
+opener that fails with an RPC-shaped exception of a type outside the base class library — its message
+quoting the secret and a `gho_` token, its error data quoting the secret — fails the creation with a
+new `InvalidOperationException` reading `session.create refused <redacted> gho_<redacted>`, whose
+cause is a `CopilotRedactedException` naming the RPC-shaped type; a walk of the whole chain — every
+inner exception and every inner exception of an aggregate — finds neither value in any message, stack
+trace or string form.

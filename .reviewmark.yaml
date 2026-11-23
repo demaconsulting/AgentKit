@@ -1695,6 +1695,10 @@ reviews:
       - "test/DemaConsulting.AgentKit.Agents.ChatClient.Tests/RecordingChatClient.cs"  # recording chat client fake
 
   # AgentKitAgentsCopilot-Architecture Review (one per system)
+  #
+  # SecretAssert.cs is the one assertion that no known secret reaches a host - in a failure's whole
+  # chain or in anything a logger received. It is claimed here and by every unit set whose tests
+  # use it, as the shared fakes are: a reviewer cannot judge a redaction test without it.
   - id: AgentKitAgentsCopilot-Architecture
     title: Review that AgentKitAgentsCopilot Architecture Satisfies Requirements
     context:
@@ -1707,6 +1711,7 @@ reviews:
       - "docs/verification/introduction.md"                                     # verification introduction
       - "docs/verification/agent-kit-agents-copilot.md"                     # system verification
       - "test/DemaConsulting.AgentKit.Agents.Copilot.Tests/AgentKitAgentsCopilotTests.cs"  # integration tests
+      - "test/DemaConsulting.AgentKit.Agents.Copilot.Tests/SecretAssert.cs"  # shared secret assertion
       - "test/DemaConsulting.AgentKit.Agents.Copilot.Tests/FakeCopilotCliMachine.cs"  # fake CLI machine
       - "test/DemaConsulting.AgentKit.Agents.Copilot.Tests/XmlDocExampleTests.cs"  # documented-example compile tests
       - "test/DemaConsulting.AgentKit.Agents.Copilot.LiveTests/**/*.cs"      # opt-in live integration suite
@@ -1761,6 +1766,7 @@ reviews:
       - "src/DemaConsulting.AgentKit.Agents.Copilot/CopilotAgent.cs"    # unit source
       - "src/DemaConsulting.AgentKit.Agents.Copilot/CopilotAgentSession.cs"  # unit source (conversation type)
       - "test/DemaConsulting.AgentKit.Agents.Copilot.Tests/CopilotAgentTests.cs"  # unit tests
+      - "test/DemaConsulting.AgentKit.Agents.Copilot.Tests/SecretAssert.cs"  # shared secret assertion
       - "test/DemaConsulting.AgentKit.Agents.Copilot.Tests/FakeCopilotTurnChannel.cs"  # scripted runtime fake
 
   # AgentKitAgentsCopilot-CopilotAgentFactory Review (one per unit)
@@ -1794,8 +1800,33 @@ reviews:
       - "src/DemaConsulting.AgentKit.Agents.Copilot/CopilotRuntime.cs"         # unit source
       - "src/DemaConsulting.AgentKit.Agents.Copilot/CopilotRuntimeOptions.cs"  # unit source (options type)
       - "src/DemaConsulting.AgentKit.Agents.Copilot/CopilotRuntimeSource.cs"   # unit source (runtime source type)
+      - "src/DemaConsulting.AgentKit.Agents.Copilot/CopilotGitHubToken.cs"     # unit source (provider token type)
+      - "src/DemaConsulting.AgentKit.Agents.Copilot/CopilotGitHubTokenRequest.cs"  # unit source (provider request type)
       - "test/DemaConsulting.AgentKit.Agents.Copilot.Tests/CopilotRuntimeTests.cs"  # unit tests
+      - "test/DemaConsulting.AgentKit.Agents.Copilot.Tests/SecretAssert.cs"  # shared secret assertion
       - "test/DemaConsulting.AgentKit.Agents.Copilot.Tests/FakeCopilotCliMachine.cs"  # fake CLI machine
+
+  # AgentKitAgentsCopilot-CopilotSignIn Review (one per unit)
+  #
+  # The fake CLI machine is the sign-in tests' PATH and file system; it is reviewed with the
+  # CopilotCli and CopilotRuntime units that own it, and is context here.
+  - id: AgentKitAgentsCopilot-CopilotSignIn
+    title: Review that AgentKitAgentsCopilot CopilotSignIn Implementation is Correct
+    context:
+      - "docs/design/agent-kit-agents-copilot.md"
+      - "docs/reqstream/agent-kit-agents-copilot.yaml"
+      - "docs/design/ots/microsoft-copilot-sdk.md"
+      - "docs/design/agent-kit-agents-copilot/copilot-runtime.md"
+      - "docs/design/agent-kit-agents-copilot/copilot-cli.md"
+      - "test/DemaConsulting.AgentKit.Agents.Copilot.Tests/FakeCopilotCliMachine.cs"
+    paths:
+      - "docs/reqstream/agent-kit-agents-copilot/copilot-sign-in.yaml"   # unit requirements
+      - "docs/design/agent-kit-agents-copilot/copilot-sign-in.md"        # unit design
+      - "docs/verification/agent-kit-agents-copilot/copilot-sign-in.md"  # unit verification
+      - "src/DemaConsulting.AgentKit.Agents.Copilot/CopilotSignIn.cs"         # unit source
+      - "src/DemaConsulting.AgentKit.Agents.Copilot/CopilotSignInSource.cs"   # unit source (sign-in source type)
+      - "test/DemaConsulting.AgentKit.Agents.Copilot.Tests/CopilotSignInTests.cs"  # unit tests
+      - "test/DemaConsulting.AgentKit.Agents.Copilot.Tests/SecretAssert.cs"  # shared secret assertion
 
   # AgentKitAgentsCopilot-CopilotCli Review (one per unit)
   - id: AgentKitAgentsCopilot-CopilotCli
@@ -1811,6 +1842,7 @@ reviews:
       - "src/DemaConsulting.AgentKit.Agents.Copilot/CopilotCliSearchResult.cs"  # unit source (result type)
       - "src/DemaConsulting.AgentKit.Agents.Copilot/CopilotCliProcessTree.cs"   # unit source (probe process tree)
       - "test/DemaConsulting.AgentKit.Agents.Copilot.Tests/CopilotCliTests.cs"  # unit tests
+      - "test/DemaConsulting.AgentKit.Agents.Copilot.Tests/SecretAssert.cs"  # shared secret assertion
       - "test/DemaConsulting.AgentKit.Agents.Copilot.Tests/FakeCopilotCliMachine.cs"  # fake CLI machine
 
   # AgentKitAgentsCopilot-CopilotProviderSession Review (one per unit)
@@ -1831,6 +1863,7 @@ reviews:
       - "docs/verification/agent-kit-agents-copilot/copilot-provider-session.md"  # unit verification
       - "src/DemaConsulting.AgentKit.Agents.Copilot/CopilotProviderSession.cs"     # unit source
       - "test/DemaConsulting.AgentKit.Agents.Copilot.Tests/CopilotProviderSessionTests.cs"  # unit tests
+      - "test/DemaConsulting.AgentKit.Agents.Copilot.Tests/SecretAssert.cs"  # shared secret assertion
       - "test/DemaConsulting.AgentKit.Agents.Copilot.Tests/FakeCopilotTurnChannel.cs"  # scripted runtime fake
 
   # AgentKitAgentsCopilot-CopilotProviderSessionFactory Review (one per unit)
@@ -1847,6 +1880,7 @@ reviews:
       - "docs/verification/agent-kit-agents-copilot/copilot-provider-session-factory.md"  # unit verification
       - "src/DemaConsulting.AgentKit.Agents.Copilot/CopilotProviderSessionFactory.cs"     # unit source
       - "test/DemaConsulting.AgentKit.Agents.Copilot.Tests/CopilotProviderSessionFactoryTests.cs"  # unit tests
+      - "test/DemaConsulting.AgentKit.Agents.Copilot.Tests/SecretAssert.cs"  # shared secret assertion
       - "test/DemaConsulting.AgentKit.Agents.Copilot.Tests/FakeCopilotTurnChannel.cs"  # scripted runtime fake
 
   # AgentKitAgentsCopilot-CopilotSessionObserver Review (one per unit)
@@ -1882,6 +1916,7 @@ reviews:
       - "docs/verification/agent-kit-agents-copilot/copilot-summarizer.md"  # unit verification
       - "src/DemaConsulting.AgentKit.Agents.Copilot/CopilotSummarizer.cs"    # unit source
       - "test/DemaConsulting.AgentKit.Agents.Copilot.Tests/CopilotSummarizerTests.cs"  # unit tests
+      - "test/DemaConsulting.AgentKit.Agents.Copilot.Tests/SecretAssert.cs"  # shared secret assertion
       - "test/DemaConsulting.AgentKit.Agents.Copilot.Tests/FakeCopilotTurnChannel.cs"  # scripted runtime fake
 
   # AgentKitAgentsCopilot-CopilotTurnChannel Review (one per unit)
@@ -1904,6 +1939,7 @@ reviews:
       - "docs/verification/agent-kit-agents-copilot/copilot-turn-channel.md"  # unit verification
       - "src/DemaConsulting.AgentKit.Agents.Copilot/CopilotTurnChannel.cs"     # unit source
       - "test/DemaConsulting.AgentKit.Agents.Copilot.Tests/CopilotTurnChannelTests.cs"  # release-policy tests
+      - "test/DemaConsulting.AgentKit.Agents.Copilot.Tests/SecretAssert.cs"  # shared secret assertion
       - "test/DemaConsulting.AgentKit.Agents.Copilot.Tests/FakeCopilotTurnChannel.cs"  # scripted runtime fake
 
   # AgentKitAgentsCopilot-CopilotModelCatalog Review (one per unit)
@@ -1923,6 +1959,7 @@ reviews:
       - "docs/verification/agent-kit-agents-copilot/copilot-model-catalog.md"  # unit verification
       - "src/DemaConsulting.AgentKit.Agents.Copilot/CopilotModelCatalog.cs"     # unit source
       - "test/DemaConsulting.AgentKit.Agents.Copilot.Tests/CopilotModelCatalogTests.cs"  # unit tests
+      - "test/DemaConsulting.AgentKit.Agents.Copilot.Tests/SecretAssert.cs"  # shared secret assertion
 
   # AgentKitAgentsOllama-Architecture Review (one per system)
   - id: AgentKitAgentsOllama-Architecture

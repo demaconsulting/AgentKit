@@ -20,4 +20,9 @@ package AgentKitAgentsCopilot_CopilotSummarizer {
 
     // Each consolidation runs on a validated model selection when the host supplies one.
     dependency CopilotSummarizer to AgentKitCore_ModelSettings::ModelSettings;
+
+    // A consolidation the runtime or the SDK fails, opening its session or taking its turn, is relayed
+    // as a redacted copy of the same kind, redacted with the runtime's sign-in, so no token it knows
+    // reaches the exception.
+    dependency CopilotSummarizer to AgentKitAgentsCopilot_CopilotSignIn::CopilotSignIn;
 }

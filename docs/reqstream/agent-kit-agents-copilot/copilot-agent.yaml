@@ -126,12 +126,22 @@ sections:
           - id: AgentKitAgentsCopilot-CopilotAgent-ReportsRuntimeErrors
             title: >-
               The agent shall fail a run whose root agent the runtime reports a session error for,
-              naming the error.
+              naming the error with every token the runtime's sign-in knows and any text shaped like a
+              GitHub token redacted; and shall fail a run whose turn the runtime or the SDK fails, or
+              whose session it fails to create or resume, with a redacted copy of the same kind, never
+              the SDK's own exception.
             justification: |
               A run that ended because the runtime failed must not look like a run that succeeded
-              with nothing to say; naming the runtime's error is what lets a host act on it.
+              with nothing to say; naming the runtime's error is what lets a host act on it. The
+              runtime's error may quote a token it was given, which must not reach an exception built
+              to be shown or logged — nor may the SDK's own exception, whose message, chain and RPC
+              data can quote it too, so it is relayed as a new exception of the same kind with a
+              redacted message and a redacted copy as its cause.
             tests:
               - CopilotAgent_RunStreaming_SessionError_FailsTheRunNamingTheError
+              - CopilotAgent_RunStreaming_SessionErrorQuotingAToken_IsRedacted
+              - CopilotAgent_RunStreaming_TurnFailureQuotingAToken_IsRelayedRedacted
+              - CopilotAgent_Run_OpenFailureQuotingAToken_IsRelayedRedacted
 
           - id: AgentKitAgentsCopilot-CopilotAgent-RejectsForeignSessions
             title: >-

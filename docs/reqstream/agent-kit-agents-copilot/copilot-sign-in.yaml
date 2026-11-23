@@ -1,0 +1,305 @@
+---
+# Software Unit Requirements for CopilotSignIn
+#
+# These requirements describe the design-level behavior of the CopilotSignIn unit: how the Copilot
+# runtime AgentKit starts signs in to GitHub, in which order the sign-in sources apply, which GitHub
+# host goes with each, and how the user's Copilot CLI sign-in is reused without sharing anything but
+# its account entry.
+
+sections:
+  - title: AgentKitAgentsCopilot Requirements
+    sections:
+      - title: CopilotSignIn Requirements
+        requirements:
+          - id: AgentKitAgentsCopilot-CopilotSignIn-OrdersTheSources
+            title: >-
+              The sign-in shall use the first source that applies, in this order: a token or token
+              provider the host supplies; a token in COPILOT_GITHUB_TOKEN, GH_TOKEN or GITHUB_TOKEN;
+              the user's Copilot CLI sign-in, unless the host turned it off; and the runtime's own
+              fallbacks, a sign-in stored in the data directory and the GitHub CLI.
+            justification: |
+              The host's own token is the most deliberate choice. Environment tokens come next
+              because the Copilot CLI and the GitHub CLI both put them ahead of their stored sign-in,
+              so the runtime signs in as the Copilot CLI would in the same shell, and because a
+              variable is a deliberate per-process choice (CI, a container, a service account) that an
+              ambient per-user sign-in must not silently override. The Copilot CLI sign-in comes
+              before the GitHub CLI because it is the user's Copilot-specific choice of account and
+              host.
+            tests:
+              - CopilotSignIn_ResolveAsync_ExplicitToken_WinsWithoutRunningTheHelper
+              - CopilotSignIn_ResolveAsync_Provider_IsAskedForTheEffectiveHost
+              - CopilotSignIn_ResolveAsync_EnvironmentToken_SkipsTheCopilotCli
+              - CopilotSignIn_ResolveAsync_NoTokens_UsesTheCopilotCliTokenAndHost
+              - CopilotSignIn_ResolveAsync_CopilotCliTurnedOff_DoesNotReadTheConfiguration
+              - CopilotSignIn_Classify_MapsTheRuntimesKindOfSignIn
+
+          - id: AgentKitAgentsCopilot-CopilotSignIn-KeepsTheHostWithTheSource
+            title: >-
+              The sign-in shall use a host-supplied token or token provider with the host the host
+              chose, else COPILOT_GH_HOST, else github.com; shall use the Copilot CLI sign-in with its
+              account's host, and not at all when another host was chosen; shall give the runtime
+              the chosen host for its own fallbacks; and shall give the runtime a host chosen in
+              COPILOT_GH_HOST as the normalized bare host name, so the token and the runtime's
+              endpoint agree.
+            justification: |
+              A GitHub Enterprise Cloud token used without its host is refused by GitHub with 401 Bad
+              credentials, and a user whose GitHub CLI and Copilot CLI are signed in on different hosts
+              would otherwise be signed in on the wrong one without notice. Handing the runtime the
+              environment's host in another form than the one the token was resolved for, such as an
+              https URL, would leave the two to agree by chance.
+            tests:
+              - CopilotSignIn_ResolveAsync_ExplicitTokenWithHost_SetsTheHostName
+              - CopilotSignIn_ResolveAsync_Provider_IsAskedForTheEffectiveHost
+              - CopilotSignIn_ResolveAsync_RequestedHostDiffers_SkipsTheCopilotCli
+              - CopilotSignIn_ResolveAsync_Fallbacks_KeepTheChosenHostAndReportTheGitHubCli
+              - CopilotSignIn_ResolveAsync_EnvironmentHost_IsGivenToTheRuntimeNormalized
+              - CopilotSignIn_NormalizeHost_AcceptedForms_Normalize
+              - CopilotSignIn_NormalizeHost_RejectedForms_Throw
+              - CopilotSignIn_NormalizeHost_RejectedHost_IsNotQuoted
+
+          - id: AgentKitAgentsCopilot-CopilotSignIn-RefusesAnInvalidEnvironmentHost
+            title: >-
+              The sign-in shall refuse a non-blank COPILOT_GH_HOST that is not a valid GitHub host,
+              validated as the gitHubHost option is, with a message that names the variable, the
+              accepted forms and the remedies and does not quote the value, unless the host passed
+              gitHubHost, which takes precedence over it; a blank COPILOT_GH_HOST shall count as unset.
+            tags: [security]
+            justification: |
+              Ignoring an invalid host would resolve the token for github.com while the runtime still
+              reads the invalid value from its environment, so the token and the runtime's endpoint
+              would disagree without notice. Refusing names the problem where it can be fixed. The
+              value is not quoted because a rejected URL may carry a user name and password. The
+              option takes precedence because, when it is given, the environment's value never
+              reaches the runtime.
+            tests:
+              - CopilotSignIn_ResolveAsync_InvalidEnvironmentHost_IsRefused
+              - CopilotSignIn_ResolveAsync_InvalidEnvironmentHostWithTheOption_UsesTheOption
+
+          - id: AgentKitAgentsCopilot-CopilotSignIn-ReusesTheCopilotCliSignIn
+            title: >-
+              The sign-in shall read the user's last signed-in Copilot CLI account from COPILOT_HOME or
+              the profile's .copilot folder, and obtain its token through a short-lived Copilot runtime
+              of the same executable that opens no session, runs on a new temporary home holding only
+              that account entry, withholds every token and host variable, hides the GitHub CLI, and
+              is used only when it reports the same account signed in through its stored sign-in.
+            tags: [security]
+            justification: |
+              The Copilot CLI keeps its token in the system credential store, which the SDK forces off
+              for the confined runtime's Empty mode after the caller's environment, so no supported
+              option lets the confined runtime read it. A second, short-lived runtime in the only mode
+              that reads the store can, and because it opens no session and its home holds nothing
+              but the account entry, no MCP server, hook, agent, skill, plugin or instruction can
+              load. Reading the store only through the Copilot CLI itself keeps the library free of
+              platform credential-store code. Checking the reported account before reading the
+              account list keeps the token tied to exactly the account the user chose.
+            tests:
+              - CopilotSignIn_LookUpCopilotCliAccount_ReadsCopilotHomeOrTheProfileDefault
+              - CopilotSignIn_LookUpCopilotCliAccount_DataDirectoryAsHome_IsNotRead
+              - CopilotSignIn_ReadCopilotCliAccount_SingleAccountWithCommentsAndTrailingCommas_IsRead
+              - CopilotSignIn_ReadCopilotCliAccount_UnusableConfiguration_ReportsWhy
+              - CopilotSignIn_ReadCopilotCliAccount_TooLarge_IsNotRead
+              - CopilotSignIn_BuildHelperOptions_RunsTheSameExecutableWithNothingElse
+              - CopilotSignIn_BuildHelperEnvironment_WithholdsTokensAndHidesTheGitHubCli
+              - CopilotSignIn_BuildHelperEnvironment_ScriptCli_KeepsTheFolderHoldingNode
+              - CopilotSignIn_ResolveAsync_HelperNotSignedInAsTheAccount_DoesNotReadTheAccountList
+              - CopilotSignIn_ResolveAsync_AccountList_TakesOnlyTheAccountsUserEntry
+
+          - id: AgentKitAgentsCopilot-CopilotSignIn-SharesOnlyTheAccountEntry
+            title: >-
+              The sign-in shall write nothing to the helper runtime's temporary home but the account's
+              host and login and an empty GitHub CLI configuration folder, shall hand the confined
+              runtime only the token and the account's host, and shall delete the temporary home and
+              stop the helper whatever the outcome.
+            tags: [security]
+            justification: |
+              The user asked that the confined runtime share only the login: the user's MCP servers,
+              hooks, agents, skills, plugins, instructions, settings and history must never reach a
+              confined agent. The token stays in memory and in the runtime's environment, so the
+              library never persists it.
+            tests:
+              - CopilotSignIn_ResolveAsync_HelperHome_HoldsOnlyTheAccountEntry
+              - CopilotSignIn_ResolveAsync_NoTokens_UsesTheCopilotCliTokenAndHost
+              - CopilotSignIn_ResolveAsync_HelperFails_FallsThroughWithAFinding
+              - CopilotSignIn_ResolveAsync_HelperTimesOut_FallsThroughWithAFinding
+              - CopilotSignIn_ResolveAsync_CallerCancels_PropagatesAndCleansUp
+
+          - id: AgentKitAgentsCopilot-CopilotSignIn-FallsThroughOnFailure
+            title: >-
+              The sign-in shall record a COPILOT_HOME that is not a valid path, a missing, unreadable,
+              oversized or malformed Copilot CLI configuration, a missing account, a helper that
+              fails, times out, reports another account or yields no token, and an account list the
+              SDK cannot read, and shall then let the next source apply; the caller's cancellation
+              shall propagate, relayed as RelaysFailuresRedacted relays a cancellation.
+            justification: |
+              The Copilot CLI sign-in relies on undocumented CLI contracts and on a credential store the
+              user may not unlock, so it must never make a start fail that the next source could have
+              signed in. The SDK 2.0.1 account list fails to deserialize any account but a stored
+              sign-in, so that failure is a finding too. A malformed COPILOT_HOME is the user's
+              Copilot CLI setting, not the application's, so it is named in the finding but not
+              quoted.
+            tests:
+              - CopilotSignIn_ResolveAsync_HelperFails_FallsThroughWithAFinding
+              - CopilotSignIn_ResolveAsync_HelperCannotBeCreated_FallsThroughWithAFinding
+              - CopilotSignIn_ResolveAsync_HelperTimesOut_FallsThroughWithAFinding
+              - CopilotSignIn_ResolveAsync_AccountListFails_FallsThroughWithAFinding
+              - CopilotSignIn_ResolveAsync_HelperNotSignedInAsTheAccount_DoesNotReadTheAccountList
+              - CopilotSignIn_ResolveAsync_CallerCancels_PropagatesAndCleansUp
+              - CopilotSignIn_ResolveAsync_CallerCanceledHelperCarryingASecret_IsRebuiltRedacted
+              - CopilotSignIn_ReadCopilotCliAccount_UnusableConfiguration_ReportsWhy
+              - CopilotSignIn_LookUpCopilotCliAccount_InvalidCopilotHome_ReportsWhy
+              - CopilotSignIn_ResolveAsync_InvalidCopilotHome_FallsThroughWithAFinding
+
+          - id: AgentKitAgentsCopilot-CopilotSignIn-AsksTheHostsTokenProvider
+            title: >-
+              The sign-in shall ask the host's token provider once at start for the effective host, as
+              a first request, refuse a start whose provider fails or returns no token with an
+              explanation that names the provider, let the provider's cancellation propagate, and give
+              each session a provider that asks the host's with the session's host and whether it is a
+              refresh, reporting an unknown lifetime as eight hours and a known lifetime in whole
+              seconds, rounded up.
+            justification: |
+              A host that refreshes its own tokens must be asked for a token the moment the runtime
+              needs one, never handed a silent fallback to another sign-in when its provider fails.
+              Rounding a lifetime up keeps a lifetime of more than one hour, which the token type
+              guarantees, above the runtime's one-hour minimum.
+            tests:
+              - CopilotSignIn_ResolveAsync_Provider_IsAskedForTheEffectiveHost
+              - CopilotSignIn_ResolveAsync_ProviderReturnsNull_Throws
+              - CopilotSignIn_ResolveAsync_ProviderThrows_ThrowsWithTheCause
+              - CopilotSignIn_ResolveAsync_ProviderCanceled_PropagatesCancellation
+              - CopilotSignIn_CreateSessionTokenProvider_AsksTheHostsProvider
+              - CopilotSignIn_CreateSessionTokenProvider_FractionalLifetime_RoundsUp
+
+          - id: AgentKitAgentsCopilot-CopilotSignIn-ReportsWhatEachSourceFound
+            title: >-
+              The sign-in shall explain a runtime that is not signed in by listing every source, in
+              order, with what it found and the remedies, shall log the source, host and login the
+              runtime signed in with and warn when that is not the Copilot CLI's account, shall put
+              no token in any finding, message, log entry or string form — the plan's string form
+              redacted whole — and shall redact from any
+              runtime, SDK or exception text it quotes every exact token it knows — the host's token,
+              the host's provider's tokens at start and for each session, the Copilot CLI's token and
+              the environment's token values — whatever its shape, and any text shaped like a GitHub
+              token; and shall redact each field a finding quotes from the runtime, the helper, the
+              Copilot CLI's configuration, the environment or the host's options — a host, a login,
+              a kind of sign-in, a path or a problem — where the finding is composed.
+            tags: [security]
+            justification: |
+              A refusal that lists each source shows which one the user expected and why it did not
+              apply. A token in a message or log would leak a credential into places built to be
+              shared. A host or provider may hand over a token of any shape, so a pattern for GitHub's
+              token prefixes alone cannot keep it out of quoted text; the exact values can. A finding
+              reaches a log entry as well as the refusal, so it is redacted where it is composed and
+              no sink relies on another having redacted it.
+            tests:
+              - CopilotSignIn_ExplainUnauthenticated_ListsEverySourceWithoutTheToken
+              - CopilotSignIn_ExplainUnauthenticated_RejectedTokens_SayWhatToChange
+              - CopilotSignIn_ExplainUnauthenticated_NonGitHubShapedTokens_AreRedacted
+              - CopilotSignIn_ResolveAsync_HelperFailureQuotingAKnownSecret_IsRedacted
+              - CopilotSignIn_ResolveAsync_FindingsQuotingASecret_AreRedacted
+              - CopilotSignIn_ResolveAsync_HelperReportsAnotherSignInQuotingASecret_IsRedacted
+              - CopilotSignIn_ResolveAsync_ProviderRefusalForAHostQuotingASecret_IsRedacted
+              - CopilotSignIn_CreateSessionTokenProvider_NoTokenForAHostQuotingASecret_IsRedacted
+              - CopilotSignIn_CreateSessionTokenProvider_RecordsEachTokenForRedaction
+              - CopilotSignIn_PlanRedact_LongestSecretFirstAndTokenShapes
+              - CopilotSignIn_PlanToString_RedactsTheToken
+              - CopilotSignIn_Report_LogsTheSignInAndWarnsOnAnotherAccount
+
+          - id: AgentKitAgentsCopilot-CopilotSignIn-RedactsLogEntries
+            title: >-
+              The sign-in shall pass the host's logger only entries redacted of every secret it knows
+              and any text shaped like a GitHub token — the formatted message, every structured value
+              except null, Boolean, numeric, enumeration, date, time, duration and GUID values, which
+              keep their value and type, every scope and a logged exception as its redacted copy —
+              shall keep each entry's level and event, and shall format nothing for a level the
+              host's logger does not enable.
+            tags: [security]
+            justification: |
+              A log entry is built to be shared, so text quoted from the runtime, the helper, the
+              configuration or the environment must not carry a secret there either. One redacting
+              logger in front of the host's is a single choke point that also covers entries AgentKit
+              did not compose. Keeping values that cannot hold text typed, and the level and event,
+              keeps the entries useful to structured logging.
+            tests:
+              - CopilotSignIn_RedactingLogger_RedactsMessageValuesScopesAndExceptions
+              - CopilotSignIn_RedactingLogger_KeepsLevelsEventsAndPrimitiveValues
+              - CopilotSignIn_ResolveAsync_CopilotCliNotUsed_LogsTheFindingRedacted
+              - CopilotSignIn_ResolveAsync_HelperReportsAnotherSignInQuotingASecret_IsRedacted
+              - CopilotSignIn_ReadCopilotCliToken_HomeNotDeleted_LogsThePathRedacted
+              - CopilotSignIn_Report_FieldsQuotingASecret_AreLoggedRedacted
+
+          - id: AgentKitAgentsCopilot-CopilotSignIn-RedactsWithoutAPlan
+            title: >-
+              The sign-in shall redact text quoted before a sign-in is resolved with the secrets of the
+              environment in hand and the host's token, and text quoted with no sign-in and no
+              environment in hand with the process environment's secret values, in each case with any
+              text shaped like a GitHub token.
+            tags: [security]
+            justification: |
+              Some text is quoted before the sign-in exists, such as a launch refusal or a version
+              probe's error, and a client built outside StartAsync has no sign-in at all. Redacting
+              only token shapes there would let a token of any other shape through; the environment in
+              hand holds exactly the values such text could quote.
+            tests:
+              - CopilotSignIn_SecretsFromEnvironment_RecordsEverySecretVariable
+              - CopilotSignIn_Redact_WithoutAPlan_RemovesTheProcessEnvironmentsSecrets
+
+          - id: AgentKitAgentsCopilot-CopilotSignIn-KeepsOnlyARedactedCause
+            title: >-
+              The sign-in shall provide, for a runtime or SDK failure AgentKit keeps as an inner
+              exception, a copy that carries the original's type name, message and stack trace, each
+              with every token the sign-in knows and any text shaped like a GitHub token redacted, with
+              each chained exception, including an aggregate's first inner exception, copied the same
+              way, and nothing else of the original.
+            tags: [security]
+            justification: |
+              Redacting only the outer message leaves the original exception, and every exception it
+              chains, reachable through InnerException, where a log or crash report prints it whole. A
+              copy made every time, rather than only when a secret is spotted, fails closed: properties
+              AgentKit cannot inspect, such as an RPC error's data, never pass through, while the type
+              name, message and stack trace a host needs to diagnose the failure are kept.
+            tests:
+              - CopilotSignIn_RedactFailure_ChainQuotingKnownSecrets_CarriesNoSecret
+              - CopilotSignIn_RedactFailure_KeepsTheTypeNameMessageAndStackTrace
+              - CopilotSignIn_RedactFailure_DataQuotingASecret_IsNotCopied
+
+          - id: AgentKitAgentsCopilot-CopilotSignIn-RelaysFailuresRedacted
+            title: >-
+              The sign-in shall provide, for a runtime or SDK failure AgentKit relays to a host, a new
+              exception of the same kind — an I/O failure, a timeout or an invalid operation as its own
+              type, a cancellation with its token, a task cancellation as its own type, a disposal, and
+              any other type as an invalid operation — whose message has every token the sign-in knows
+              and any text shaped like a GitHub token redacted and whose cause is the failure's
+              redacted copy, except that a disposal with no cause keeps its object name, redacted, and
+              no cause; shall return unchanged a cancellation or disposal of exactly its base type with
+              no cause, no data, no task state and nothing to redact in its message, source, help link,
+              stack trace or object name; and shall return a failure already built around a redacted
+              copy unchanged.
+            tags: [security]
+            justification: |
+              A failure the runtime or the SDK raises can quote a token in its message, its chain or
+              properties AgentKit cannot inspect, such as an RPC error's data, so relaying the original
+              would hand a host a token in an exception built to be shown and logged. Relaying a new
+              exception every time, rather than only when a secret is spotted, fails closed. Keeping
+              the kind means a host still catches what it caught before; a type outside the base class
+              library becomes an invalid operation because a host cannot catch a type it does not
+              reference, and the original type's name is kept in the cause. A clean cancellation or
+              disposal passes unchanged so its instance, stack, token and object name survive. Its data
+              values, a task cancellation's task state and a subclass's own properties are objects
+              AgentKit cannot inspect, so any of them fails closed and the exception is rebuilt. A
+              rebuilt disposal keeps its object name, redacted, when it has no cause; .NET has no public
+              constructor taking both an object name and a cause, so a disposal with a cause keeps the
+              cause as a redacted copy and its object name only as redacted text in its message. A
+              failure AgentKit already built around a redacted copy is left alone so relaying twice
+              changes nothing.
+            tests:
+              - CopilotSignIn_RedactRelayed_SessionErrorQuotingATokenAndRpcData_IsRelayedRedacted
+              - CopilotSignIn_RedactRelayed_KeepsTheKindAHostCatches
+              - CopilotSignIn_RedactRelayed_CleanCancellationOrDisposal_PassesUnchanged
+              - CopilotSignIn_RedactRelayed_CancellationOrDisposalCarryingASecret_IsRebuiltRedacted
+              - CopilotSignIn_RedactRelayed_CancellationOrDisposalCarryingASecretOutsideItsMessage_IsRebuiltRedacted
+              - CopilotSignIn_RedactRelayed_DisposalNamingASecret_IsRebuiltWithTheNameRedacted
+              - CopilotSignIn_RedactRelayed_CancellationItCannotInspect_IsRebuilt
+              - CopilotSignIn_RedactRelayed_TaskCancellationCarryingASecret_StaysATaskCancellation
+              - CopilotSignIn_RedactRelayed_AlreadyRelayed_IsReturnedUnchanged
+              - CopilotSignIn_RelayAsync_FailureThrownEitherWay_IsRelayedRedacted

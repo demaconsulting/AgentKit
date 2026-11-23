@@ -221,8 +221,14 @@ software items, specifically:
   the installed Copilot CLI by default (version-checked) or the SDK's bundled runtime on request,
   spawned as a child process with the host's `COPILOT_`/`GITHUB_COPILOT_`
   variables withheld apart from an allow-listed credential, network and telemetry-off set, a data directory AgentKit
-  owns; exposes only neutral options, reports the started runtime's version, refuses one that is not
-  signed in, explains a runtime that cannot start, and lets the host delete a kept conversation
+  owns; exposes only neutral options, reports the started runtime's version and how it signed in,
+  refuses one that is not signed in, explains a runtime that cannot start, and lets the host delete a
+  kept conversation
+- **CopilotSignIn (Unit)** — How the runtime signs in: the host's token or token provider, a token in
+  the environment, the user's Copilot CLI sign-in (its token obtained through a short-lived helper
+  runtime on a temporary home holding only the account's host and login) or the runtime's own
+  fallbacks, in that order, each with its GitHub host; explains a runtime no source signed in, listing
+  what each found
 - **CopilotCli (Unit)** — The installed Copilot CLI: found on `PATH` and in the platform's well-known
   installation locations with editor launchers passed over, its version read as the SDK runs it, the
   minimum version enforced, and refusals explained with install and upgrade guidance
@@ -594,6 +600,8 @@ src/DemaConsulting.AgentKit.Agents.Copilot/
 ├── CopilotCli.cs                     — finds the installed Copilot CLI and checks its version
 ├── CopilotCliProcessTree.cs          — stops what a timed-out or canceled version probe started
 ├── CopilotCliSearchResult.cs         — what discovery found, searched and passed over
+├── CopilotGitHubToken.cs             — a token a host's token provider returns
+├── CopilotGitHubTokenRequest.cs      — what AgentKit asks a host's token provider for
 ├── CopilotModelCatalog.cs            — describes the service's models for the signed-in user
 ├── CopilotProviderSession.cs         — one Core session over one Copilot session
 ├── CopilotProviderSessionFactory.cs  — creates one seeded Copilot session per rotation
@@ -601,14 +609,17 @@ src/DemaConsulting.AgentKit.Agents.Copilot/
 ├── CopilotRuntimeOptions.cs          — the neutral options a host may give the runtime
 ├── CopilotRuntimeSource.cs           — the installed CLI or the bundled runtime
 ├── CopilotSessionObserver.cs         — watches the runtime's event stream
+├── CopilotSignIn.cs                  — how the runtime signs in, and the Copilot CLI token helper
+├── CopilotSignInSource.cs            — the sign-in source a started runtime reports
 ├── CopilotSummarizer.cs              — consolidates on a separate tool-free session
 └── CopilotTurnChannel.cs             — the seam over the sealed SDK session types
 ```
 
 `CopilotAgent.cs` and `CopilotAgentSession.cs` together form the `CopilotAgent` unit;
-`CopilotRuntime.cs`, `CopilotRuntimeOptions.cs` and `CopilotRuntimeSource.cs` the `CopilotRuntime`
-unit; `CopilotCli.cs`, `CopilotCliSearchResult.cs` and `CopilotCliProcessTree.cs` the `CopilotCli`
-unit; every other file in the Copilot tree is one unit.
+`CopilotRuntime.cs`, `CopilotRuntimeOptions.cs`, `CopilotRuntimeSource.cs`, `CopilotGitHubToken.cs`
+and `CopilotGitHubTokenRequest.cs` the `CopilotRuntime` unit; `CopilotSignIn.cs` and
+`CopilotSignInSource.cs` the `CopilotSignIn` unit; `CopilotCli.cs`, `CopilotCliSearchResult.cs` and
+`CopilotCliProcessTree.cs` the `CopilotCli` unit; every other file in the Copilot tree is one unit.
 
 `AgentKitAgentsOllama` is a three-file tree, one file per unit:
 

@@ -58,6 +58,10 @@ public, because a host needs its `SessionId` to delete a finished conversation.
   turn channel. In production it keeps the session on release.
 - **`_name`** (`string?`) — The host's name for the agent, or null when the host supplied none or a
   blank one.
+- **`_signIn`** (`CopilotSignInPlan?`) — The sign-in of the runtime the sessions run on, whose tokens
+  are redacted from a session error and from a relayed turn or open failure, or null to redact
+  token-shaped text only. Supplied by `CopilotAgentFactory` (`runtime.SignIn` in production), passed
+  to each run's `UpdateMapper` and `SendAsync`, and used by `OpenAsync`.
 - **`DefaultName`** (`const string`) — `GitHub Copilot Agent`, reported when the host named none.
 - **`DefaultDescription`** (`const string`) — `An AI agent powered by GitHub Copilot`, reported by
   every agent.
@@ -201,7 +205,11 @@ options, set the handler the same way, create the session through the opener, an
 channel's `SessionId` on the conversation at once. When `ephemeral`, the session is created through
 the ephemeral opener instead, whose sessions are deleted when released: nothing could
 ever resume that session, so keeping it would only accumulate persisted state under the runtime's data
-directory. A null channel from either delegate is refused.
+directory. A null channel from either delegate is refused. Each open is run through
+`CopilotSignIn.RelayAsync` with the runtime's sign-in, so a failure of the create or resume request —
+a lost connection quoting the runtime's standard error, or an RPC error carrying the runtime's data —
+is relayed as a redacted copy of the same kind, never the SDK's own exception; AgentKit's own refusals
+during the open, already redacted around a redacted cause, and a clean cancellation pass unchanged.
 
 The handler is set on the options before the session is opened because the SDK registers it before
 the create or resume request is issued, which is what makes the run's first events observable. The
@@ -212,13 +220,15 @@ that failed or was canceled before its turn reached the runtime, a later run's r
 
 **Postconditions:** An open channel, owned by the caller; on a first run, `SessionId` recorded.
 
-#### SendAsync(ICopilotTurnChannel channel, MessageOptions message, ChannelWriter, CancellationToken)
+#### SendAsync(ICopilotTurnChannel channel, MessageOptions message, ChannelWriter, CopilotSignInPlan? signIn, CancellationToken)
 
 **Purpose:** Take the turn and complete the update stream when it ends.
 
 **Algorithm:** Send the message and wait for the session to become idle, then complete the stream. On
-a failure, complete the stream with that failure — which is what surfaces it to the reader — and
-rethrow.
+a failure, relay it through `CopilotSignIn.RedactRelayed(failure, signIn)` — a new exception of the
+same kind with a redacted message and the failure's redacted copy as its cause, or the failure itself
+for a cancellation carrying nothing to redact — complete the stream with the relayed exception, which
+is what surfaces it to the reader, and throw it.
 
 #### FinishAsync(Task? send, CancellationTokenSource runCancellation)
 
@@ -262,7 +272,9 @@ naming its type.
 **Algorithm:** Skip every event a sub-agent produced — one whose `AgentId` is set — because it was
 never part of this conversation. A root-agent session error completes the stream with an
 `InvalidOperationException` reading `Session error: <message>`, so the run fails naming the error
-rather than ending as though the turn had succeeded. Every other root-agent event is mapped as in
+rather than ending as though the turn had succeeded. The message is redacted with
+`CopilotSignIn.Redact(signIn, message)` — every token the runtime's sign-in knows, and any text shaped
+like a GitHub token — and no cause is attached. Every other root-agent event is mapped as in
 *Streaming* below and written to the stream; an event with no mapping writes nothing.
 
 **It never throws.** It runs on the runtime's dispatch thread, serially, where an exception would be
@@ -281,7 +293,7 @@ session, created and resumed. The mapping, for root-agent events only:
 | Tool execution start, with call id and name | `FunctionCallContent` | Assistant | arguments parsed |
 | Tool execution complete, with call id | `FunctionResultContent` | Tool | see below |
 | Assistant usage | `UsageContent` | Assistant | see below |
-| Session error | stream fails | — | `InvalidOperationException` |
+| Session error | stream fails | — | `InvalidOperationException`, redacted |
 
 A delta marks its message as streamed, so the final message for it is carried raw and its text is not
 repeated. A tool call's arguments are parsed from the JSON object the runtime reported, and are absent
@@ -292,7 +304,11 @@ timestamp as `CreatedAt`, and the event itself as `RawRepresentation`; every con
 event as its own `RawRepresentation` too.
 
 **A tool result** is the result's content when the call succeeded, the runtime's error message when it
-failed, or `Tool execution failed` when it failed without one.
+failed, or `Tool execution failed` when it failed without one. Tool results, like the event objects
+carried as `RawRepresentation`, are passed on as the runtime produced them and not redacted: the model
+already received that text, so rewriting the recorded copy would make the host's transcript disagree
+with the runtime's conversation, and the event object travels with the update anyway. Built-in tools
+are suppressed, so a tool error comes from the host's own tool.
 
 **Usage** maps the input, output, cached-input and reasoning token counts onto `UsageDetails`, with the
 total as input plus output. The cache-write token count and the request's duration in milliseconds
@@ -319,7 +335,7 @@ that adapter's behavior, which defines what a host already relied on.
 | Final assistant message | raw-only `AIContent` | raw-only if streamed; text if not |
 | Tool start and completion | `FunctionCallContent`, `FunctionResultContent` | same, same failure text |
 | Usage | `UsageContent` | same; cost on the raw event only |
-| Session error | `InvalidOperationException` reading `Session error: …` | same |
+| Session error | `InvalidOperationException` reading `Session error: …` | same, with tokens redacted |
 | Every other event | passed through as empty raw `AIContent` | not emitted |
 | Prompt | text of all input messages joined by newline | same |
 | `DataContent` | written to an owner-only temporary file | in-memory blob attachment |
@@ -361,9 +377,9 @@ Each is deliberate and recorded so it is not mistaken for an omission:
 | Serializing another kind of agent's session | `InvalidOperationException` propagates |
 | Serialized form not an object; `sessionId` not string/null; `stateBag` not object/null | `ArgumentException` |
 | Opener or resumer returned null | `InvalidOperationException` propagates |
-| Creating or resuming the runtime session fails | Propagates; nothing to release; gate released |
-| Root-agent session error during the turn | Run fails with `InvalidOperationException` |
-| The turn fails | Propagates through the stream; session handle released (see below) |
+| Creating or resuming the runtime session fails | Relayed redacted, same kind; nothing to release; gate released |
+| Root-agent session error during the turn | Run fails with `InvalidOperationException`, its text redacted |
+| The turn fails | Relayed as a redacted copy of the same kind through the stream; session handle released (see below) |
 | Caller cancels, or stops reading early | Turn canceled and awaited; session handle released (see below) |
 | Releasing the session handle fails | Swallowed by the channel; the run's own outcome stands |
 
@@ -374,10 +390,20 @@ resume a session that never took a turn ("Session not found", observed by the li
 run), so after a first run that failed or was canceled before its turn reached the runtime, a later
 run's resume fails and propagates, as in the table above; the host starts a new conversation.
 
+A turn's own failure, and a failure creating or resuming the session, is the SDK's exception, whose
+message, chain and RPC data can quote a token, so it is relayed through `CopilotSignIn.RedactRelayed`:
+a new exception of the same kind, with a redacted message and a redacted copy as its cause, which a
+host still catches as before; a type outside the base class library arrives as
+`InvalidOperationException`, and a cancellation carrying nothing to redact passes unchanged. The
+session error, whose text AgentKit composes into its own exception, is redacted with no cause.
+
 ### Dependencies
 
 - **CopilotAgentFactory** — supplies the builder delegates for the create and resume options, so
   every session this agent opens is confined; see *CopilotAgentFactory Unit Design*.
+- **CopilotSignIn** — redacts a session error's text with the runtime's sign-in
+  (`Redact(plan, text)`), and relays a turn's or an open's runtime or SDK failure redacted
+  (`RedactRelayed(failure, plan)`, `RelayAsync(operation, plan)`); see *CopilotSignIn Unit Design*.
 - **CopilotTurnChannel** — supplies `ICopilotTurnChannel`, `CopilotChannelOpener` and
   `CopilotChannelResumer`, and in production the channels that keep a conversation's session on
   release and delete the session of a run made without one; see *CopilotTurnChannel Unit Design*.
@@ -391,7 +417,8 @@ run's resume fails and propagates, as in the table above; the host starts a new 
 
 ### Callers
 
-`CopilotAgentFactory.CreateAgent` constructs the agent, and `CopilotAgentFactory.Create` returns it
+`CopilotAgentFactory.CreateAgent` constructs the agent, passing the runtime's sign-in when
+`CopilotAgentFactory.Create` builds it over a runtime, and `CopilotAgentFactory.Create` returns it
 to the application as an `AIAgent`. The application then drives it through the Agent Framework's own
 surface — creating, running, serializing and deserializing sessions — and deletes a finished
 conversation's persisted state by passing `CopilotAgentSession.SessionId` to

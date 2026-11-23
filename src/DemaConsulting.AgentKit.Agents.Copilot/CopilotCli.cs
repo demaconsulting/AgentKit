@@ -239,10 +239,19 @@ public static partial class CopilotCli
     /// <param name="context">The platform and file system, used to find <c>node</c> for a <c>.js</c> CLI.</param>
     /// <param name="runner">Runs the probe process.</param>
     /// <param name="cancellationToken">Cancels the probe, which stops the process.</param>
+    /// <param name="hostToken">
+    ///     The host's token, if any, which is redacted too: the CLI path can come from the host's options,
+    ///     so a refusal that quotes the path can quote the token.
+    /// </param>
     /// <returns>The version the CLI reports, or <see langword="null"/> when its output names none.</returns>
     /// <exception cref="InvalidOperationException">
     ///     The CLI is a <c>.js</c> file and <c>node</c> is not on <c>PATH</c>; or it could not be started,
-    ///     exited with an error, or did not finish in time. The message names the CLI and the command.
+    ///     exited with an error, or did not finish in time. The message names the CLI and the command;
+    ///     it, and the error output it quotes, are redacted of the probe environment's secret values,
+    ///     the host's token when given and any text shaped like a GitHub token, the error output before
+    ///     its tail is cut. For a CLI
+    ///     that could not be started, the cause is a redacted copy of the failure
+    ///     (<see cref="CopilotRedactedException"/>), never the original.
     /// </exception>
     /// <exception cref="OperationCanceledException">The probe was canceled.</exception>
     internal static async Task<Version?> ReadVersionAsync(
@@ -251,9 +260,15 @@ public static partial class CopilotCli
         IReadOnlyDictionary<string, string> runtimeEnvironment,
         CopilotCliSearchContext context,
         CopilotCliProcessRunner runner,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? hostToken = null)
     {
-        var startInfo = BuildVersionProbe(cliPath, dataDirectory, runtimeEnvironment, context);
+        // Everything the probe could echo is in its environment, and the path it quotes can come from the
+        // host's options, so its text is redacted of the environment's secrets and the host's token
+        var secrets = CopilotSignInSecrets.FromEnvironment(runtimeEnvironment);
+        secrets.Add(hostToken);
+        Func<string, string> redact = text => secrets.Redact(text);
+        var startInfo = BuildVersionProbe(cliPath, dataDirectory, runtimeEnvironment, context, redact);
         var command = DescribeCommand(startInfo);
 
         // Run the probe; a CLI that cannot even be started is explained like any other failed probe
@@ -265,8 +280,8 @@ public static partial class CopilotCli
         catch (Exception failure) when (failure is not OperationCanceledException)
         {
             throw new InvalidOperationException(
-                ExplainProbeFailure(cliPath, command, "could not be started: " + failure.Message, standardError: null),
-                failure);
+                ExplainProbeFailure(cliPath, command, "could not be started: " + failure.Message, standardError: null, redact),
+                CopilotSignIn.RedactFailure(failure, new CopilotSignInPlan { Secrets = secrets }));
         }
 
         if (result.TimedOut)
@@ -275,7 +290,8 @@ public static partial class CopilotCli
                 cliPath,
                 command,
                 $"did not finish within {VersionProbeTimeout.TotalSeconds.ToString(CultureInfo.InvariantCulture)} seconds and was stopped",
-                result.StandardError));
+                result.StandardError,
+                redact));
         }
 
         if (result.ExitCode != 0)
@@ -284,7 +300,8 @@ public static partial class CopilotCli
                 cliPath,
                 command,
                 $"exited with code {result.ExitCode.ToString(CultureInfo.InvariantCulture)}",
-                result.StandardError));
+                result.StandardError,
+                redact));
         }
 
         return ParseVersion(result.StandardOutput);
@@ -496,13 +513,15 @@ public static partial class CopilotCli
     /// <param name="dataDirectory">The prepared data directory's full path.</param>
     /// <param name="runtimeEnvironment">The runtime's environment, which becomes the probe's.</param>
     /// <param name="context">The platform and file system, used to find <c>node</c>.</param>
+    /// <param name="redact">Removes the probe environment's secrets and the host's token from the refusal's text.</param>
     /// <returns>The start information: no shell, all streams redirected, the runtime's environment.</returns>
     /// <exception cref="InvalidOperationException">The CLI is a <c>.js</c> file and <c>node</c> is not on <c>PATH</c>.</exception>
     private static ProcessStartInfo BuildVersionProbe(
         string cliPath,
         string dataDirectory,
         IReadOnlyDictionary<string, string> runtimeEnvironment,
-        CopilotCliSearchContext context)
+        CopilotCliSearchContext context,
+        Func<string, string> redact)
     {
         var startInfo = new ProcessStartInfo
         {
@@ -518,10 +537,10 @@ public static partial class CopilotCli
         // with node resolved to a full path so no shell or ambient lookup chooses it
         if (IsScript(cliPath))
         {
-            startInfo.FileName = FindOnPath(context, "node") ?? throw new InvalidOperationException(
+            startInfo.FileName = FindOnPath(context, "node") ?? throw new InvalidOperationException(redact(
                 $"The Copilot CLI at '{cliPath}' is an npm installation, which runs on Node.js, and AgentKit did not find "
                 + $"'{context.ExecutableName("node")}' on PATH. Install Node.js and put it on PATH, or install the Copilot CLI "
-                + $"another way: {InstallCommands}.");
+                + $"another way: {InstallCommands}."));
             startInfo.ArgumentList.Add(cliPath);
         }
         else
@@ -546,14 +565,20 @@ public static partial class CopilotCli
     /// <summary>
     ///     Composes the explanation for a version probe that failed.
     /// </summary>
+    /// <remarks>
+    ///     The error output is redacted before its tail is cut, so a secret cut in two can be neither
+    ///     quoted nor missed; the whole explanation, which names the CLI's path and command, is then
+    ///     redacted too.
+    /// </remarks>
     /// <param name="cliPath">The CLI's full path.</param>
     /// <param name="command">The command that was run.</param>
     /// <param name="reason">What went wrong, completing "the command ...".</param>
     /// <param name="standardError">The probe's error output, or <see langword="null"/> when there is none.</param>
+    /// <param name="redact">Removes the probe environment's secrets and the host's token from a text.</param>
     /// <returns>The explanation.</returns>
-    private static string ExplainProbeFailure(string cliPath, string command, string reason, string? standardError)
+    private static string ExplainProbeFailure(string cliPath, string command, string reason, string? standardError, Func<string, string> redact)
     {
-        var error = standardError?.Trim() ?? string.Empty;
+        var error = standardError is null ? string.Empty : redact(standardError.Trim());
         if (error.Length > ErrorTailLength)
         {
             error = error[^ErrorTailLength..];
@@ -561,9 +586,9 @@ public static partial class CopilotCli
 
         var tail = error.Length == 0 ? string.Empty : " Its error output ends: " + error;
 
-        return $"AgentKit could not read the version of the Copilot CLI at '{cliPath}': the command {command} {reason}."
+        return redact($"AgentKit could not read the version of the Copilot CLI at '{cliPath}': the command {command} {reason}."
             + tail + $" Check that it is a working Copilot CLI, version {MinimumVersion} or later, with "
-            + "'copilot --no-auto-update --version'. " + Alternatives;
+            + "'copilot --no-auto-update --version'. " + Alternatives);
     }
 
     /// <summary>
@@ -681,7 +706,7 @@ public static partial class CopilotCli
     /// <param name="entry">The <c>PATH</c> entry, unquoted.</param>
     /// <param name="platform">The platform searched.</param>
     /// <returns><see langword="true"/> when the entry is searched.</returns>
-    private static bool IsSearchableDirectory(string entry, CopilotCliPlatform platform)
+    internal static bool IsSearchableDirectory(string entry, CopilotCliPlatform platform)
     {
         if (entry.Length == 0)
         {
@@ -703,7 +728,7 @@ public static partial class CopilotCli
     /// <param name="context">The search context.</param>
     /// <param name="name">The executable's name without extension.</param>
     /// <returns>The first match's full path, or <see langword="null"/> when there is none.</returns>
-    private static string? FindOnPath(CopilotCliSearchContext context, string name) =>
+    internal static string? FindOnPath(CopilotCliSearchContext context, string name) =>
         PathDirectories(context)
             .Select(directory => Path.Combine(directory, context.ExecutableName(name)))
             .FirstOrDefault(candidate => IsRunnable(candidate, context));

@@ -66,6 +66,16 @@ namespace DemaConsulting.AgentKit.Agents.Copilot;
 ///       </description></item>
 ///     </list>
 ///     <para>
+///     <b>Signing in.</b> The runtime signs in from the host's token or token provider, a token in the
+///     environment, the user's Copilot CLI sign-in, or its own fallbacks, in that order, with the GitHub
+///     host that belongs to the source (see <see cref="CopilotRuntimeOptions"/>). The Copilot CLI's
+///     token is obtained through a short-lived second runtime on a temporary home holding only the
+///     account's host and login, and handed to this runtime as its token; nothing else from the user's
+///     Copilot CLI home reaches it, and its mode, environment and data directory are unchanged.
+///     <see cref="SignInSource"/>, <see cref="GitHubHost"/> and <see cref="GitHubLogin"/> report the
+///     result.
+///     </para>
+///     <para>
 ///     <b>What this guarantees, per source, on every session AgentKit opens on this runtime.</b>
 ///     Before any session exists, the built-in GitHub MCP server is named disabled, so it is not
 ///     started or authenticated; Empty mode alone would start it on the first turn. No
@@ -191,6 +201,12 @@ public sealed class CopilotRuntime : IAsyncDisposable
     private CopilotClient? _client;
 
     /// <summary>
+    ///     The session-level token provider that asks the host's provider, or <see langword="null"/>
+    ///     when the runtime was not started with one.
+    /// </summary>
+    private readonly Func<GitHubTokenProviderArgs, Task<GitHubTokenProviderResult>>? _sessionTokenProvider;
+
+    /// <summary>
     ///     Initializes a new instance of the <see cref="CopilotRuntime"/> class over a client.
     /// </summary>
     /// <remarks>
@@ -198,24 +214,46 @@ public sealed class CopilotRuntime : IAsyncDisposable
     ///     starts the client itself. A unit test passes a client that was never started, which spawns
     ///     nothing; the opt-in live suite passes a started client of another mode, to show the
     ///     session-level confinement holding on a client AgentKit would never build. A runtime built
-    ///     without a launch or a status reports no CLI path, an empty runtime version and protocol 0.
+    ///     without a launch or a status reports no CLI path, an empty runtime version and protocol 0;
+    ///     one built without a sign-in reports <see cref="CopilotSignInSource.Unknown"/> and no host or
+    ///     login.
     /// </remarks>
     /// <param name="client">The client this runtime owns and disposes.</param>
     /// <param name="dataDirectory">The prepared data directory's full path.</param>
     /// <param name="launch">What <see cref="StartAsync"/> launched, or <see langword="null"/> when it did not start this runtime.</param>
     /// <param name="status">The started runtime's status, or <see langword="null"/> when it was not read.</param>
+    /// <param name="signIn">The sign-in plan the runtime started with, or <see langword="null"/> when there was none.</param>
+    /// <param name="authentication">The started runtime's authentication status, or <see langword="null"/> when it was not read.</param>
     internal CopilotRuntime(
         CopilotClient client,
         string dataDirectory,
         CopilotRuntimeLaunch? launch = null,
-        GetStatusResponse? status = null)
+        GetStatusResponse? status = null,
+        CopilotSignInPlan? signIn = null,
+        GetAuthStatusResponse? authentication = null)
     {
         _client = client;
         DataDirectory = dataDirectory;
         CliPath = launch?.CliPath;
         RuntimeVersion = status?.Version ?? string.Empty;
         ProtocolVersion = status?.ProtocolVersion ?? 0;
+        SignInSource = signIn is not null && authentication is not null
+            ? CopilotSignIn.Classify(authentication.AuthType, signIn)
+            : CopilotSignInSource.Unknown;
+        GitHubHost = authentication?.Host;
+        GitHubLogin = authentication?.Login;
+        SignIn = signIn;
+        _sessionTokenProvider = signIn?.Provider is { } provider ? CopilotSignIn.CreateSessionTokenProvider(provider, signIn.Secrets) : null;
     }
+
+    /// <summary>
+    ///     Gets the sign-in plan the runtime started with, or <see langword="null"/> when there was none.
+    /// </summary>
+    /// <remarks>
+    ///     Its <see cref="CopilotSignInPlan.Redact"/> removes the start token and every session token
+    ///     the host's provider has returned from text AgentKit quotes, such as a failed reconnect's.
+    /// </remarks>
+    internal CopilotSignInPlan? SignIn { get; }
 
     /// <summary>
     ///     Gets the names of the <c>COPILOT_</c> variables that pass from the host's environment to the
@@ -244,12 +282,39 @@ public sealed class CopilotRuntime : IAsyncDisposable
     ///     Gets the full path of the data directory the runtime keeps its state in.
     /// </summary>
     /// <remarks>
-    ///     The runtime's <c>COPILOT_HOME</c>: its credentials (the system keychain is not used in
-    ///     Empty mode) and the conversations kept for resumption live here. The runtime's caches do
+    ///     The runtime's <c>COPILOT_HOME</c>: credentials the runtime stores itself (the system keychain
+    ///     is not used in Empty mode) and the conversations kept for resumption live here. A token
+    ///     AgentKit hands the runtime — the host's, or the Copilot CLI sign-in's — is not written here.
+    ///     The runtime's caches do
     ///     not: they go to the platform's cache folder (<c>%LOCALAPPDATA%</c> on Windows,
     ///     <c>XDG_CACHE_HOME</c> or its default elsewhere). Remains available after disposal.
     /// </remarks>
     public string DataDirectory { get; }
+
+    /// <summary>
+    ///     Gets how the started runtime signed in to GitHub, as the runtime reports it.
+    /// </summary>
+    /// <remarks>
+    ///     <see cref="CopilotSignInSource.Unknown"/> for a runtime <see cref="StartAsync"/> did not
+    ///     start, or one that reported a kind of sign-in AgentKit does not know. Remains available after
+    ///     disposal.
+    /// </remarks>
+    public CopilotSignInSource SignInSource { get; }
+
+    /// <summary>
+    ///     Gets the GitHub host the started runtime signed in to, as the runtime reports it, such as
+    ///     <c>https://github.com</c> or <c>https://example.ghe.com</c>; <see langword="null"/> when not
+    ///     known.
+    /// </summary>
+    /// <remarks>Remains available after disposal.</remarks>
+    public string? GitHubHost { get; }
+
+    /// <summary>
+    ///     Gets the GitHub login the started runtime signed in as, as the runtime reports it;
+    ///     <see langword="null"/> when not known.
+    /// </summary>
+    /// <remarks>Remains available after disposal.</remarks>
+    public string? GitHubLogin { get; }
 
     /// <summary>
     ///     Gets the full path of the installed Copilot CLI this runtime runs, or <see langword="null"/>
@@ -308,6 +373,26 @@ public sealed class CopilotRuntime : IAsyncDisposable
     internal void ThrowIfDisposed() => _ = Client;
 
     /// <summary>
+    ///     Applies the runtime's session-level sign-in to a session AgentKit is about to create or
+    ///     resume.
+    /// </summary>
+    /// <remarks>
+    ///     When the runtime was started with the host's token provider, the session gets a token
+    ///     provider that asks it, so the runtime can fetch the session's token and refresh it before it
+    ///     expires; the SDK refuses the session if the provider fails, rather than signing it in some
+    ///     other way. Otherwise the session's GitHub options are left untouched and the session uses the
+    ///     runtime's sign-in.
+    /// </remarks>
+    /// <param name="config">The session configuration to update.</param>
+    internal void ApplySessionSignIn(SessionOptionsBase config)
+    {
+        if (_sessionTokenProvider is not null)
+        {
+            config.GitHub.TokenProvider = _sessionTokenProvider;
+        }
+    }
+
+    /// <summary>
     ///     Starts a confined Copilot runtime.
     /// </summary>
     /// <remarks>
@@ -316,18 +401,25 @@ public sealed class CopilotRuntime : IAsyncDisposable
     ///     path the host named or the one <see cref="CopilotCli.FindInstalled()"/> finds, whose version
     ///     is then read with <c>--no-auto-update --version</c> and refused when older than
     ///     <see cref="CopilotCli.MinimumVersion"/>; for the bundled runtime, the one the SDK
-    ///     provisioned; builds the client options — Empty mode, that executable spawned over standard
+    ///     provisioned; resolves how the runtime signs in (see <see cref="CopilotRuntimeOptions"/>: the
+    ///     host's token or token provider, a token in the environment, the user's Copilot CLI sign-in,
+    ///     or the runtime's own fallbacks, each with the GitHub host that belongs to it); builds the
+    ///     client options — Empty mode, that executable spawned over standard
     ///     input and output, the host's Copilot configuration variables withheld — and starts the
-    ///     runtime process. Once it has started, its status and authentication are read: the version
-    ///     and protocol are kept on the runtime, and a runtime that is not signed in is refused. A start
+    ///     runtime process. Once it has started, its status and authentication are read: the version,
+    ///     protocol and sign-in are kept on the runtime, and a runtime that is not signed in is refused. A start
     ///     that fails or is canceled at any step disposes the client, so no runtime process is left
     ///     behind.
     ///     </para>
     ///     <para>
     ///     Side effects: creates the data directory and its ownership marker when they do not exist;
     ///     for the installed CLI, runs it once to read its version (which, on the first run of a CLI
-    ///     version, unpacks the CLI's package into the user's cache); and starts a child process that
-    ///     runs until the runtime is disposed. Reads the process environment once; never changes it.
+    ///     version, unpacks the CLI's package into the user's cache); may call the host's token provider
+    ///     once; to use the Copilot CLI sign-in, reads the account's host and login from the CLI's
+    ///     <c>config.json</c> and runs the same executable once more, briefly, on a temporary folder it
+    ///     then deletes, to obtain the account's token from the system credential store; and starts a
+    ///     child process that runs until the runtime is disposed. Reads the process environment once;
+    ///     never changes it.
     ///     </para>
     /// </remarks>
     /// <param name="options">The runtime's options. Must not be <see langword="null"/>.</param>
@@ -341,13 +433,29 @@ public sealed class CopilotRuntime : IAsyncDisposable
     ///     not exist, its version could not be read or is older than
     ///     <see cref="CopilotCli.MinimumVersion"/> — the message says where AgentKit looked, which
     ///     version it found and how to install or upgrade the CLI; or the runtime failed to start —
-    ///     the message reports the runtime's own error and the likely cause, and the original failure
-    ///     is the <see cref="Exception.InnerException"/>; or the started runtime is not signed in —
-    ///     the message names the ways it authenticates.
+    ///     the message reports the runtime's own error, redacted, and the likely cause, and a redacted
+    ///     copy of the original failure — its type name, message and stack trace — is the
+    ///     <see cref="Exception.InnerException"/>; or the started runtime is not signed in —
+    ///     the message lists what each sign-in source found and how to sign in; or the host's token
+    ///     provider failed or returned no token — a failure is the <see cref="Exception.InnerException"/>;
+    ///     or <c>COPILOT_GH_HOST</c> is set to something that is not a valid GitHub host and no
+    ///     <c>gitHubHost</c> was given — the message says how to correct it, without quoting it; or the
+    ///     SDK's client could not be created, or a read of the started runtime's status failed — relayed
+    ///     as a new exception of the same kind
+    ///     with a redacted message and a redacted copy as its cause, an exception a host does not
+    ///     reference becoming an <see cref="InvalidOperationException"/>.
     /// </exception>
-    /// <exception cref="IOException">The data directory or its marker could not be created or read.</exception>
+    /// <exception cref="IOException">
+    ///     The data directory or its marker could not be created or read; or a read of the started
+    ///     runtime's status lost the connection, relayed redacted.
+    /// </exception>
+    /// <exception cref="TimeoutException">A read of the started runtime's status timed out, relayed redacted.</exception>
     /// <exception cref="UnauthorizedAccessException">The data directory is not writable, or its marker is not readable.</exception>
-    /// <exception cref="OperationCanceledException">The start was canceled. It propagates unchanged.</exception>
+    /// <exception cref="OperationCanceledException">
+    ///     The start was canceled. A cancellation carrying nothing to redact propagates unchanged;
+    ///     otherwise it is rebuilt with the same token, a redacted message and a redacted copy as its
+    ///     cause, and a <see cref="TaskCanceledException"/> stays one.
+    /// </exception>
     public static async Task<CopilotRuntime> StartAsync(
         CopilotRuntimeOptions options,
         CancellationToken cancellationToken = default)
@@ -369,22 +477,41 @@ public sealed class CopilotRuntime : IAsyncDisposable
             CopilotCliSearchContext.Current(),
             CopilotCli.RunProcessAsync,
             cancellationToken).ConfigureAwait(false);
-        var clientOptions = BuildClientOptions(options, dataDirectory, hostEnvironment, launch.CliPath);
+
+        // The sign-in is resolved before the confined runtime exists, so the token and host it
+        // starts with are fixed by the host's options and the user's sign-ins, in a fixed order.
+        var signIn = await CopilotSignIn.ResolveAsync(
+            options,
+            dataDirectory,
+            hostEnvironment,
+            launch,
+            CopilotSignInContext.Current(),
+            cancellationToken).ConfigureAwait(false);
+        var clientOptions = BuildClientOptions(options, dataDirectory, hostEnvironment, launch.CliPath, signIn);
+
+        // The SDK's constructor is SDK code under the sink rule, so it is relayed with the plan like
+        // every other SDK call; nothing runs between its creation and StartOwnedAsync taking ownership.
+        var sdkClient = await CopilotSignIn.RelayAsync(() => Task.FromResult(new CopilotClient(clientOptions)), signIn)
+            .ConfigureAwait(false);
 
         // Started here and disposed on any failure: a runtime that never reaches the caller must not
         // leave its process running - including one that started but is not signed in.
         GetStatusResponse? status = null;
+        GetAuthStatusResponse? authentication = null;
         var client = await StartOwnedAsync(
-            () => new CopilotClient(clientOptions),
+            () => sdkClient,
             async (created, token) =>
             {
-                await StartClientAsync(created.StartAsync, launch, token).ConfigureAwait(false);
-                status = await VerifyStartedAsync(created.GetStatusAsync, created.GetAuthStatusAsync, token).ConfigureAwait(false);
+                await StartClientAsync(created.StartAsync, launch, signIn, token).ConfigureAwait(false);
+                (status, authentication) = await VerifyStartedAsync(created.GetStatusAsync, created.GetAuthStatusAsync, signIn, token)
+                    .ConfigureAwait(false);
             },
             created => created.DisposeAsync(),
             cancellationToken).ConfigureAwait(false);
 
-        return new CopilotRuntime(client, dataDirectory, launch, status);
+        var runtime = new CopilotRuntime(client, dataDirectory, launch, status, signIn, authentication);
+        CopilotSignIn.Report(options.Logger, signIn, runtime.SignInSource, authentication!);
+        return runtime;
     }
 
     /// <summary>
@@ -401,8 +528,15 @@ public sealed class CopilotRuntime : IAsyncDisposable
     ///     </para>
     ///     <para>
     ///     Side effects: asks the runtime process to delete the session's persisted state. Safe to
-    ///     call concurrently with sessions open on other conversations. The runtime reports a session
-    ///     it does not hold, or a failure to delete one, through the SDK's own exception, which
+    ///     call concurrently with sessions open on other conversations.
+    ///     </para>
+    ///     <para>
+    ///     A failure is relayed as a new exception of the same kind, never as the SDK's own exception:
+    ///     its message is redacted and a redacted copy of the failure
+    ///     (<see cref="CopilotRedactedException"/>) is its <see cref="Exception.InnerException"/>. The
+    ///     runtime reports a session it does not hold through the SDK's RPC error,
+    ///     <c>Microsoft.Copilot.RemoteRpcException</c>, which therefore arrives as an
+    ///     <see cref="InvalidOperationException"/>. A cancellation carrying nothing to redact
     ///     propagates unchanged.
     ///     </para>
     /// </remarks>
@@ -415,12 +549,46 @@ public sealed class CopilotRuntime : IAsyncDisposable
     /// <exception cref="ArgumentNullException"><paramref name="sessionId"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException"><paramref name="sessionId"/> is empty or whitespace.</exception>
     /// <exception cref="ObjectDisposedException">The runtime has been disposed.</exception>
+    /// <exception cref="InvalidOperationException">
+    ///     The runtime refused or failed the deletion, including for a session it does not hold. The
+    ///     message is redacted and a redacted copy of the failure is the inner exception.
+    /// </exception>
+    /// <exception cref="IOException">The connection to the runtime was lost, relayed redacted.</exception>
+    /// <exception cref="TimeoutException">The deletion timed out, relayed redacted.</exception>
     /// <exception cref="OperationCanceledException">The deletion was canceled.</exception>
     public Task DeleteSessionAsync(string sessionId, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(sessionId);
 
-        return Client.DeleteSessionAsync(sessionId, cancellationToken);
+        // Read before any relay, so a disposed runtime throws AgentKit's own disposal exception
+        var client = Client;
+        return RelayDeleteSessionAsync(client.DeleteSessionAsync, sessionId, cancellationToken);
+    }
+
+    /// <summary>
+    ///     Runs a session deletion and relays its failure redacted with this runtime's sign-in plan.
+    /// </summary>
+    /// <remarks>
+    ///     The deletion is injected because the SDK's client cannot be made to fail on demand without
+    ///     a runtime. A failure the deletion throws synchronously is relayed the same way as one its
+    ///     task carries (<see cref="CopilotSignIn.RelayAsync{T}"/>).
+    /// </remarks>
+    /// <param name="delete">Deletes the session.</param>
+    /// <param name="sessionId">The runtime session to delete.</param>
+    /// <param name="cancellationToken">Cancels the deletion.</param>
+    /// <returns>A task that completes when the deletion has completed.</returns>
+    internal async Task RelayDeleteSessionAsync(
+        Func<string, CancellationToken, Task> delete,
+        string sessionId,
+        CancellationToken cancellationToken)
+    {
+        await CopilotSignIn.RelayAsync(
+            async () =>
+            {
+                await delete(sessionId, cancellationToken).ConfigureAwait(false);
+                return true;
+            },
+            SignIn).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -846,10 +1014,14 @@ public sealed class CopilotRuntime : IAsyncDisposable
     /// </summary>
     /// <remarks>
     ///     The single place the client is configured. Every value that decides what a session can
-    ///     receive is forced here; only the token, the log level and the logger come from
-    ///     <paramref name="options"/>, and the executable from <see cref="ResolveLaunchAsync"/>.
+    ///     receive is forced here; only the log level and the logger come from
+    ///     <paramref name="options"/>, the sign-in from <paramref name="signIn"/>, and the executable
+    ///     from <see cref="ResolveLaunchAsync"/>.
     ///     Everything left unset keeps the SDK's default, which for each capability channel is none.
-    ///     The mode, environment and data directory are the same whichever executable runs.
+    ///     The mode, environment and data directory are the same whichever executable runs; the sign-in
+    ///     adds only a token, which the SDK passes in a variable of its own, and the GitHub host
+    ///     (<c>COPILOT_GH_HOST</c>, one of <see cref="PassThroughVariables"/>), set to the bare name of
+    ///     the chosen host — the host's environment's own value too, normalized.
     /// </remarks>
     /// <param name="options">The host's options.</param>
     /// <param name="dataDirectory">The prepared data directory's full path.</param>
@@ -859,13 +1031,27 @@ public sealed class CopilotRuntime : IAsyncDisposable
     ///     <see langword="null"/> for the runtime the SDK provisions. Because the runtime's environment
     ///     withholds <c>COPILOT_CLI_PATH</c>, nothing else can choose the executable.
     /// </param>
+    /// <param name="signIn">
+    ///     How the runtime signs in, as <see cref="CopilotSignIn.ResolveAsync"/> resolved it, or
+    ///     <see langword="null"/> for what <paramref name="options"/> alone describe (a test's client).
+    /// </param>
     /// <returns>The client options.</returns>
     internal static CopilotClientOptions BuildClientOptions(
         CopilotRuntimeOptions options,
         string dataDirectory,
         IDictionary hostEnvironment,
-        string? cliPath = null)
+        string? cliPath = null,
+        CopilotSignInPlan? signIn = null)
     {
+        signIn ??= CopilotSignInPlan.FromOptions(options, hostEnvironment);
+
+        // The runtime's environment, with the GitHub host of the chosen sign-in when it names one
+        var environment = BuildRuntimeEnvironment(hostEnvironment);
+        if (signIn.HostName is not null)
+        {
+            environment["COPILOT_GH_HOST"] = signIn.HostName;
+        }
+
         var clientOptions = new CopilotClientOptions
         {
             // Empty mode: none of the SDK's coding-agent defaults, credentials kept in the data
@@ -876,14 +1062,16 @@ public sealed class CopilotRuntime : IAsyncDisposable
             // decide: no runtime arguments, no in-process or external runtime.
             Runtime = RuntimeConnection.ForSpawnedStdio(
                 path: cliPath,
-                environment: BuildRuntimeEnvironment(hostEnvironment),
+                environment: environment,
                 baseDirectory: dataDirectory),
         };
 
-        // Neutral options only: authentication and host-side diagnostics.
-        clientOptions.GitHub.Token = options.GitHubToken;
+        // Neutral options only: the resolved sign-in and host-side diagnostics. Everything the SDK
+        // logs - the runtime's error output, RPC errors, paths and exceptions - reaches the host's
+        // logger only redacted with the sign-in's live secrets.
+        clientOptions.GitHub.Token = signIn.Token;
         clientOptions.Observability.LogLevel = options.LogLevel;
-        clientOptions.Observability.Logger = options.Logger;
+        clientOptions.Observability.Logger = CopilotRedactingLogger.Wrap(options.Logger, signIn.Redact);
 
         return clientOptions;
     }
@@ -930,31 +1118,37 @@ public sealed class CopilotRuntime : IAsyncDisposable
             return new CopilotRuntimeLaunch(CopilotRuntimeSource.Bundled, null, null);
         }
 
+        // Every refusal quotes paths from the host's options, PATH or discovery: redacted with the
+        // host environment's secrets and the host's token, as no sign-in exists yet
+        var secrets = CopilotSignInSecrets.FromEnvironment(hostEnvironment, options.GitHubToken);
+
         // The host's own choice wins; otherwise discovery chooses, never the ambient environment
         string cliPath;
         if (options.CliPath is not null)
         {
             cliPath = context.FileExists(options.CliPath)
                 ? options.CliPath
-                : throw new InvalidOperationException(CopilotCli.ExplainExplicitPathMissing(options.CliPath));
+                : throw new InvalidOperationException(secrets.Redact(CopilotCli.ExplainExplicitPathMissing(options.CliPath)));
         }
         else
         {
             var found = CopilotCli.FindInstalled(context);
-            cliPath = found.Path ?? throw new InvalidOperationException(CopilotCli.ExplainNotFound(found));
+            cliPath = found.Path ?? throw new InvalidOperationException(secrets.Redact(CopilotCli.ExplainNotFound(found)));
         }
 
-        // The version the runtime will run, checked before a runtime process exists
+        // The version the runtime will run, checked before a runtime process exists; the probe is given
+        // the host's token too, since its refusals quote the path, which can come from the host's options
         var version = await CopilotCli.ReadVersionAsync(
             cliPath,
             dataDirectory,
             BuildRuntimeEnvironment(hostEnvironment),
             context,
             runner,
-            cancellationToken).ConfigureAwait(false);
+            cancellationToken,
+            hostToken: options.GitHubToken).ConfigureAwait(false);
         if (version is not null && !CopilotCli.IsSupported(version))
         {
-            throw new InvalidOperationException(CopilotCli.ExplainTooOld(cliPath, version));
+            throw new InvalidOperationException(secrets.Redact(CopilotCli.ExplainTooOld(cliPath, version)));
         }
 
         return new CopilotRuntimeLaunch(CopilotRuntimeSource.InstalledCli, cliPath, version);
@@ -966,48 +1160,39 @@ public sealed class CopilotRuntime : IAsyncDisposable
     /// <remarks>
     ///     Run inside the start step of <see cref="StartAsync"/>, so a refused runtime's client is
     ///     disposed. The reads are injected because the SDK's client cannot report a status on demand
-    ///     without a runtime.
+    ///     without a runtime. A read that fails is relayed as <see cref="CopilotSignIn.RelayAsync{T}"/>
+    ///     relays it: a new exception of the same kind, its message redacted, and a redacted copy of
+    ///     the failure as its cause.
     /// </remarks>
     /// <param name="readStatus">Reads the runtime's version and protocol.</param>
     /// <param name="readAuthentication">Reads the runtime's authentication status.</param>
+    /// <param name="signIn">The sign-in plan the runtime started with, which a refusal explains and a relayed failure is redacted with.</param>
     /// <param name="cancellationToken">Cancels the reads.</param>
-    /// <returns>The runtime's status.</returns>
-    /// <exception cref="InvalidOperationException">The runtime is not signed in; the message says how to sign it in.</exception>
-    /// <exception cref="OperationCanceledException">The reads were canceled.</exception>
-    internal static async Task<GetStatusResponse> VerifyStartedAsync(
+    /// <returns>The runtime's status and authentication status.</returns>
+    /// <exception cref="InvalidOperationException">
+    ///     The runtime is not signed in; the message lists what each sign-in source found and how to
+    ///     sign in. Or a status read failed with an <see cref="InvalidOperationException"/> or an
+    ///     exception a host does not reference, such as the SDK's RPC error, relayed redacted.
+    /// </exception>
+    /// <exception cref="IOException">A status read lost the connection to the runtime, relayed redacted.</exception>
+    /// <exception cref="TimeoutException">A status read timed out, relayed redacted.</exception>
+    /// <exception cref="ObjectDisposedException">The client was disposed during a read; relayed as a cancellation is.</exception>
+    /// <exception cref="OperationCanceledException">
+    ///     The reads were canceled. A cancellation carrying nothing to redact propagates unchanged;
+    ///     otherwise it is rebuilt with the same token, a redacted message and a redacted copy as its
+    ///     cause.
+    /// </exception>
+    internal static async Task<(GetStatusResponse Status, GetAuthStatusResponse Authentication)> VerifyStartedAsync(
         Func<CancellationToken, Task<GetStatusResponse>> readStatus,
         Func<CancellationToken, Task<GetAuthStatusResponse>> readAuthentication,
+        CopilotSignInPlan signIn,
         CancellationToken cancellationToken)
     {
-        var status = await readStatus(cancellationToken).ConfigureAwait(false);
-        var authentication = await readAuthentication(cancellationToken).ConfigureAwait(false);
+        var status = await CopilotSignIn.RelayAsync(() => readStatus(cancellationToken), signIn).ConfigureAwait(false);
+        var authentication = await CopilotSignIn.RelayAsync(() => readAuthentication(cancellationToken), signIn).ConfigureAwait(false);
         return authentication.IsAuthenticated
-            ? status
-            : throw new InvalidOperationException(ExplainUnauthenticated(authentication));
-    }
-
-    /// <summary>
-    ///     Composes the explanation for a runtime that started but is not signed in.
-    /// </summary>
-    /// <remarks>
-    ///     The runtime's own status message comes first. The Copilot CLI's own sign-in is named as not
-    ///     used — the runtime keeps credentials in AgentKit's data directory and the system keychain is
-    ///     off — because a user signed in to the CLI otherwise expects it to apply.
-    /// </remarks>
-    /// <param name="authentication">The runtime's authentication status.</param>
-    /// <returns>The explanation.</returns>
-    internal static string ExplainUnauthenticated(GetAuthStatusResponse authentication)
-    {
-        var status = string.IsNullOrWhiteSpace(authentication.StatusMessage)
-            ? string.Empty
-            : $" (the runtime reports: {authentication.StatusMessage.Trim()})";
-
-        return "The Copilot runtime started but is not signed in to GitHub" + status + ", so AgentKit stopped it. "
-            + "The Copilot CLI's own sign-in is not used: AgentKit keeps the runtime's credentials in its own data "
-            + "directory and the system keychain is not consulted. Sign the runtime in by passing a GitHub token as "
-            + "CopilotRuntimeOptions' gitHubToken; by setting COPILOT_GITHUB_TOKEN, GH_TOKEN or GITHUB_TOKEN in the "
-            + "application's environment; or by signing in to the GitHub CLI ('gh auth login') with gh on PATH. For "
-            + "GitHub Enterprise Cloud with data residency, also set COPILOT_GH_HOST to the account's host.";
+            ? (status, authentication)
+            : throw new InvalidOperationException(CopilotSignIn.ExplainUnauthenticated(signIn, authentication));
     }
 
     /// <summary>
@@ -1022,12 +1207,16 @@ public sealed class CopilotRuntime : IAsyncDisposable
     /// <param name="cancellationToken">Cancels the start.</param>
     /// <returns>A task that completes when the start has completed.</returns>
     /// <exception cref="InvalidOperationException">
-    ///     The start failed. The message reports the runtime's own error and the likely cause; the
-    ///     original failure is the <see cref="Exception.InnerException"/>.
+    ///     The start failed. The message reports the runtime's own error, redacted, and the likely
+    ///     cause; a redacted copy of the original failure is the <see cref="Exception.InnerException"/>.
     /// </exception>
-    /// <exception cref="OperationCanceledException">The start was canceled. It propagates unchanged.</exception>
+    /// <exception cref="OperationCanceledException">
+    ///     The start was canceled. A cancellation carrying nothing to redact propagates unchanged;
+    ///     otherwise it is rebuilt with the same token, a redacted message and a redacted copy as its
+    ///     cause, and a <see cref="TaskCanceledException"/> stays one.
+    /// </exception>
     internal static Task StartClientAsync(Func<CancellationToken, Task> start, CancellationToken cancellationToken) =>
-        StartClientAsync(start, launch: null, cancellationToken);
+        StartClientAsync(start, launch: null, signIn: null, cancellationToken);
 
     /// <summary>
     ///     Runs a client's start and explains its failure.
@@ -1039,25 +1228,47 @@ public sealed class CopilotRuntime : IAsyncDisposable
     /// </remarks>
     /// <param name="start">Starts the client.</param>
     /// <param name="launch">What was launched, or <see langword="null"/> when it is not known.</param>
+    /// <param name="signIn">
+    ///     The sign-in plan whose tokens are redacted from the quoted error, or <see langword="null"/>
+    ///     to redact the process environment's secrets and token-shaped text only.
+    /// </param>
     /// <param name="cancellationToken">Cancels the start.</param>
     /// <returns>A task that completes when the start has completed.</returns>
     /// <exception cref="InvalidOperationException">
-    ///     The start failed. The message reports the runtime's own error and the likely cause; the
-    ///     original failure is the <see cref="Exception.InnerException"/>.
+    ///     The start failed. The message reports the runtime's own error, redacted, and the likely
+    ///     cause; a redacted copy of the original failure (<see cref="CopilotRedactedException"/>:
+    ///     its type name, message and stack trace) is the <see cref="Exception.InnerException"/>.
     /// </exception>
-    /// <exception cref="OperationCanceledException">The start was canceled. It propagates unchanged.</exception>
+    /// <exception cref="OperationCanceledException">
+    ///     The start was canceled. A cancellation carrying nothing to redact propagates unchanged;
+    ///     otherwise it is rebuilt with the same token, a redacted message and a redacted copy as its
+    ///     cause, and a <see cref="TaskCanceledException"/> stays one.
+    /// </exception>
     internal static async Task StartClientAsync(
         Func<CancellationToken, Task> start,
         CopilotRuntimeLaunch? launch,
+        CopilotSignInPlan? signIn,
         CancellationToken cancellationToken)
     {
         try
         {
             await start(cancellationToken).ConfigureAwait(false);
         }
-        catch (Exception failure) when (failure is not OperationCanceledException)
+        catch (OperationCanceledException canceled)
         {
-            throw new InvalidOperationException(ExplainStartFailure(failure, launch), failure);
+            // A clean cancellation keeps its stack; one carrying a cause or a token is rebuilt redacted
+            var relayed = CopilotSignIn.RedactRelayed(canceled, signIn);
+            if (ReferenceEquals(relayed, canceled))
+            {
+                throw;
+            }
+
+            throw relayed;
+        }
+        catch (Exception failure)
+        {
+            // The runtime's error is quoted redacted, and kept as the cause only as a redacted copy
+            throw new InvalidOperationException(ExplainStartFailure(failure, launch, signIn), CopilotSignIn.RedactFailure(failure, signIn));
         }
     }
 
@@ -1077,11 +1288,19 @@ public sealed class CopilotRuntime : IAsyncDisposable
     ///     so an authentication or network failure can be traced. A failure whose message is null is
     ///     still explained.
     ///     </para>
+    ///     <para>
+    ///     The whole explanation is redacted: every token <paramref name="signIn"/> knows (the start
+    ///     token, the environment's token values, and each session token the host's provider
+    ///     returned), and any text shaped like a GitHub token, is removed from the runtime's error and
+    ///     from the CLI path the cause names alike. The protocol mismatch is detected on the error as
+    ///     raised.
+    ///     </para>
     /// </remarks>
     /// <param name="failure">The failure the start raised.</param>
     /// <param name="launch">What was launched, or <see langword="null"/> when it is not known.</param>
+    /// <param name="signIn">The sign-in plan whose tokens are redacted, or <see langword="null"/> to redact the process environment's secrets and token-shaped text only.</param>
     /// <returns>The explanation.</returns>
-    internal static string ExplainStartFailure(Exception failure, CopilotRuntimeLaunch? launch)
+    internal static string ExplainStartFailure(Exception failure, CopilotRuntimeLaunch? launch, CopilotSignInPlan? signIn)
     {
         var message = failure.Message;
         string cause;
@@ -1104,11 +1323,14 @@ public sealed class CopilotRuntime : IAsyncDisposable
             };
         }
 
-        return "The Copilot runtime could not start: " + message + " " + cause + " The runtime receives none of the "
+        return CopilotSignIn.Redact(
+            signIn,
+            "The Copilot runtime could not start: " + message + " " + cause + " The runtime receives none of the "
             + "host's COPILOT_ or GITHUB_COPILOT_ variables except "
-            + string.Join(", ", PassThroughVariables.Order(StringComparer.Ordinal)) + "; it authenticates with the token "
-            + "in CopilotRuntimeOptions, COPILOT_GITHUB_TOKEN, GH_TOKEN, GITHUB_TOKEN or the signed-in GitHub CLI user. "
-            + "The inner exception carries the runtime's own error.";
+            + string.Join(", ", PassThroughVariables.Order(StringComparer.Ordinal)) + "; it signs in with, in order, "
+            + "CopilotRuntimeOptions' gitHubToken or gitHubTokenProvider, COPILOT_GITHUB_TOKEN, GH_TOKEN or GITHUB_TOKEN, "
+            + "the user's Copilot CLI sign-in, a sign-in stored in its data directory, or the signed-in GitHub CLI user. "
+            + "The inner exception carries the runtime's own error, redacted, with its type name and stack trace.");
     }
 
     /// <summary>
