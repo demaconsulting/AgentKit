@@ -177,36 +177,20 @@ decision, and `file_list` does, as described under *Composing a Tool List* below
 
 Every containment decision is made on the normalized absolute location a path denotes, with `.`
 and `..` segments collapsed, so a path that merely spells its way out of the granted location is
-refused. `TryResolveRead`, `TryResolveWrite` and `EnumerateFiles` do not follow or detect symbolic
-links and other reparse points. Two exceptions are deliberate. `file_delete_directory` and
-`file_move_directory` refuse a path they are asked to reach *through* a link that leaves the
-permitted location, because there the content at stake is a whole tree rather than a single entry.
-And `image_view` (its input) and `diagram_render` (its `save_as` destination) use the
-link-following decisions described next.
-
-**Decisions that follow links.** `PathPolicy.TryResolveReadFollowingLinks` and
-`PathPolicy.TryResolveWriteFollowingLinks` take the ordinary decision first and then also require a
-grant of the required access to permit the location the path reaches through its symbolic links
-and junctions; the grant's denied patterns apply to the names that location carries. A link from
-one granted location into another is permitted, as is a grant whose root the application spelled
-through a link (every macOS temporary folder lies beneath the `/var` link). On success the
-location is reported as the caller spelled it, and a refusal never names where the link leads. A
-custom tool that opens or creates a file itself, and must not be steered out of the grants by a
-link, can use these instead of the lexical decisions. `RealPathResolver.ResolveLinks` is the
-resolution they are built on.
+refused. Symbolic links and other reparse points are not followed and not detected, with one
+deliberate exception: `file_delete_directory` and `file_move_directory` refuse a path they are
+asked to reach *through* a link that leaves the permitted location, because there the content at
+stake is a whole tree rather than a single entry.
 
 **The policy is a guardrail, not a sandbox.** A tool cannot express an operation the policy
 forbids, but AgentKit does not replace operating-system isolation for untrusted code, and because
-path resolution is lexical for most tools, a link is not a general protection boundary. The link
-refusal of the two destructive directory tools is a **pre-flight check over paths**: the path a
-caller names is classified, and the recursive delete additionally refuses any link its walk
-discovers, both before anything is touched. It is not a race-resistant control. A process able to
-write inside a granted location can replace a component after the check, and no path-based API can
-close that window, though no removal these tools issue follows a link, so what a race costs is
-bounded by a single entry rather than a tree. The link-following decisions are pre-flight checks
-in the same sense: they refuse a link that is already in place, but a component replaced between
-the check and the tool's open or create is not covered, because portable .NET offers no
-handle-relative, no-follow open.
+path resolution is lexical, a link is not a general protection boundary. The link refusal of the
+two destructive directory tools is a **pre-flight check over paths**: the path a caller names is
+classified, and the recursive delete additionally refuses any link its walk discovers, both before
+anything is touched. It is not a race-resistant control. A process able to write inside a granted
+location can replace a component after the check, and no path-based API can close that window,
+though no removal these tools issue follows a link, so what a race costs is bounded by a single
+entry rather than a tree.
 
 **A directory request is judged at every level it would create.** `file_create_directory` asks the
 write decision about every missing directory it would create, not only the one named, so a request

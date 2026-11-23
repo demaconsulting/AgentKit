@@ -21,8 +21,8 @@ what keeps them alike:
 3. **Every failure is shaped** into text with a stable code, a location, the offending line with a
    caret, model-facing advice and every note — with host paths removed — and a picture that would
    mislead a model is promoted to a failure.
-4. **Every saved picture** goes only where the link-following write decision permits, replacing an
-   earlier one in one step.
+4. **Every saved picture** goes only where the write decision permits, replacing an earlier one in
+   one step.
 
 The subsystem contains four units and three supporting types:
 

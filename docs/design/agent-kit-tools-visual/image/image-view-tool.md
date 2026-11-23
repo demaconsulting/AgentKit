@@ -38,13 +38,12 @@ on the end of the name because one supported extension, `.vl.json`, has two part
 ##### The view, in order
 
 1. A missing path, a page below 1 or a width below 1 is refused as `InvalidRequest`.
-2. `PathPolicy.TryResolveReadFollowingLinks(path)`: the rendering library never judges the file it
-   is asked to draw, so this is the input's only judgment, and it is taken before anything is
-   learned about the file. The decision follows links, because the tool opens the file itself and
-   an open follows them: a symbolic link or junction inside a grant that leads outside every grant
-   is refused rather than read through. The policy's refusal is returned unchanged as
-   `PathNotPermitted`, identical whether or not the file exists. Like every path check it is a
-   pre-flight check: a component replaced between this decision and step 6's open is not covered.
+2. `PathPolicy.TryResolveRead(path)`: the rendering library never judges the file it is asked to
+   draw, so this is the input's only judgment, and it is taken before anything is learned about the
+   file. The policy's refusal is returned unchanged as `PathNotPermitted`, identical whether or not
+   the file exists. The decision is lexical: a symbolic link or junction inside a grant can lead the
+   input outside the grants, the same as for `text_file_read`; see *AgentKitToolsVisual System
+   Design*, *Known Limitations*.
 3. A directory is refused as `InvalidRequest`.
 4. A name `IsViewable` rejects is refused through `ImageMediaTypes.DenyUnsupportedType`, so the
    family answers "what is this file" in one voice.

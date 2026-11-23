@@ -2,7 +2,7 @@ package AgentKitToolsVisual_ImageViewTool {
     private import SoftwareItemMetadata::*;
 
     part def ImageViewTool {
-        doc /* Publishes the image_view tool, drawing one document, drawing or diagram file the access policy permits the agent to read - SVG, PDF, PPTX, VSDX, Mermaid, PlantUML, Vega-Lite, OpenSCAD or a raster image - to an opaque PNG returned as image content with a caption naming the format, the page of the page count, the size and every note: it judges the input by the link-following read decision before learning anything about it, reads it once within the binary ceiling and draws those bytes with the file's own folder as the base of its references, reports a file it cannot draw as shaped text naming no help topic, and refuses a malformed request, an unsupported type or an oversized file or picture. */
+        doc /* Publishes the image_view tool, drawing one document, drawing or diagram file the access policy permits the agent to read - SVG, PDF, PPTX, VSDX, Mermaid, PlantUML, Vega-Lite, OpenSCAD or a raster image - to an opaque PNG returned as image content with a caption naming the format, the page of the page count, the size and every note: it judges the input by the read decision before learning anything about it, reads it once within the binary ceiling and draws those bytes with the file's own folder as the base of its references, reports a file it cannot draw as shaped text naming no help topic, and refuses a malformed request, an unsupported type or an oversized file or picture. */
 
         metadata info : SoftwareInfo {
             sourceFiles = ("src/DemaConsulting.AgentKit.Tools.Visual/Image/ImageViewTool.cs");

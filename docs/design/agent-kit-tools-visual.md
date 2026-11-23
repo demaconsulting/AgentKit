@@ -141,9 +141,8 @@ another. The family adds two controls of its own:
 Drawing a document or a diagram adds controls of its own, all held in the Rendering subsystem:
 
 - **The input is judged first** — the rendering library never judges the file it is asked to draw,
-  so `image_view` takes the link-following read decision for it before anything is learned about
-  it, so a link inside a grant cannot lead the read outside every grant, and draws the bytes it
-  read rather than handing the library a path. `diagram_render` takes no path at all:
+  so `image_view` takes the read decision for it before anything is learned about it, and draws
+  the bytes it read rather than handing the library a path. `diagram_render` takes no path at all:
   its source is given inline, bounded by the read ceiling, and its relative references resolve
   against the working directory only when the agent may read it.
 - **Referenced files are confined** — every picture, include and data file a document references
@@ -177,8 +176,7 @@ Drawing a document or a diagram adds controls of its own, all held in the Render
 **Drawing path:**
 
 1. **Input**: A path the model names, and optionally a page and a width
-2. **Read decision**: The access policy permits the file, both as spelled and where its links
-   lead, or the policy's refusal is returned
+2. **Read decision**: The access policy permits the file, or the policy's refusal is returned
 3. **Read**: The file is read once, within the binary ceiling
 4. **Render**: The renderer draws those bytes under the mapped file-access policy, with the file's
    own folder as the base its references resolve against, within every bound
@@ -188,8 +186,8 @@ Drawing a document or a diagram adds controls of its own, all held in the Render
 
 1. **Input**: A language, inline source, and optionally a destination and a width
 2. **Request checks**: The language must be offered, the source within the read ceiling, and a
-   destination — required in text preview — permitted by the link-following write decision, before
-   anything is drawn
+   destination — required in text preview — permitted by the write decision, before anything is
+   drawn
 3. **Render**: The renderer draws the source under the mapped file-access policy, with the working
    directory, when readable, as the base its references resolve against, within every bound
 4. **Save**: A destination is written atomically, replacing an earlier picture
@@ -258,6 +256,13 @@ and handled here rather than fixed here. They apply to `image_view` and `diagram
   reads as dark text on black. Every render therefore sets an opaque white background.
 - **A platform that cannot report the real path of an opened file** (Linux without `/proc`) has
   every referenced file refused, because the mapped policy needs the real path; it fails closed.
+
+Apart from the library, one limitation of the access policy applies to both tools. `PathPolicy`
+decides containment lexically, on a path as it is spelled, so a symbolic link or junction inside a
+grant can lead the file `image_view` is asked to draw, or the `save_as` destination of
+`diagram_render`, outside the grants; the same holds for `text_file_read` and `text_file_write`.
+Files referenced from inside a picture stay confined, because the mapped file-access policy checks
+their real path. Link-following confinement for all path tools is tracked as a follow-up change.
 
 ### Platform Support
 

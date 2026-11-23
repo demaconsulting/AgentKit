@@ -197,7 +197,6 @@ reviews:
       - "src/DemaConsulting.AgentKit.Core/RealPathResolver.cs"      # unit source
       - "test/DemaConsulting.AgentKit.Core.Tests/RealPathResolverTests.cs"  # unit tests
       - "test/DemaConsulting.AgentKit.Core.Tests/TempDirectoryFixture.cs"   # temporary-directory test fixture
-      - "test/DemaConsulting.AgentKit.Core.Tests/DirectoryLink.cs"          # directory-link test fixture
 
   # AgentKitCore-ToolLimits Review (one per unit)
   - id: AgentKitCore-ToolLimits

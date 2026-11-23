@@ -48,20 +48,6 @@ sections:
                 tests:
                   - ImageViewTool_View_PathOutsideThePolicy_IsRefusedBeforeAnyRead
 
-              - id: AgentKitToolsVisual-Image-ViewTool-InputLinkConfined
-                title: >-
-                  The view tool shall refuse a file it is asked to draw when the location the path
-                  reaches through a symbolic link or directory junction is not one the access policy
-                  permits the agent to read, before the file is read.
-                tags: [security]
-                justification: |
-                  The tool opens the input itself, and an open follows links. A link spelled
-                  inside a granted location could otherwise lead the tool to draw, and so return,
-                  a file outside every grant. Judging where the path leads closes that standing
-                  escape; the check is taken before the open, as every path check is.
-                tests:
-                  - ImageViewTool_View_InputThroughLinkLeavingTheGrant_IsRefused
-
               - id: AgentKitToolsVisual-Image-ViewTool-DrawsEachFormat
                 title: >-
                   The view tool shall draw an SVG, a PDF, a Mermaid, PlantUML, Vega-Lite or

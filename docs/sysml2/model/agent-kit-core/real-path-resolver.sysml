@@ -2,7 +2,7 @@ package AgentKitCore_RealPathResolver {
     private import SoftwareItemMetadata::*;
 
     part def RealPathResolver {
-        doc /* Resolves a path to an absolute, normalized location, with relative segments collapsed, so that containment is judged between locations spelled the same way, and, for the link-following decisions, resolves the location a path reaches once every symbolic link and directory junction on it is followed. */
+        doc /* Resolves a path to an absolute, normalized location, with relative segments collapsed, so that containment is judged between locations spelled the same way. */
 
         metadata info : SoftwareInfo {
             sourceFiles = ("src/DemaConsulting.AgentKit.Core/RealPathResolver.cs");

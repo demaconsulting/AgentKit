@@ -21,16 +21,14 @@ Unit tests reside in `Diagram/DiagramRenderToolTests.cs` within the
 - **Execution**: `dotnet test` invoked by `build.ps1` and the CI pipeline
 - **Dependencies**: The CanvasNet Viewer and its help catalog, in process
 - **File system**: A temporary tree per test that references or saves a file, with a permitted root
-  and a sibling outside it; the link scenario adds a real link (an NTFS junction on Windows, a
-  symbolic link elsewhere) and fails rather than skips when it cannot be created
+  and a sibling outside it
 - **Isolation**: Each test builds its own tool over a fresh renderer
 
 #### Acceptance Criteria
 
-A unit test run passes when all eighteen scenarios below pass without error or exception beyond
+A unit test run passes when all seventeen scenarios below pass without error or exception beyond
 those explicitly asserted. A language not drawn as an opaque PNG, a saved file that differs from the
-picture or is not replaced, an unusable destination written, anything written outside the grant
-through a link, a text preview without its description
+picture or is not replaced, an unusable destination written, a text preview without its description
 or its required `save_as`, a reference outside the grant drawn, a malformed or oversized request not
 refused with its reason, a broken source not reported with its location, caret and help topic, an
 empty picture shown, a note missing from the caption, a width not applied or not reduced, or a slow
@@ -79,14 +77,6 @@ Saving over a file holding text leaves a PNG there and no other file in the fold
 
 A `.jpg` is refused as `InvalidRequest`, `../outside/flow.png` and a save under a read-only policy as
 `PathNotPermitted`, and a missing folder as `TargetNotFound`; no file is written anywhere.
-
-##### AgentKitToolsVisual-Diagram-RenderTool-SaveAsCheckedFirst: A save_as Through a Link Writes Nothing Outside
-
-**Test**: `DiagramRenderTool_Render_SaveAsThroughLinkLeavingTheGrant_WritesNothingOutside`
-
-A link inside the writable grant points at an empty folder outside it. Saving to `jn/flow.png` is
-refused as `PathNotPermitted`, and the outside folder holds no entry afterwards — neither the
-picture nor a temporary file.
 
 ##### AgentKitToolsVisual-Diagram-RenderTool-TextPreviewDescribes: Text Preview Requires save_as
 

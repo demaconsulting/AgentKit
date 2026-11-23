@@ -42,19 +42,3 @@ sections:
             tests:
               - RealPathResolver_Resolve_NullPath_ThrowsArgumentNullException
               - RealPathResolver_Resolve_EmptyPath_ThrowsArgumentException
-              - RealPathResolver_ResolveLinks_NullOrEmpty_Throws
-
-          - id: AgentKitCore-RealPathResolver-FollowsLinks
-            title: >-
-              The RealPathResolver shall report the location a path reaches once every symbolic link
-              and directory junction on it is followed, including for a path that does not yet exist
-              beneath a linked folder.
-            justification: |
-              A decision that must not be steered through a link has to judge where a path really
-              leads rather than how it is spelled. A write decision is made before the file exists,
-              so a file not yet created beneath a linked folder must still resolve to the folder's
-              real location followed by its name.
-            tests:
-              - RealPathResolver_ResolveLinks_LinkedDirectory_ReturnsTargetLocation
-              - RealPathResolver_ResolveLinks_NonExistentFileUnderLinkedParent_ReturnsTargetParentAndName
-              - RealPathResolver_ResolveLinks_NoLinks_IsIdempotent

@@ -98,29 +98,6 @@ public class RenderDestinationTests
     }
 
     /// <summary>
-    ///     Proves a destination beneath a link inside the grant that leads outside it is refused by
-    ///     the write decision, and nothing is written outside.
-    /// </summary>
-    [Fact]
-    public void RenderDestination_TryResolve_ParentLinkLeavingTheGrant_IsRefused()
-    {
-        // Arrange: a junction (Windows) or symbolic link (elsewhere) inside the writable grant,
-        // pointing at an empty folder outside it
-        using var fixture = new TempDirectoryFixture();
-        using var link = DirectoryLink.Create(Path.Combine(fixture.Root, "jn"), fixture.Outside);
-        var policy = RenderSamples.Policy(fixture.Root);
-
-        // Act: name a destination beneath the link
-        var resolved = RenderDestination.TryResolve(policy, "jn/figure.png", out var destination, out var denial);
-
-        // Assert: refused as not permitted, and the outside folder is still empty
-        Assert.False(resolved);
-        Assert.Null(destination);
-        Assert.StartsWith("Denied (PathNotPermitted)", Assert.IsType<string>(denial), StringComparison.Ordinal);
-        Assert.Empty(Directory.GetFileSystemEntries(fixture.Outside));
-    }
-
-    /// <summary>
     ///     Proves a picture is written to a permitted destination, reported relative to the
     ///     workspace, and replaces an earlier one of the same name.
     /// </summary>

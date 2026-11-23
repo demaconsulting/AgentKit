@@ -17,15 +17,13 @@ Unit tests reside in `Rendering/RenderDestinationTests.cs` within the
 - **Framework**: xUnit v3 running under the .NET SDK
 - **Execution**: `dotnet test` invoked by `build.ps1` and the CI pipeline
 - **Dependencies**: No external services or network access required
-- **File system**: A temporary tree per test; the link scenario adds a real link (an NTFS junction on
-  Windows, a symbolic link elsewhere) and fails rather than skips when it cannot be created
+- **File system**: A temporary tree per test
 - **Isolation**: Each test creates its own tree and policy
 
 #### Acceptance Criteria
 
-A unit test run passes when all seven scenarios below pass without error or exception beyond those
-explicitly asserted. A non-PNG name accepted, a write the policy refuses accepted, a destination
-beneath a link that leaves the grant accepted or written to, a directory or a
+A unit test run passes when all six scenarios below pass without error or exception beyond those
+explicitly asserted. A non-PNG name accepted, a write the policy refuses accepted, a directory or a
 missing parent accepted, a directory created, an existing picture not replaced, or a temporary file
 left behind each constitute a failure.
 
@@ -43,13 +41,6 @@ left behind each constitute a failure.
 
 Under a read-only grant, `figure.png` is refused as `PathNotPermitted` with the policy's own text,
 which marks the location read-only.
-
-##### AgentKitToolsVisual-Rendering-RenderDestination-LinkConfined: A Linked Folder Leaving the Grant Is Refused
-
-**Test**: `RenderDestination_TryResolve_ParentLinkLeavingTheGrant_IsRefused`
-
-A link inside the writable grant points at an empty folder outside it. `jn/figure.png` is refused
-as `PathNotPermitted`, no destination is returned, and the outside folder is still empty.
 
 ##### AgentKitToolsVisual-Rendering-RenderDestination-NotADirectory: A Directory Is Refused
 

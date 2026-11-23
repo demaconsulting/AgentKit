@@ -326,30 +326,6 @@ public class ImageViewToolTests
     }
 
     /// <summary>
-    ///     Proves a file reached through a link inside the grant that leads outside it is refused
-    ///     before it is read, and the refusal names no outside location.
-    /// </summary>
-    /// <returns>A task that completes when the scenario has been verified.</returns>
-    [Fact]
-    public async Task ImageViewTool_View_InputThroughLinkLeavingTheGrant_IsRefused()
-    {
-        // Arrange: a drawable file outside the grant, reachable through a junction (Windows) or
-        // symbolic link (elsewhere) spelled inside it
-        using var fixture = new TempDirectoryFixture();
-        TempDirectoryFixture.WriteFile(fixture.Outside, "secret.svg", RenderSamples.Svg);
-        using var link = DirectoryLink.Create(Path.Combine(fixture.Root, "jn"), fixture.Outside);
-        var tool = CreateTool(RenderSamples.Policy(fixture.Root));
-
-        // Act: view it through the link
-        var result = await InvokeAsync(tool, new() { ["path"] = "jn/secret.svg" });
-
-        // Assert: the policy's refusal rather than a picture, naming no outside location
-        var text = Assert.IsType<string>(result);
-        Assert.StartsWith("Denied (PathNotPermitted)", text, StringComparison.Ordinal);
-        Assert.DoesNotContain(fixture.Outside, text, StringComparison.OrdinalIgnoreCase);
-    }
-
-    /// <summary>
     ///     Builds the content of a sample file of the named kind.
     /// </summary>
     /// <param name="fileName">The file's name.</param>

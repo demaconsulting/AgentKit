@@ -12,24 +12,21 @@ JSON, decoded, and its corner checked for opacity.
 
 Unit tests reside in `Image/ImageViewToolTests.cs` within the
 `DemaConsulting.AgentKit.Tools.Visual.Tests` project, using `TempDirectoryFixture.cs`,
-`DirectoryLink.cs`, `Image/ImageTestImages.cs` and `Rendering/RenderSamples.cs`.
+`Image/ImageTestImages.cs` and `Rendering/RenderSamples.cs`.
 
 #### Test Environment
 
 - **Framework**: xUnit v3 running under the .NET SDK
 - **Execution**: `dotnet test` invoked by `build.ps1` and the CI pipeline
 - **Dependencies**: The CanvasNet Viewer, in process
-- **File system**: A temporary tree per test, with a permitted root and a sibling outside it; the
-  link scenario adds a real link (an NTFS junction on Windows, a symbolic link elsewhere) and fails
-  rather than skips when it cannot be created
+- **File system**: A temporary tree per test, with a permitted root and a sibling outside it
 - **Isolation**: Each test builds its own tool over a fresh renderer
 
 #### Acceptance Criteria
 
-A unit test run passes when all fifteen scenarios below pass without error or exception beyond
+A unit test run passes when all fourteen scenarios below pass without error or exception beyond
 those explicitly asserted. A supported file not returned as an opaque PNG, a wrong page or page
 count, a width not applied, a file outside the policy read or distinguished by its existence, a
-file read through a link that leaves the grant, a
 malformed request not refused with its reason, a ceiling not applied, a broken file not reported
 with its location or naming a help topic or a host path, a note missing from the caption, or a
 reference outside the grant drawn each constitute a failure.
@@ -81,14 +78,6 @@ A width of 300 draws a 200 by 100 SVG at 300 by 150; a width of 0 is refused.
 
 An existing and a missing file outside the grant are both refused as `PathNotPermitted`, with texts
 identical apart from the name, so the refusal reveals nothing about existence.
-
-##### AgentKitToolsVisual-Image-ViewTool-InputLinkConfined: A File Reached Through a Link Leaving the Grant Is Refused
-
-**Test**: `ImageViewTool_View_InputThroughLinkLeavingTheGrant_IsRefused`
-
-A drawable SVG outside the grant is reached through a link spelled inside it. Viewing the spelled
-path returns the policy's `PathNotPermitted` refusal rather than a picture, and the refusal does
-not name the outside directory.
 
 ##### AgentKitToolsVisual-Image-ViewTool-RefusesMalformedRequests: Malformed Requests Are Refused
 

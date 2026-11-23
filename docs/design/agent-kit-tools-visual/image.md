@@ -256,9 +256,7 @@ relative name is measured against. An absolute path remains expressible and rema
 same containment decision.
 
 **One read decision per source, one independent write decision per destination.** All four tools
-consult a read decision for the file they are asked to look at — `TryResolveRead` for the three
-byte tools, and `TryResolveReadFollowingLinks` for `ImageViewTool`, which also judges where a link
-leads — and both region tools —
+consult `TryResolveRead` for the file they are asked to look at, and both region tools —
 `ImageCropTool` and `ImageAutoCropTool` — additionally consult `TryResolveWrite` for a destination
 they are asked to write. The two are taken separately
 and neither is derived from the other, so a path an agent may read is refused for writing unless a
@@ -325,9 +323,8 @@ tool refuses because a provider cannot render it, so the read tool's refusal of 
 tool the model actually has. That is why the pack creates all four in the one place the family
 prefix is claimed, rather than leaving the pairing to each application's composition code.
 
-**Drawing a file the provider cannot render.** `ImageViewTool` takes the link-following read
-decision for the file itself first — the rendering library never judges the file it is asked to
-draw, and a link inside a grant must not lead the read outside every grant — then reads it once
+**Drawing a file the provider cannot render.** `ImageViewTool` takes the read decision for the file
+itself first — the rendering library never judges the file it is asked to draw — then reads it once
 within the binary ceiling and hands those same bytes, never the path, to the pack's
 `VisualRenderer`. The file's own folder is the base its references resolve against, and
 `VisualAccess` confines every file it references to what the agent may read. A picture is returned

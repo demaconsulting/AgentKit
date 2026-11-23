@@ -39,10 +39,6 @@ Unit tests reside in `PathPolicyTests.cs` within the `DemaConsulting.AgentKit.Co
 - **Execution**: `dotnet test` invoked by `build.ps1` and the CI pipeline
 - **File system**: A temporary directory tree created per test through `TempDirectoryFixture`,
   with real files written into both granted locations and locations outside them
-- **Links**: The link-following scenarios create a real link inside the temporary tree with
-  `DirectoryLink` — an NTFS junction on Windows, which needs no privilege, and a symbolic link
-  elsewhere — and fail rather than skip when it cannot be created, because a skipped test leaves
-  no passing result
 - **Unresolvable input**: A path containing an embedded null character provides a portable,
   deterministic way to exercise the "location cannot be determined" path
 - **Mocking**: None
@@ -50,7 +46,7 @@ Unit tests reside in `PathPolicyTests.cs` within the `DemaConsulting.AgentKit.Co
 
 ### Acceptance Criteria
 
-A unit test run passes when all sixty-five scenarios below pass without error or exception beyond those explicitly
+A unit test run passes when all fifty-nine scenarios below pass without error or exception beyond those explicitly
 asserted. Any escaping path that is permitted, any excluded file that appears in a listing, any relative request
 resolved against the process working directory, any missing working directory accepted, any null grant accepted, any
 empty grant set permitting access, any read-only grant authorizing a write, any denial that fails to echo and enumerate
@@ -154,53 +150,6 @@ permission".
 
 Constructs wide read access plus a narrower read-write grant. The outside location is readable but
 not writable, proving read permission never implies write permission.
-
-#### AgentKitCore-PathPolicy-LinkFollowingDecision: A Read Through a Link Leaving the Grant Is Refused
-
-**Test**: `PathPolicy_TryResolveReadFollowingLinks_LinkLeavingTheGrant_IsDenied`
-
-Written as a contrast. A link inside the grant points at a secret outside it; the lexical read
-decision is asserted to permit the spelled path, and the link-following read decision is asserted
-to refuse it with the link reason, hand back no location, and name neither the outside directory
-nor its resolved location.
-
-#### AgentKitCore-PathPolicy-LinkFollowingDecision: A Write Beneath a Linked Folder Leaving the Grant Is Refused
-
-**Test**: `PathPolicy_TryResolveWriteFollowingLinks_ParentLinkLeavingTheGrant_IsDenied`
-
-A contrast for writing: a file not yet created beneath a link that leads to an empty folder
-outside the grant is permitted by the lexical write decision and refused by the link-following
-one, and the outside folder is asserted to stay empty.
-
-#### AgentKitCore-PathPolicy-LinkFollowingDecision: A Link Into a Read-Only Grant Permits Reading Only
-
-**Test**: `PathPolicy_TryResolveWriteFollowingLinks_LinkIntoReadOnlyGrant_IsDenied`
-
-A writable root holds a link into a second location granted read-only. A read through the link is
-permitted, and a write through it is refused, because no read-write grant permits where it leads.
-
-#### AgentKitCore-PathPolicy-LinkFollowingDecision: A Link Cannot Rename a Denied Folder
-
-**Test**: `PathPolicy_TryResolveReadFollowingLinks_LinkIntoDeniedFolder_IsDenied`
-
-A link with an innocent name leads to a folder inside the grant that a denied pattern withholds.
-The lexical decision permits the spelled path; the link-following decision refuses it, because the
-grant's denied patterns apply to the names the linked location carries.
-
-#### AgentKitCore-PathPolicy-LinkFollowingDecision: A Link Within the Grant Is Permitted and Reported as Spelled
-
-**Test**: `PathPolicy_TryResolveReadFollowingLinks_LinkWithinTheGrant_IsPermittedAndReportsSpelledLocation`
-
-The positive control: a link from one folder of the grant to another is permitted, and the location
-handed back is the lexical one the caller spelled, exactly as the lexical decision reports it.
-
-#### AgentKitCore-PathPolicy-LinkedGrantRoot: A Grant Rooted Through a Link Permits Its Files
-
-**Test**: `PathPolicy_TryResolveReadFollowingLinks_GrantRootReachedThroughLink_IsPermitted`
-
-A portable form of the macOS `/var` case: the grant root is itself a link to another folder. A read
-of an existing file and a write of a new one beneath the root are both permitted, and the read is
-reported beneath the root as spelled.
 
 #### AgentKitCore-PathPolicy-WriteGrantVisible: A Policy With No Grants Reports Nothing Writable
 

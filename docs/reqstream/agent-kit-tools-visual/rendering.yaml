@@ -102,7 +102,6 @@ sections:
             children:
               - AgentKitToolsVisual-Rendering-RenderDestination-MustBePng
               - AgentKitToolsVisual-Rendering-RenderDestination-WriteDecision
-              - AgentKitToolsVisual-Rendering-RenderDestination-LinkConfined
               - AgentKitToolsVisual-Rendering-RenderDestination-NotADirectory
               - AgentKitToolsVisual-Rendering-RenderDestination-ParentMustExist
               - AgentKitToolsVisual-Rendering-RenderDestination-ReplacesAtomically
