@@ -156,11 +156,12 @@ bundled runtime or when its output named none). It travels from `ResolveLaunchAs
    valid host when no `gitHubHost` was given, refuses the start here, before any runtime process.
 6. Build the client options (`BuildClientOptions`) from the options, the prepared directory, the
    environment, the resolved CLI path and the sign-in plan.
-7. Create the client and start it through `StartOwnedAsync`, whose start step is `StartClientAsync`
-   over the client's own start with the launch and the sign-in plan, followed by
-   `VerifyStartedAsync` over the client's
-   status and authentication reads and the sign-in plan. A failed, canceled or unauthenticated start
-   disposes the client.
+7. Create the client through `CopilotSignIn.RelayAsync` with the sign-in plan — the SDK's constructor
+   is SDK code under the sink rule, so a failure is relayed redacted — and start it through
+   `StartOwnedAsync`, which takes ownership with nothing run in between. Its start step is
+   `StartClientAsync` over the client's own start with the launch and the sign-in plan, followed by
+   `VerifyStartedAsync` over the client's status and authentication reads and the sign-in plan. A
+   failed, canceled or unauthenticated start disposes the client.
 8. Return a runtime over the started client, carrying the launch, the status, the sign-in plan and the
    authentication status, and log the sign-in through the host's logger (`CopilotSignIn.Report`, which
    redacts every entry).
@@ -181,14 +182,15 @@ the prepared data directory and is signed in; the caller owns the runtime and di
    discovery (`CopilotCli.FindInstalled(context)`), refusing with `CopilotCli.ExplainNotFound` when it
    finds none. `COPILOT_CLI_PATH` is never read.
 3. Read the CLI's version (`CopilotCli.ReadVersionAsync`), passing `BuildRuntimeEnvironment` of the host's environment,
-   so the probe runs under the runtime's own environment and data directory. A version below `CopilotCli.MinimumVersion`
+   so the probe runs under the runtime's own environment and data directory, and `options.GitHubToken` as the host's
+   token for the probe to redact. A version below `CopilotCli.MinimumVersion`
    is refused with `CopilotCli.ExplainTooOld`. Output that names no version is accepted, because the SDK's protocol
    handshake at start is authoritative and fails closed.
 4. Return an installed launch with the path and the version.
 
 Every refusal in steps 2 and 3 is redacted with `CopilotSignInSecrets.FromEnvironment(hostEnvironment,
 options.GitHubToken)` — no sign-in exists yet — so a path from the options, `PATH` or discovery never
-quotes a secret; the version probe redacts its own refusals with its environment's secrets.
+quotes a secret; the version probe redacts its own refusals with its environment's secrets and the host's token.
 
 The search context and the process runner are parameters, so every outcome is tested on a fake
 machine without a CLI.

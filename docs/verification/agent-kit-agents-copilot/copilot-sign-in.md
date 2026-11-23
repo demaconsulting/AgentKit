@@ -58,10 +58,11 @@ project.
   framework
 - **File system**: A root folder under the system temporary folder per test, holding the fake user's
   profile, the data directory and every helper home, deleted afterwards
-- **Isolation**: No test reads or changes the user's own profile. No test reads or changes the process environment,
-  with one documented exception: `CopilotSignIn_Redact_WithoutAPlan_RemovesTheProcessEnvironmentsSecrets`, in the
-  `ProcessEnvironment` collection, which runs alone, sets `GITHUB_ENTERPRISE_TOKEN` to a value of its own — a variable
-  no other unit test's logic reads — and restores it afterwards
+- **Isolation**: No test reads or changes the user's own profile. Tests that pass no sign-in let the code read the
+  process environment's secret variables, so it can redact their values, and no assertion depends on them. Only
+  `CopilotSignIn_Redact_WithoutAPlan_RemovesTheProcessEnvironmentsSecrets` changes the environment: it is in the
+  `ProcessEnvironment` collection, runs alone, sets `GITHUB_ENTERPRISE_TOKEN` to a value of its own — a variable no
+  other unit test's logic reads — and restores it afterwards
 
 ### Acceptance Criteria
 

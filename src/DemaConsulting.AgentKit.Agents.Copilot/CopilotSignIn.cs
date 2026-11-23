@@ -84,7 +84,7 @@ namespace DemaConsulting.AgentKit.Agents.Copilot;
 ///     <see cref="CopilotRedactingLogger"/>. The redactor is the resolved plan's; while the sign-in
 ///     resolves, the environment's secrets and the host's token
 ///     (<see cref="CopilotSignInSecrets.FromEnvironment(IDictionary, string?)"/>); for a version probe,
-///     its own environment's; and with no plan and no environment in hand — only a client built
+///     its own environment's and the host's token; and with no plan and no environment in hand — only a client built
 ///     outside <see cref="CopilotRuntime.StartAsync"/> — the process environment's
 ///     (<see cref="CopilotSignInSecrets.Ambient"/>). Left as they are, by design: a value the host
 ///     passed, reflected back in its own argument validation; the host's own token provider's
@@ -1615,7 +1615,8 @@ internal sealed class CopilotSignInSecrets
     /// </summary>
     /// <remarks>
     ///     The redactor of what a probe of the installed CLI could echo: its environment is all it was
-    ///     given.
+    ///     given. The probe adds the host's token, which a CLI path taken from the host's options could
+    ///     quote.
     /// </remarks>
     /// <param name="environment">The environment, such as the one a version probe runs with.</param>
     /// <returns>The secrets.</returns>

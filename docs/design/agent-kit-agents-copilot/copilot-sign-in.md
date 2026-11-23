@@ -94,9 +94,9 @@ redacted, so the set is read under a lock. `FromEnvironment(environment, hostTok
 environment holds: the value of each `SecretVariables` variable, read with the platform's name
 comparison, and the host's token. It is the redactor of text quoted while a sign-in is resolving. An
 overload over an `IReadOnlyDictionary<string, string>` builds the set a spawned process's environment
-holds, the redactor of a version probe's text. `Ambient()` is `FromEnvironment` of the process
-environment, read when it is called: the redactor of last resort, for a client built outside
-`StartAsync` that has neither a plan nor an environment in hand.
+holds, the redactor of a version probe's text, to which the probe adds the host's token. `Ambient()`
+is `FromEnvironment` of the process environment, read when it is called: the redactor of last resort,
+for a client built outside `StartAsync` that has neither a plan nor an environment in hand.
 
 `CopilotRedactingLogger` (internal sealed `ILogger`, in `CopilotSignIn.cs`): the one choke point for
 every entry that reaches the host's logger. `Wrap(inner, redact)` returns `null` for a `null` logger.
@@ -389,8 +389,8 @@ an upstream caller having redacted it.
   `CopilotRedactingLogger`; AgentKit's own entries also receive findings already redacted.
 - **The redactor in scope**, in order of availability: the resolved plan's `Redact`; while the sign-in
   resolves, its `CopilotSignInSecrets`; before it, `FromEnvironment` of the environment in hand and
-  the host's token (a launch refusal), or of a probe's own environment (a version probe); and with no
-  plan and no environment in hand, `Ambient()`.
+  the host's token (a launch refusal), or of a probe's own environment and the host's token (a version
+  probe); and with no plan and no environment in hand, `Ambient()`.
 
 Left as they are, by design:
 
@@ -446,7 +446,8 @@ of it, and keeping it lets the host recognize its own failure type.
 
 ### Callers
 
-`CopilotRuntime.StartAsync` calls `ResolveAsync`, then `Report`; `CopilotRuntime.VerifyStartedAsync`
+`CopilotRuntime.StartAsync` calls `ResolveAsync`, then `RelayAsync` to create the SDK's client, then
+`Report`; `CopilotRuntime.VerifyStartedAsync`
 calls `ExplainUnauthenticated`; the `CopilotRuntime` constructor calls `Classify` and
 `CreateSessionTokenProvider`, passing the plan's `Secrets`; `CopilotRuntime.ExplainStartFailure`, on
 `StartAsync`'s path and on the turn channel's discovery path, calls `Redact(plan, text)`, and

@@ -240,9 +240,11 @@ exited with code 2 is refused with the code and the CLI's error. One that could 
 refused naming the CLI and "could not be started", with a redacted copy of the platform's failure —
 naming its type, with its message — as the inner exception, never the original.
 
-The probe's environment holds `GH_ENTERPRISE_TOKEN` set to `s3cr3t-value-xyz`, which also names the CLI's folder.
-For a CLI that cannot be started, one that times out, one that exits with an error and an npm installation without
-`node`, the refusal names the folder as `/opt/<redacted>/bin`. The error output holds the secret placed so that a cut
-of its last 500 characters made on the raw text would fall inside it, followed by a token-shaped value: the refusal
-quotes `redacted> failed with gho_<redacted>`, proving the output is redacted before it is cut, and `SecretAssert`
-finds neither the secret, nor its first or last eight characters, nor the token-shaped value anywhere in the chain.
+The probe's environment holds `GH_ENTERPRISE_TOKEN` set to `s3cr3t-value-xyz`, and the caller passes the host's token
+`s3cr3t-host-token`; both name the CLI's folder. For a CLI that cannot be started, one that times out, one that exits
+with an error and an npm installation without `node`, the refusal names the folder as `/opt/<redacted>/<redacted>/bin`,
+so every probe refusal is redacted of the host's token the caller passes, in the path and the cause. The error output
+holds the secret placed so that a cut of its last 500 characters made on the raw text would fall inside it, followed by
+a token-shaped value: the refusal quotes `redacted> failed with gho_<redacted>`, proving the output is redacted before
+it is cut, and `SecretAssert` finds neither the secret, the host's token, the secret's first or last eight characters,
+nor the token-shaped value anywhere in the chain.

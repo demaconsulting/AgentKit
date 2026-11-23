@@ -439,8 +439,9 @@ public sealed class CopilotRuntime : IAsyncDisposable
     ///     the message lists what each sign-in source found and how to sign in; or the host's token
     ///     provider failed or returned no token — a failure is the <see cref="Exception.InnerException"/>;
     ///     or <c>COPILOT_GH_HOST</c> is set to something that is not a valid GitHub host and no
-    ///     <c>gitHubHost</c> was given — the message says how to correct it, without quoting it; or a
-    ///     read of the started runtime's status failed — relayed as a new exception of the same kind
+    ///     <c>gitHubHost</c> was given — the message says how to correct it, without quoting it; or the
+    ///     SDK's client could not be created, or a read of the started runtime's status failed — relayed
+    ///     as a new exception of the same kind
     ///     with a redacted message and a redacted copy as its cause, an exception a host does not
     ///     reference becoming an <see cref="InvalidOperationException"/>.
     /// </exception>
@@ -488,12 +489,17 @@ public sealed class CopilotRuntime : IAsyncDisposable
             cancellationToken).ConfigureAwait(false);
         var clientOptions = BuildClientOptions(options, dataDirectory, hostEnvironment, launch.CliPath, signIn);
 
+        // The SDK's constructor is SDK code under the sink rule, so it is relayed with the plan like
+        // every other SDK call; nothing runs between its creation and StartOwnedAsync taking ownership.
+        var sdkClient = await CopilotSignIn.RelayAsync(() => Task.FromResult(new CopilotClient(clientOptions)), signIn)
+            .ConfigureAwait(false);
+
         // Started here and disposed on any failure: a runtime that never reaches the caller must not
         // leave its process running - including one that started but is not signed in.
         GetStatusResponse? status = null;
         GetAuthStatusResponse? authentication = null;
         var client = await StartOwnedAsync(
-            () => new CopilotClient(clientOptions),
+            () => sdkClient,
             async (created, token) =>
             {
                 await StartClientAsync(created.StartAsync, launch, signIn, token).ConfigureAwait(false);
@@ -1130,14 +1136,16 @@ public sealed class CopilotRuntime : IAsyncDisposable
             cliPath = found.Path ?? throw new InvalidOperationException(secrets.Redact(CopilotCli.ExplainNotFound(found)));
         }
 
-        // The version the runtime will run, checked before a runtime process exists
+        // The version the runtime will run, checked before a runtime process exists; the probe is given
+        // the host's token too, since its refusals quote the path, which can come from the host's options
         var version = await CopilotCli.ReadVersionAsync(
             cliPath,
             dataDirectory,
             BuildRuntimeEnvironment(hostEnvironment),
             context,
             runner,
-            cancellationToken).ConfigureAwait(false);
+            cancellationToken,
+            hostToken: options.GitHubToken).ConfigureAwait(false);
         if (version is not null && !CopilotCli.IsSupported(version))
         {
             throw new InvalidOperationException(secrets.Redact(CopilotCli.ExplainTooOld(cliPath, version)));

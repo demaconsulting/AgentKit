@@ -368,8 +368,9 @@ sections:
           - id: AgentKitAgentsCopilot-CopilotRuntime-RedactsLaunchRefusals
             title: >-
               The runtime shall redact every refusal to launch an installed CLI — a named CLI that does
-              not exist, none found, or one too old — of the host environment's secret values, the
-              host's token and any text shaped like a GitHub token.
+              not exist, none found, one too old, or a CLI whose version check failed — of the host
+              environment's secret values, the host's token and any text shaped like a GitHub token,
+              giving the version check the host's token to redact.
             tags: [security]
             justification: |
               These refusals quote paths from the host's options, PATH and discovery, which the host's

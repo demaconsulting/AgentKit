@@ -1525,27 +1525,30 @@ public class CopilotRuntimeTests
     }
 
     /// <summary>
-    ///     Proves every launch refusal — a named CLI that does not exist, no CLI found, and a CLI too
-    ///     old — is redacted of the host environment's secret values and the host's token, wherever a
-    ///     path quotes them.
+    ///     Proves every launch refusal — a named CLI that does not exist, no CLI found, a CLI too old,
+    ///     and a CLI whose version check failed — is redacted of the host environment's secret values
+    ///     and the host's token, wherever a path or the check's error output quotes them.
     /// </summary>
-    /// <param name="kind">The refusal: <c>missing</c>, <c>notFound</c> or <c>tooOld</c>.</param>
+    /// <param name="kind">The refusal: <c>missing</c>, <c>notFound</c>, <c>tooOld</c> or <c>probe</c>.</param>
     [Theory]
     [InlineData("missing")]
     [InlineData("notFound")]
     [InlineData("tooOld")]
+    [InlineData("probe")]
     public async Task CopilotRuntime_ResolveLaunch_RefusalQuotingAnEnvironmentSecret_IsRedacted(string kind)
     {
         // Arrange: a GitHub Enterprise token, not shaped like a GitHub token, and the host's token,
         // each also part of the folder a path names
         const string secret = "s3cr3t-value-xyz";
         const string hostToken = "s3cr3t-host-token";
+        var folder = $"/opt/{secret}/{hostToken}/bin";
         var machine = new FakeCopilotCliMachine
         {
-            Result = new(0, "GitHub Copilot CLI 1.0.106.\n", string.Empty, TimedOut: false),
+            Result = kind == "probe"
+                ? new(3, string.Empty, $"cannot run from {folder}", TimedOut: false)
+                : new(0, "GitHub Copilot CLI 1.0.106.\n", string.Empty, TimedOut: false),
         };
-        var folder = $"/opt/{secret}/{hostToken}/bin";
-        if (kind == "tooOld")
+        if (kind is "tooOld" or "probe")
         {
             machine.AddFile(Path.Combine(folder, "copilot"));
         }

@@ -109,7 +109,7 @@ does not do, and the `copilot.cmd` shim npm puts on `PATH` cannot be started wit
 names that prefix's entry point with `cliPath`, for example
 `<prefix>\node_modules\@github\copilot\npm-loader.js` on Windows.
 
-#### ReadVersionAsync(cliPath, dataDirectory, runtimeEnvironment, context, runner, cancellationToken)
+#### ReadVersionAsync(cliPath, dataDirectory, runtimeEnvironment, context, runner, cancellationToken, hostToken)
 
 **Purpose:** Read the version the CLI runs when the SDK starts it.
 
@@ -129,11 +129,12 @@ names that prefix's entry point with `cliPath`, for example
    and the end of its error output.
 
 Every refusal is redacted with `CopilotSignInSecrets.FromEnvironment(runtimeEnvironment)` — exactly
-the secrets the probe was given and could echo — and the token shapes: the error output before its
-last 500 characters are cut, so a secret the cut would split is never half quoted, and then the whole
-message, which names the CLI's path and command. The `node`-missing refusal is redacted the same way.
-A failure to start keeps only its redacted copy (`CopilotSignIn.RedactFailure`) as the cause, never
-the original.
+the secrets the probe was given and could echo — plus the host's token the caller passes as the
+optional `hostToken`, since the CLI's path can come from the host's options, and the token shapes: the
+error output before its last 500 characters are cut, so a secret the cut would split is never half
+quoted, and then the whole message, which names the CLI's path and command. The `node`-missing refusal
+is redacted the same way. A failure to start keeps only its redacted copy (`CopilotSignIn.RedactFailure`)
+as the cause, never the original.
 3. Parse the version from standard output (`ParseVersion`) and return it, or `null` when it names none.
 
 #### ParseVersion(string? output)

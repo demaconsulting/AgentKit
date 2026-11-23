@@ -871,7 +871,8 @@ so no path can acquire capability another path withholds.
   entry AgentKit writes and every entry the SDK writes reaches the host's logger through one
   redacting logger, which redacts the message, the structured values that can hold text, the scopes
   and a logged exception (passed on as its redacted copy). Text quoted before a sign-in exists — a
-  launch refusal, a version probe's error — is redacted with the secrets of the environment in hand;
+  launch refusal, a version probe's error — is redacted with the secrets of the environment in hand and
+  the host's token;
   a client built without a sign-in falls back to the process environment's. The exclusions are few
   and stated: a value the host passed, reflected in its own argument validation; the host's own token
   provider's exception; conversation content; typed values the host asked for; and exception type

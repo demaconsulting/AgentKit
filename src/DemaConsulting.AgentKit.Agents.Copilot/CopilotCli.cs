@@ -239,12 +239,17 @@ public static partial class CopilotCli
     /// <param name="context">The platform and file system, used to find <c>node</c> for a <c>.js</c> CLI.</param>
     /// <param name="runner">Runs the probe process.</param>
     /// <param name="cancellationToken">Cancels the probe, which stops the process.</param>
+    /// <param name="hostToken">
+    ///     The host's token, if any, which is redacted too: the CLI path can come from the host's options,
+    ///     so a refusal that quotes the path can quote the token.
+    /// </param>
     /// <returns>The version the CLI reports, or <see langword="null"/> when its output names none.</returns>
     /// <exception cref="InvalidOperationException">
     ///     The CLI is a <c>.js</c> file and <c>node</c> is not on <c>PATH</c>; or it could not be started,
     ///     exited with an error, or did not finish in time. The message names the CLI and the command;
-    ///     it, and the error output it quotes, are redacted of the probe environment's secret values
-    ///     and any text shaped like a GitHub token, the error output before its tail is cut. For a CLI
+    ///     it, and the error output it quotes, are redacted of the probe environment's secret values,
+    ///     the host's token when given and any text shaped like a GitHub token, the error output before
+    ///     its tail is cut. For a CLI
     ///     that could not be started, the cause is a redacted copy of the failure
     ///     (<see cref="CopilotRedactedException"/>), never the original.
     /// </exception>
@@ -255,10 +260,13 @@ public static partial class CopilotCli
         IReadOnlyDictionary<string, string> runtimeEnvironment,
         CopilotCliSearchContext context,
         CopilotCliProcessRunner runner,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? hostToken = null)
     {
-        // Everything the probe could echo is in its environment, so that is what its text is redacted of
+        // Everything the probe could echo is in its environment, and the path it quotes can come from the
+        // host's options, so its text is redacted of the environment's secrets and the host's token
         var secrets = CopilotSignInSecrets.FromEnvironment(runtimeEnvironment);
+        secrets.Add(hostToken);
         Func<string, string> redact = text => secrets.Redact(text);
         var startInfo = BuildVersionProbe(cliPath, dataDirectory, runtimeEnvironment, context, redact);
         var command = DescribeCommand(startInfo);
@@ -505,7 +513,7 @@ public static partial class CopilotCli
     /// <param name="dataDirectory">The prepared data directory's full path.</param>
     /// <param name="runtimeEnvironment">The runtime's environment, which becomes the probe's.</param>
     /// <param name="context">The platform and file system, used to find <c>node</c>.</param>
-    /// <param name="redact">Removes the probe environment's secrets from the refusal's text.</param>
+    /// <param name="redact">Removes the probe environment's secrets and the host's token from the refusal's text.</param>
     /// <returns>The start information: no shell, all streams redirected, the runtime's environment.</returns>
     /// <exception cref="InvalidOperationException">The CLI is a <c>.js</c> file and <c>node</c> is not on <c>PATH</c>.</exception>
     private static ProcessStartInfo BuildVersionProbe(
@@ -566,7 +574,7 @@ public static partial class CopilotCli
     /// <param name="command">The command that was run.</param>
     /// <param name="reason">What went wrong, completing "the command ...".</param>
     /// <param name="standardError">The probe's error output, or <see langword="null"/> when there is none.</param>
-    /// <param name="redact">Removes the probe environment's secrets from a text.</param>
+    /// <param name="redact">Removes the probe environment's secrets and the host's token from a text.</param>
     /// <returns>The explanation.</returns>
     private static string ExplainProbeFailure(string cliPath, string command, string reason, string? standardError, Func<string, string> redact)
     {

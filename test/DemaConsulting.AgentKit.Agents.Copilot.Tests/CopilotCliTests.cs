@@ -783,8 +783,9 @@ public class CopilotCliTests
     /// <summary>
     ///     Proves every probe refusal — a CLI that cannot be started, one that times out, one that
     ///     exits with an error and an npm installation without <c>node</c> — is redacted of the probe
-    ///     environment's secret values, in the CLI's path, the error output and the cause, with the
-    ///     error output redacted before its tail is cut, so a secret across the cut is not half quoted.
+    ///     environment's secret values and the host's token the caller gives, in the CLI's path, the
+    ///     error output and the cause, with the error output redacted before its tail is cut, so a
+    ///     secret across the cut is not half quoted.
     /// </summary>
     /// <param name="kind">The failure: <c>start</c>, <c>timeout</c>, <c>exit</c> or <c>node</c>.</param>
     [Theory]
@@ -794,11 +795,12 @@ public class CopilotCliTests
     [InlineData("node")]
     public async Task CopilotCli_ReadVersionAsync_ProbeQuotingASecret_IsRedacted(string kind)
     {
-        // Arrange: a secret in the probe's environment, in the CLI's folder, and in the error output
-        // placed so the tail cut, made on the raw output, would fall inside it
+        // Arrange: a secret in the probe's environment, in the CLI's folder with the host's token, and
+        // in the error output placed so the tail cut, made on the raw output, would fall inside it
         const string secret = "s3cr3t-value-xyz";
+        const string hostToken = "s3cr3t-host-token";
         const string shaped = "gho_PROBE0123456789abcdefABCDEF01234567";
-        var folder = $"/opt/{secret}/bin";
+        var folder = $"/opt/{secret}/{hostToken}/bin";
         var suffix = $" failed with {shaped} ";
         var standardError = new string('x', 1000) + secret + suffix + new string('y', 500 - (secret.Length / 2) - suffix.Length);
         var machine = new FakeCopilotCliMachine
@@ -818,10 +820,11 @@ public class CopilotCliTests
             environment,
             machine.Context(CopilotCliPlatform.Linux, "/usr/bin"),
             machine.RunAsync,
-            TestContext.Current.CancellationToken));
+            TestContext.Current.CancellationToken,
+            hostToken: hostToken));
 
         // Assert
-        Assert.Contains("/opt/<redacted>/bin", failure.Message, StringComparison.Ordinal);
+        Assert.Contains("/opt/<redacted>/<redacted>/bin", failure.Message, StringComparison.Ordinal);
         if (kind is "timeout" or "exit")
         {
             Assert.Contains("redacted> failed with gho_<redacted>", failure.Message, StringComparison.Ordinal);
@@ -832,7 +835,7 @@ public class CopilotCliTests
             Assert.Equal(typeof(Win32Exception).FullName, Assert.IsType<CopilotRedactedException>(failure.InnerException).OriginalTypeName);
         }
 
-        SecretAssert.NoSecret(failure, secret, shaped, secret[..8], secret[^8..]);
+        SecretAssert.NoSecret(failure, secret, hostToken, shaped, secret[..8], secret[^8..]);
     }
 
     /// <summary>

@@ -69,7 +69,9 @@ project; the tests that nothing built on a disposed runtime starts it reside in
   `CopilotClient` whose runtime path names no file — stands in for a runtime that must not be started
 - **File system**: Directories under the system temporary folder, one per test, deleted afterwards;
   the runtime path and base directory of the client that cannot start are never created
-- **Isolation**: No test reads or changes the process environment; no state is shared
+- **Isolation**: No test changes the process environment, and no state is shared. Tests that build a client without a
+  sign-in let the code read the process environment's secret variables, as it does in use, so it can redact their
+  values. No assertion depends on those values
 
 ### Acceptance Criteria
 
@@ -424,12 +426,13 @@ exception arrives as a redacted copy; and `SecretAssert` finds no value the clie
 #### AgentKitAgentsCopilot-CopilotRuntime-RedactsLaunchRefusals: Launch Refusals Carry No Secret
 
 **Test**: `CopilotRuntime_ResolveLaunch_RefusalQuotingAnEnvironmentSecret_IsRedacted` (named CLI missing, none found,
-too old)
+too old, version check failed)
 
 Error paths. The host's environment holds `GH_ENTERPRISE_TOKEN` set to `s3cr3t-value-xyz` and the host passes the
 token `s3cr3t-host-token`; both are part of the folder the named CLI, the `PATH` entry searched or the CLI found is in.
 Each refusal names that folder with `<redacted>` in place of both values, and `SecretAssert` finds neither anywhere in
-the chain.
+the chain. In the version-check case the CLI found exits with code 3 and an error quoting its folder; the refusal comes
+from the version check itself, which redacts the host's token only because the runtime passes it.
 
 #### AgentKitAgentsCopilot-CopilotRuntime-RejectsInvalidOptions: Missing Options Are Refused
 
