@@ -212,10 +212,10 @@ repository root; source of truth: `src/scripts/ProjectScripts.psm1` in the Agent
 that copy: never edit it in a repository. Repository-specific
 behavior belongs in the scripts' `[PROJECT-SPECIFIC]` blocks. See `project-scripts.md`.
 
-AgentKit has several libraries, so `build.ps1 -Project` accepts full project names or names without the
-`DemaConsulting.AgentKit.` prefix (for example `Core`, `Tools`, `Agents.Copilot`). The opt-in live suites
-(`test/*.LiveTests`) stay outside `build.ps1`; `lint.ps1` carries repository-specific checks (`review-plan`,
-`doc-sets`, `tool-names`, `review-sets`) selectable with `-Check`.
+AgentKit has several libraries, so `build.ps1 -Project` accepts full project names or short names the shared module
+resolves itself (for example `Core`, `Tools`, `Agents.Copilot`; `-Help` lists them). `build.ps1` scans `samples/`
+as an extra root (`$ProjectRoots`), and the opt-in live suites (`test/*.LiveTests`) stay outside it; `lint.ps1`
+carries repository-specific checks (`review-plan`, `doc-sets`, `tool-names`, `review-sets`) selectable with `-Check`.
 
 # Continuous Compliance Overview
 

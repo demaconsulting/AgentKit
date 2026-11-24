@@ -10,19 +10,24 @@
 #   pwsh ./build.ps1 -All                      Full local build and all tests
 #   pwsh ./build.ps1 -Changed [-Base <ref>]    Only the test projects affected by the changes since <ref>
 #                                              (default origin/main, else main) plus uncommitted changes
-#   pwsh ./build.ps1 -Project Tools            Only the test projects affected by the named projects (full names or
-#                                              names without the DemaConsulting.AgentKit. prefix, for example Core,
-#                                              Tools, Agents.Copilot, Samples.CustomTools; -Help lists them)
+#   pwsh ./build.ps1 -Project Tools            Only the test projects affected by the named projects (full or short
+#                                              names: Tools finds DemaConsulting.AgentKit.Tools, Core is the core
+#                                              library, Agents.Copilot a dotted suffix; -Help lists this
+#                                              repository's names)
 #   Add -DryRun to any scope to print the selection without building anything.
 #   With no arguments the usage text is printed and the script exits 1 (a scope must be chosen).
 #
 #   A changed project selects every project that references it, directly or transitively, from the
-#   ProjectReference graph, and files linked into another project (Compile/None/EmbeddedResource items
-#   that point outside the project folder) select that project too. Changes that affect the whole
+#   ProjectReference graph, and files linked into another project (any item or file property that
+#   points outside the project folder) select that project too. Changes that affect the whole
 #   build (solution, project, props/targets, global.json, .editorconfig, nuget.config, tool manifest,
 #   this script, scripts/ProjectScripts.psm1) fall back to the full build; repository files tests read
 #   at run time select their test projects through $RuntimeReads; other changes the build does not
 #   read select nothing.
+#
+#   The test platform is detected from global.json: "test": { "runner": "Microsoft.Testing.Platform" } runs
+#   'dotnet test --project <path> --report-trx', anything else runs VSTest 'dotnet test <path> --logger trx';
+#   results go to artifacts/tests either way. Do not customize the arguments per repository.
 #
 #   The opt-in live suites (test/*.LiveTests) are outside AgentKit.slnx, need a model or a Copilot
 #   runtime, and are never built or run by this script; see CONTRIBUTING.md for how to run them.
@@ -61,7 +66,6 @@ param(
     [switch]$Help
 )
 
-$ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'scripts/ProjectScripts.psm1') -Force
 
 # [PROJECT-SPECIFIC] Repository files that tests read at run time (through the repository root, not through a
@@ -69,29 +73,45 @@ Import-Module (Join-Path $PSScriptRoot 'scripts/ProjectScripts.psm1') -Force
 # repository file outside its project folder or the files it links, so the map is empty.
 $RuntimeReads = [ordered]@{}
 
-# [PROJECT-SPECIFIC] Project graph. Besides src/ and test/, the runnable samples under samples/ are scanned so a
-# sample change selects the sample's tests. The opt-in live suites (test/*.LiveTests) are left out: they are
-# outside AgentKit.slnx, need a model or a Copilot runtime, and must stay opt-in.
-$ProjectPrefix = 'DemaConsulting.AgentKit.'
+# [PROJECT-SPECIFIC] Short -Project names that no resolution rule can derive (exact name, unique dot-segment suffix,
+# Core), as data: alias = project name. Empty: Core, Tools, Tools.Visual, Agents.Copilot, Samples.CustomTools, and the
+# other short names all resolve as unique dot-segment suffixes.
+$ProjectAliases = @{}
 
+# [PROJECT-SPECIFIC] Folders scanned for projects. Besides src/, test/, and tools/, the runnable samples under samples/
+# are scanned so a sample change selects the sample's tests.
+$ProjectRoots = @('src', 'test', 'tools', 'samples')
+
+# [PROJECT-SPECIFIC] The project graph without the opt-in live suites (test/*.LiveTests): they are outside
+# AgentKit.slnx, need a model or a Copilot runtime, and must stay opt-in.
 function Get-AgentKitGraph {
-    $graph = Get-ProjectGraph -Root @('src', 'test', 'tools', 'samples')
+    $graph = Get-ProjectGraph -Root $ProjectRoots
     foreach ($key in @($graph.Keys)) {
         if ($graph[$key].Directory -like '*.LiveTests') { $graph.Remove($key) }
     }
     return $graph
 }
 
-# [PROJECT-SPECIFIC] Resolves a project name typed without the DemaConsulting.AgentKit. prefix (Core, Tools,
-# Tools.Visual, Agents.Copilot, Samples.CustomTools, Core.Tests, ...) to the full project name; Resolve-ProjectName
-# treats the shortest src/ project as the prefix, which does not fit names such as Tools or Agents.Copilot.
-function Resolve-AgentKitProject {
-    param($Graph, [string]$Name)
-    foreach ($candidate in @($Name, "$ProjectPrefix$Name")) {
-        $match = $Graph.Keys | Where-Object { $_ -eq $candidate }
-        if ($match) { return $match }
+# Test platform: global.json selects Microsoft.Testing.Platform with "test": { "runner": "Microsoft.Testing.Platform" };
+# otherwise VSTest is used. The platform decides the 'dotnet test' arguments (see Invoke-DotnetTest).
+$UseTestingPlatform = $false
+if (Test-Path global.json) {
+    try { $UseTestingPlatform = (Get-Content -Raw global.json | ConvertFrom-Json).test.runner -eq 'Microsoft.Testing.Platform' }
+    catch { Write-Host "Warning: global.json could not be read; assuming VSTest." }
+}
+
+function Invoke-DotnetTest {
+    # Runs the tests of one project, or of the whole solution when no path is given, against the existing build
+    param([string]$Path)
+
+    # @(...) keeps a one-element list an array, so the splat passes the path whole and not character by character
+    if ($UseTestingPlatform) {
+        $target = @(if ($Path) { '--project'; $Path })
+        dotnet test @target --no-build --configuration Release --report-trx --results-directory artifacts/tests
+    } else {
+        $target = @(if ($Path) { $Path })
+        dotnet test @target --no-build --configuration Release --logger trx --results-directory artifacts/tests
     }
-    return Resolve-ProjectName $Graph $Name
 }
 
 # ==============================================================================
@@ -105,15 +125,12 @@ function Show-Usage {
             '-All'             = 'Full local build and all tests; cannot be combined with another scope.'
             '-Changed'         = 'Only the test projects affected by files changed since the base, plus uncommitted files.'
             '-Base <ref>'      = 'Base reference for -Changed (default origin/main, else main).'
-            '-Project <names>' = 'Only the test projects affected by these projects (full names, or without the DemaConsulting.AgentKit. prefix).'
+            '-Project <names>' = 'Only the test projects affected by these projects (full or short names, e.g. Core, Tools).'
             '-DryRun'          = 'Print what would be built, tested, and skipped, then exit 0 without running anything.'
             '-Help'            = 'Print this text and exit 0.'
         }) `
-        -ChecksLabel 'Projects (-Project names; add .Tests for a test project)' `
-        -Checks @(try {
-                (Get-AgentKitGraph).Values | Where-Object { $_.Directory -notlike 'test/*' } |
-                    ForEach-Object { $_.Name.Substring($ProjectPrefix.Length) }
-            } catch { }) `
+        -ChecksLabel 'Projects and aliases (-Project names; short names such as Core or Tools also work)' `
+        -Checks @(try { Get-ProjectNameList (Get-AgentKitGraph) $ProjectAliases } catch { }) `
         -Examples @('-Changed', '-Project Core', '-Project Tools,Agents.Copilot', '-Changed -DryRun', '-All')
 }
 
@@ -145,14 +162,16 @@ if (-not $All) {
     $fullReason = $null
 
     $names = @($Project | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+    $known = (Get-ProjectNameList $graph $ProjectAliases) -join ', '
     if ($Project -and $names.Count -eq 0) {
-        Write-Host "Error: no project named in '$($Project -join ' ')'. Known projects: $($graph.Keys -join ', ')"
+        Write-Host "Error: no project named in '$($Project -join ' ')'. Known projects: $known"
         exit 1
     }
     foreach ($single in $names) {
-        $resolved = Resolve-AgentKitProject $graph $single
+        try { $resolved = Resolve-ProjectName $graph $single $ProjectAliases }
+        catch { Write-Host "Error: $($_.Exception.Message)"; exit 1 }
         if (-not $resolved) {
-            Write-Host "Unknown project '$single'. Known projects: $($graph.Keys -join ', ')"
+            Write-Host "Unknown project '$single'. Known projects: $known"
             exit 1
         }
         [void]$selected.Add($resolved)
@@ -203,8 +222,8 @@ if (-not $All) {
 
         if (-not $buildError) {
             foreach ($entry in $tests) {
-                Write-Host "Running unit tests: $($entry.Name)..."
-                dotnet test --project $entry.Path --configuration Release --report-trx
+                Write-Host "Running tests: $($entry.Name)..."
+                Invoke-DotnetTest $entry.Path
                 if ($LASTEXITCODE -ne 0) { $buildError = $true }
             }
         } else {
@@ -221,17 +240,26 @@ if ($DryRun -and -not $scoped) { Write-Host "Dry run: would run the full build a
 
 if (-not $scoped) {
     # Each step runs only if the steps before it succeeded, so tests never run against stale binaries
-    Write-Host "Building project..."
-    dotnet build --configuration Release
-    if ($LASTEXITCODE -ne 0) { $buildError = $true }
+    $failedStep = $null   # the step that failed first, so the skip message names the real cause
+    Write-Host "Restoring dependencies..."
+    dotnet restore
+    if ($LASTEXITCODE -ne 0) { $buildError = $true; $failedStep = 'restore' }
+
+    if (-not $buildError) {
+        Write-Host "Building..."
+        dotnet build --no-restore --configuration Release
+        if ($LASTEXITCODE -ne 0) { $buildError = $true; $failedStep = 'build' }
+    }
 
     # [PROJECT-SPECIFIC] Add additional build steps here.
     # Guard steps that depend on the build with: if (-not $buildError) { ... }
 
     if (-not $buildError) {
-        Write-Host "Running unit tests..."
-        dotnet test --configuration Release --report-trx
+        Write-Host "Running tests..."
+        Invoke-DotnetTest
         if ($LASTEXITCODE -ne 0) { $buildError = $true }
+    } elseif ($failedStep -eq 'restore') {
+        Write-Host "Skipping build and tests: restore failed."
     } else {
         Write-Host "Skipping tests: the build failed."
     }
