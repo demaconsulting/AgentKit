@@ -109,8 +109,14 @@ for every tool and runs the self-compacting session that each provider adapter p
 
 ## Building
 
+Every project script requires an explicit scope: run with no arguments it prints its usage text and
+exits 1. Run `pwsh ./build.ps1 -Help` (likewise `lint.ps1` and `fix.ps1`) for the switches.
+
 ```pwsh
-pwsh ./build.ps1
+pwsh ./build.ps1 -All       # full build and all tests
+pwsh ./build.ps1 -Changed   # only what your changes affect, while iterating
+pwsh ./lint.ps1 -All        # all lint checks (what CI runs)
+pwsh ./fix.ps1 -Changed     # auto-fix the changed file types
 ```
 
 ## User Guide
